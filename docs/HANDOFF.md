@@ -1,6 +1,7 @@
 # Handoff — inemaccbot
 
 Escrito em 2026-07-30, ao fim da sessão que criou o projeto e entregou as etapas 0 e 1.
+**Atualizado em 2026-07-30 (mesmo dia), ao fim da etapa 2.**
 Ponto de partida para quem (agente ou humano) continuar daqui. Leia isto antes de
 reconstruir contexto por arqueologia de git.
 
@@ -23,8 +24,10 @@ Leia pelo menos §1 (camadas), §2.5 e §2.5.1 (efeito único e posse do lease),
 
 ## 2. Estado em 2026-07-30
 
-- `master` em `975558e`. **202 testes verdes**, typecheck limpo.
-- **Etapa 0** (núcleo da fila) e **etapa 1** (gateway + serviço) mergeadas.
+- `master` em `95ccd79`. **318 testes verdes**, typecheck limpo.
+- **Etapas 0, 1 e 2** mergeadas. Etapa 2 = fila `texto` com `kind=agent`, registry de
+  skills, gateway completo (skill digitada, texto livre, pergunta, anexo, entrega).
+  Plano: `docs/superpowers/plans/2026-07-30-etapa-2-texto.md`.
 - O serviço **está no ar**: `systemctl --user status inemaccbot` (unidade de USUÁRIO, em
   `~/.config/systemd/user/`). Log em `~/projetos/inemaccbot/inemaccbot.log`.
 - Os três serviços do v1 (`inemaccvbot`, `mkivideos`, `mkitexto`) estão **`active` mas `disabled`**:
@@ -33,14 +36,34 @@ Leia pelo menos §1 (camadas), §2.5 e §2.5.1 (efeito único e posse do lease),
 
 ### O que o bot novo faz hoje
 
-`/ping` · `/ajuda` (alias `/help`) · `/fila` · `/status <id>` · `/cancelar <id>` · `/furar <id>` ·
-`http <url>` · `thumb <caminho>`. Verbo aceita maiúsculas; argumento não é normalizado (caminho e
-URL diferenciam caixa).
+- **Serviço:** `/ping` · `/ajuda` (`/help`) · `/skills` · `/fila` · `/status <id>` ·
+  `/cancelar <id>` · `/furar <id>` · `http <url>` · `thumb <caminho>`.
+- **Skills (registry `config/skills.json`):** `transcrever: <link>` e
+  `dublar: <link> | lives3`, na fila `texto`, como `kind=agent`. Campos genéricos:
+  `livesN` (destino), `modelo=`, `esforco=`.
+- **Texto livre:** interpretado por um agente curto — vira job, ou vira pergunta
+  respondida com os jobs DESTE chat + cauda do log (ambos redigidos).
+- **Anexo:** documento/vídeo/áudio cai em `state/midia` e a legenda vira comando.
+- **Entrega:** destino `livesN` copia o artefato; `.txt`/`.srt` curto vai como TEXTO no
+  chat; o resto vai como anexo (≤45 MB) ou só o caminho.
 
 ### O que ele NÃO faz
 
-Nenhum job `kind='agent'`. Sem skills, sem registries em JSON, sem runtime de fluxos, sem
-`/promoclub`, sem `interpret` por `claude -p`. Isso é etapa 2 em diante.
+Sem `render` (etapa 3), sem `fluxos/`, `/refazer`, `/status <fluxo>`, dashboard nem
+`/promoclub`. O `interpret` conhece skills, não fluxos.
+
+### Decisões da etapa 2 que mudam o desenho das próximas
+
+- **Skill de agente roda SÍNCRONA.** O v1 disparava `nohup` e vigiava o arquivo porque a
+  fila dele não tinha lease com heartbeat; aqui o agente vive até o fim e declara
+  `RESULT: <caminho>`. **Preço:** restart ou deploy no meio de uma transcrição mata aquele
+  job — mitigado com `max_tentativas: 2` no registry, que reexecuta do zero.
+- **`resultado` do job é o CAMINHO**, nunca o stdout do agente. Sem `RESULT:` nem `ERRO:` o
+  job FALHA: agente que não disse onde gravou é indistinguível de agente que não gravou.
+- **Prompt é arquivo** (`prompts/*.md`), lido a cada job (editar não exige restart), com a
+  entrada do usuário entrando saneada como variável — nunca como instrução (§9).
+- **Registry validado no boot**: entrada inválida derruba o serviço, como checksum de
+  migration divergente.
 
 ## 3. Como continuar
 
@@ -48,7 +71,7 @@ O plano de cutover está em §7 do spec. Resumo:
 
 | etapa | entrega | desliga ao fim |
 |---|---|---|
-| 2 | fila `texto`: `transcrever`, `dublar`; registries; `kind=agent` | `mkitexto.service` |
+| ~~2~~ | ~~fila `texto`~~ — **feito**, mas o cutover ainda não | `mkitexto.service` (**pendente**, ver §9) |
 | 3 | fila `render`: `explicativo`, `curso`, `demo`, `reel`, `reelinematds` | `mkivideos.service` |
 | 4 | paridade operacional (help gerado, dashboard, regressões do `watcher.test.ts` do v1) | — |
 | 5 | `fluxos/` + fila `navegador` + `flow.json` no `inemaclubpromover` | `/promoclub` do v1 |
@@ -57,8 +80,7 @@ O plano de cutover está em §7 do spec. Resumo:
 **Regra de ouro do cutover (§7.1):** nunca duas filas da mesma classe vivas. Dois renders
 simultâneos disputam a mesma GPU sem saber um do outro.
 
-Antes de escrever a etapa 2, releia a seção 5 deste documento — há três riscos nomeados que
-mudam o desenho dela.
+Antes de escrever a etapa 3, releia a seção 5 — os riscos que sobraram.
 
 ## 4. Convenções que não são negociáveis
 
@@ -79,11 +101,14 @@ que já custou uma rodada de correção.
 - **Guarda nova exige prova por mutação:** quebre a guarda, veja o teste ficar vermelho, restaure.
   Metade dos defeitos desta sessão eram testes que passavam pelo motivo errado.
 
-## 5. Riscos nomeados para a etapa 2
+## 5. Riscos nomeados (estado depois da etapa 2)
 
-Vieram das revisões finais das etapas 0 e 1. Não são opinião — cada um tem cenário concreto.
+**Fechados na etapa 2:** 1 (`promptDe`), 2 (teste de catálogo do sinal), 3 (redação de
+`job.erro`), 4 (portão da fila `texto` = registry validado no boot), 5 (lista de filas em
+`fila/filas.ts`). Sobra o 6 (`raizMidia` derivada). Registro do que eram, para quem for ler
+os commits:
 
-1. **`promptDe` é um throw explícito** (`src/index.ts`). Precisa ser substituído **no mesmo commit**
+1. ~~**`promptDe` é um throw explícito**~~ (`src/index.ts`). Precisa ser substituído **no mesmo commit**
    que tornar `kind='agent'` alcançável, senão o primeiro job de agente queima uma tentativa e
    morre com mensagem sem sentido.
 2. **`ContextoTarefa.sinal` é obrigatório.** Toda tarefa nova precisa repassá-lo a todo processo
@@ -122,8 +147,14 @@ Detalhe de cada uma, com justificativa, em
 
 ## 7. Pendências conhecidas, não bloqueantes
 
-- **`thumb` é anunciado no `/ajuda` e é inalcançável na prática:** só aceita caminho dentro de
-  `state/midia`, e nada na etapa 1 escreve lá. Ou some da lista, ou ganha uma tarefa de download.
+- ~~`thumb` inalcançável~~ — resolvido: anexo do Telegram grava em `state/midia`.
+- **Um teste é flaky sob carga:** `ffmpeg.test.ts > aborta o processo filho…` espera um
+  arquivo de PID em até 5s e falhou uma vez na suíte cheia (passou nas 3 execuções
+  seguintes). Se voltar, o conserto é a janela, não o código.
+- **`jobsDoChat` varre `listar()` inteiro** para montar o contexto de uma pergunta — mesma
+  família do problema já anotado nas métricas do `/fila`: degrada com o histórico.
+- **Teto de anexo é 20 MB** (limite da API do Telegram para bots). Arquivo maior: manda o
+  caminho no disco.
 - `Transporte.responder` não checa a allowlist — um `chat_id` removido do `.env` ainda recebe a
   notificação do job que ele já tinha enfileirado.
 - O teste de arquitetura casa só `from '…'`: um `await import()` dinâmico atravessaria a fronteira.
@@ -144,3 +175,23 @@ que passavam pelo motivo errado.
 
 **Não confie em relatório de subagente sem verificar.** Três vezes nesta sessão um relatório
 descreveu o mecanismo errado de uma falha que ele mesmo tinha observado.
+
+## 9. O que ficou FALTANDO da etapa 2 (leia antes de tocar no cutover)
+
+O código da etapa 2 está pronto, verde e no ar. O que **não** foi feito é a aceitação do
+§7.4, que é manual por natureza: **mesma entrada nos dois bots → saída equivalente**. Ela
+custa GPU e token e depende de um link real.
+
+Sequência que falta, nesta ordem:
+
+1. rodar `transcrever: <link real>` no bot NOVO e o equivalente no velho, comparar;
+2. só então, com o dono confirmando: `systemctl --user disable --now mkitexto`;
+3. e tirar `transcrever`/`dublar` do `config/skills.json` do **v1** (uma linha de config,
+   reversível) — senão o bot velho segue aceitando pedidos que ninguém mais executa.
+
+Enquanto o passo 2 não acontece, **as duas filas de texto estão vivas ao mesmo tempo**.
+Para `texto` isso não briga por GPU como o render brigaria, mas os dois bots respondem —
+mande o pedido para um de cada vez, de propósito, ao comparar.
+
+Atenção ao commit do passo 3: o repo do v1 tem alterações não commitadas em `src/config.ts`,
+`src/interpret.ts` e `src/promoclub.ts`. Não varra isso para dentro do commit de cutover.
