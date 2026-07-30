@@ -30,12 +30,17 @@ export class ClaudeRunner implements Runner {
     let cancelado = false;
     let stdout = '';
     let stderr = '';
+    // Resolvida pelo MESMO handler de `close` que já existe — nada de um segundo
+    // listener, que vazaria se ninguém cancelasse.
+    let marcarFechado: () => void;
+    const fechado = new Promise<void>((r) => { marcarFechado = r; });
     filho.stdout?.on('data', (d) => { stdout += String(d); });
     filho.stderr?.on('data', (d) => { stderr += String(d); });
 
     const promessa = new Promise<string>((resolve, reject) => {
       filho.on('error', reject);
       filho.on('close', (code) => {
+        marcarFechado();
         if (cancelado) return reject(new Error('execução cancelada'));
         if (code === 0) return resolve(stdout.trim());
         reject(new Error(`${this.binario} saiu com código ${code}: ${stderr.trim().slice(0, 500)}`));
@@ -57,8 +62,16 @@ export class ClaudeRunner implements Runner {
       cancelar: async () => {
         cancelado = true;
         matarArvore('SIGTERM');
-        await new Promise((r) => setTimeout(r, 2_000));
-        matarArvore('SIGKILL');
+        // Corrida contra a saída do filho: o processo bem-comportado morre no
+        // SIGTERM em milissegundos. Esperar os 2s cheios em TODO cancelamento
+        // custaria isso por job em `/cancelar` e no timeout do drain.
+        let relogio: NodeJS.Timeout | undefined;
+        const prazo = new Promise<'prazo'>((r) => {
+          relogio = setTimeout(() => r('prazo'), 2_000);
+        });
+        const quem = await Promise.race([fechado.then(() => 'fechou' as const), prazo]);
+        clearTimeout(relogio);
+        if (quem === 'prazo') matarArvore('SIGKILL');
       },
       limpar: async () => { /* o runner do Claude não deixa parciais próprios */ },
     };

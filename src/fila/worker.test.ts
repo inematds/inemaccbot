@@ -120,6 +120,28 @@ describe('drain', () => {
     expect(fila.obter(job.id)!.erro).toMatch(/encerramento do serviço/);
   });
 
+  // `abortar()` e o catch de `passo()` disputavam o MESMO job: os dois chamavam
+  // `falhar`, e quem ganhava era ordem de microtask. O conjunto `abortados` dá
+  // a palavra final a `abortar` — o catch não pode nem tentar falhar de novo,
+  // nem registrar um "failed: cancelado" fantasma no log.
+  it('abortar tem a palavra final: o catch de passo não falha o job de novo', async () => {
+    const runner = new FakeRunner({ respostas: ['nunca'], travar: true });
+    const linhas: string[] = [];
+    const w = novoWorker({ runners: { fake: runner }, tarefas: {}, log: (m) => linhas.push(m) });
+    const job = fila.enfileirar({
+      fila: 'io', kind: 'agent', tarefa: 'x', input: '',
+      perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, max_tentativas: 2,
+    });
+    const emCurso = w.passo();
+    await new Promise((r) => setTimeout(r, 10));
+    await w.abortar();
+    await emCurso;
+
+    expect(fila.obter(job.id)!.erro).toMatch(/encerramento do serviço/);
+    expect(linhas.filter((l) => l.includes(`[job ${job.id}]`) && /requeued|failed/.test(l)))
+      .toEqual([]);
+  });
+
   it('renova o lease durante o drain (não solta o job em voo)', async () => {
     let liberar: (() => void) | undefined;
     const w = novoWorker({
