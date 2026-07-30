@@ -58,7 +58,7 @@ export class FilaSqlite {
    * Claim ATÔMICO: um único UPDATE ... WHERE id = (SELECT ...) RETURNING *.
    * Fazer SELECT e depois UPDATE (como o mkivideos faz hoje) permite que dois
    * workers peguem o mesmo job. Ordem: prioridade DESC, id ASC (FIFO dentro da
-   * mesma prioridade). `disponivel_em` cobre poll, backoff e agendamento.
+   * mesma prioridade). `disponível_em` cobre poll, backoff e agendamento.
    */
   pegar(fila: Fila, leaseSegundos: number): Job | undefined {
     const agora = this.agora();
@@ -76,5 +76,31 @@ export class FilaSqlite {
         RETURNING *`,
       )
       .get(agora + leaseSegundos, agora, fila, agora) as Job | undefined;
+  }
+
+  /**
+   * Heartbeat: empurra o lease enquanto o trabalho está vivo. Obrigatório em job
+   * longo (render de ~15 min) e durante o drain — soltar lease com o processo
+   * vivo é exatamente o que permitiria dupla execução (spec §1.3).
+   */
+  renovar(id: number, leaseSegundos: number): boolean {
+    const r = this.db
+      .prepare(`UPDATE jobs SET lease_ate = ? WHERE id = ? AND status = 'running'`)
+      .run(this.agora() + leaseSegundos, id);
+    return r.changes === 1;
+  }
+
+  /**
+   * Devolve à fila todo job `running` com lease vencido (worker morto, kill -9,
+   * queda de energia). `tentativas` NÃO é zerado: o job já consumiu uma.
+   */
+  recuperarLeasesVencidos(): number {
+    const r = this.db
+      .prepare(
+        `UPDATE jobs SET status = 'queued', lease_ate = NULL
+          WHERE status = 'running' AND lease_ate IS NOT NULL AND lease_ate <= ?`,
+      )
+      .run(this.agora());
+    return r.changes;
   }
 }
