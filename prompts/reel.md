@@ -34,12 +34,16 @@ Rode de forma AUTÔNOMA (`control.autonomia = decide-e-mostra` da skill).
    segundo plano destacado, gravando EXATAMENTE em {{saida}}:
 
    ```
-   nohup bash -c 'npx hyperframes render --quality high --output "{{saida}}" || touch "{{saida}}.err"' >"{{saida}}.log" 2>&1 &
-   echo $! > "{{saida}}.pid"
+   nohup bash -c 'echo $$ > "{{saida}}.pid"; npx hyperframes render --quality high --output "{{saida}}" || touch "{{saida}}.err"' >"{{saida}}.log" 2>&1 &
    ```
 
-   O `.pid` não é opcional: é por ele que um `/cancelar` consegue matar o render
-   de verdade. Sem ele, o cancelamento libera a vaga da fila e o render continua
+   Repare que o PID é gravado DE DENTRO do `bash -c`, com `echo $$` na primeira
+   coisa que ele faz — não com `echo $!` do lado de fora. Num run real o `$!`
+   pegou o processo errado (o shell que você usou para encadear o comando), e o
+   `/cancelar` passaria a depender de sorte para matar o render certo.
+
+   O `.pid` não é opcional: é por ele que um `/cancelar` mata o render de
+   verdade. Sem ele, o cancelamento libera a vaga da fila e o render continua
    ocupando a GPU — e o próximo job entra em cima dele.
 
 3. NÃO pule o `|| touch "{{saida}}.err"`. É esse marcador que faz o serviço

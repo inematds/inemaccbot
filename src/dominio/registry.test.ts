@@ -180,6 +180,11 @@ describe('o registry REAL do repo', () => {
         // Sem o marcador, um passo que morre cedo deixa o serviço esperando o
         // timeout inteiro — o defeito que o mkivideos documenta.
         expect(template).toContain('{{saida}}.err');
+        // O PID tem que ser gravado DE DENTRO do bash destacado (`echo $$`).
+        // Num run real o `echo $!` de fora pegou o shell errado, e o
+        // /cancelar passaria a depender de sorte para matar o render certo.
+        expect(template).toContain('echo $$ > "{{saida}}.pid"');
+        expect(template).not.toContain('echo $! >');
       });
     }
   }
