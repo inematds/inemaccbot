@@ -1,0 +1,28 @@
+[
+  {
+    "command": "transcrever",
+    "fila": "texto",
+    "kind": "agent",
+    "prompt": "prompts/transcrever.md",
+    "artefato_exts": ["txt", "srt"],
+    "max_tentativas": 2,
+    "timeout_segundos": 3600,
+    "perfil": { "modelo": "sonnet", "esforco": "low" },
+    "aceita_destino": false,
+    "descricao": "baixa o áudio do link e devolve o TEXTO do que é falado (Whisper local, via inemavox)",
+    "exemplo": "transcrever: https://vt.tiktok.com/XXXX"
+  },
+  {
+    "command": "dublar",
+    "fila": "texto",
+    "kind": "agent",
+    "prompt": "prompts/dublar.md",
+    "artefato_exts": ["mp4"],
+    "max_tentativas": 2,
+    "timeout_segundos": 5400,
+    "perfil": { "modelo": "sonnet", "esforco": "low" },
+    "aceita_destino": true,
+    "descricao": "traduz e dubla o vídeo do link via inemavox (sai um .mp4 dublado)",
+    "exemplo": "dublar: https://youtube.com/watch?v=XXXX | lives3"
+  }
+]

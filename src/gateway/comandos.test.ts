@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { abrirDb } from '../db/abrir.js';
 import { MIGRATIONS, aplicarMigrations } from '../db/migrations.js';
+import { validarSkills, type SkillDef } from '../dominio/registry.js';
+import { CONCORRENCIAS, FILAS } from '../fila/filas.js';
 import { FilaSqlite } from '../fila/store.js';
 import { executar, parseComando, type DepsComando } from './comandos.js';
 
@@ -18,11 +20,32 @@ beforeEach(() => {
   aplicarMigrations(db, () => t, MIGRATIONS);
   t = 1_000;
   fila = new FilaSqlite(db, () => t);
+  prepararDefs();
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function deps(): DepsComando {
   return { fila, chatId: 42, agora: () => t };
+}
+
+/** Catálogo de teste: dois comandos, um deles aceitando destino. O prompt tem
+ * que existir no disco porque o validador confere isso no boot. */
+let defsTeste: SkillDef[];
+function prepararDefs(): void {
+  mkdirSync(join(dir, 'prompts'), { recursive: true });
+  writeFileSync(join(dir, 'prompts', 'p.md'), '{{input}} {{saida}}');
+  const comum = {
+    fila: 'texto', kind: 'agent', prompt: 'prompts/p.md', artefato_exts: ['txt'],
+    max_tentativas: 2, timeout_segundos: 60, descricao: 'd', exemplo: 'ex',
+  };
+  defsTeste = validarSkills([
+    { ...comum, command: 'transcrever', aceita_destino: false },
+    { ...comum, command: 'dublar', artefato_exts: ['mp4'], aceita_destino: true },
+  ], dir);
+}
+
+function depsSkills(): DepsComando {
+  return { ...deps(), defs: defsTeste };
 }
 
 describe('parseComando', () => {
@@ -93,6 +116,60 @@ describe('executar', () => {
     expect(r).toMatch(/furar/);
     expect(r).toMatch(/http/);
     expect(r).toMatch(/thumb/);
+  });
+
+  // Guarda do risco 5 do handoff: o `/fila` tinha a PRÓPRIA lista de filas,
+  // separada das concorrências do boot. Acrescentar uma fila deixava-a invisível
+  // nas métricas. Agora as duas leem `fila/filas.ts`, e este teste falha se
+  // alguém reintroduzir uma lista local aqui.
+  it('/fila cobre exatamente as filas declaradas em fila/filas.ts', () => {
+    const linhas = executar(parseComando('/fila'), deps()).split('\n');
+    expect(linhas.map((l) => l.split(':')[0])).toEqual(FILAS);
+    expect(FILAS).toEqual(Object.keys(CONCORRENCIAS));
+  });
+
+  describe('porta de skills (§1.1)', () => {
+    it('enfileira na fila e com as tentativas que o REGISTRY manda', () => {
+      const r = executar(parseComando('transcrever: http://x', defsTeste), depsSkills());
+      const job = fila.obter(1)!;
+      expect(job.fila).toBe('texto');
+      expect(job.kind).toBe('agent');
+      expect(job.tarefa).toBe('transcrever');
+      expect(job.max_tentativas).toBe(2);
+      expect(JSON.parse(job.input)).toEqual({ entrada: 'http://x' });
+      expect(r).toContain('job 1');
+    });
+
+    it('grava destino e override de perfil no input do job', () => {
+      executar(parseComando('dublar: http://x | modelo=opus', defsTeste), depsSkills());
+      expect(JSON.parse(fila.obter(1)!.input)).toEqual({ entrada: 'http://x', perfil: { modelo: 'opus' } });
+    });
+
+    it('/skills lista o catálogo', () => {
+      expect(executar(parseComando('/skills'), depsSkills())).toContain('transcrever');
+    });
+
+    it('/ajuda inclui as skills do registry, não uma lista escrita à mão', () => {
+      expect(executar(parseComando('/ajuda'), depsSkills())).toContain('transcrever');
+    });
+
+    // Sem catálogo, a segunda porta não existe: é o comportamento da etapa 1.
+    it('sem registry, texto com ":" continua caindo em desconhecido', () => {
+      expect(parseComando('transcrever: http://x').tipo).toBe('desconhecido');
+    });
+
+    it('erro de gramática responde a mensagem NOSSA (e não some)', () => {
+      const r = executar(parseComando('transcrever: http://x | vertical', defsTeste), depsSkills());
+      expect(r).toContain('vertical');
+      expect(fila.listar()).toHaveLength(0);
+    });
+
+    it('texto livre não enfileira nada', () => {
+      const c = parseComando('será que terminou?', defsTeste);
+      expect(c.tipo).toBe('livre');
+      executar(c, depsSkills());
+      expect(fila.listar()).toHaveLength(0);
+    });
   });
 
   it('desconhecido aponta para /ajuda e não ecoa o texto cru', () => {

@@ -8,6 +8,20 @@ export interface ContextoExecucao {
   cwd: string;
   perfil: Perfil;
   vars: Record<string, string>;
+  /**
+   * Teto de PAREDE desta execução (vem do registry da skill). Ausente = sem
+   * teto, que é o comportamento que só faz sentido em teste: em produção um
+   * agente sem prazo ocupa um slot da fila para sempre, porque o heartbeat
+   * renova o lease enquanto o processo existir.
+   */
+  timeoutMs?: number;
+  /**
+   * Traduz o stdout bruto no RESULTADO do job (para skills: o caminho declarado
+   * em `RESULT:`). Mora aqui, e não no worker, porque o que conta como resultado
+   * é conhecimento do DOMÍNIO — `fila/` não sabe o que é `RESULT:`. Ausente: o
+   * stdout cru vira o resultado (é o que os testes de fila usam).
+   */
+  interpretarSaida?: (bruto: string) => string;
 }
 
 /** Uma execução em curso. `cancelar` encerra a ÁRVORE de processos (spec §3.7). */

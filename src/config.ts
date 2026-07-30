@@ -1,11 +1,16 @@
 // Configuração do processo. Função PURA sobre o ambiente: quem lê o arquivo é o
 // index.ts. Assim o teste não precisa de .env no disco, e o boot falha alto e
 // cedo — variável faltando derruba o serviço na largada, não no primeiro job.
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 export interface Config {
   botToken: string;
   queueDb: string;
   stateDir: string;
   logFile: string;
+  /** Onde ficam os repos `yt-pub-livesN` — a raiz do registry de destinos. */
+  projetosDir: string;
   chatsPermitidos: number[];
   motorPadrao: string;
   modeloPadrao: string;
@@ -34,6 +39,9 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     queueDb: exigir(env, 'QUEUE_DB'),
     stateDir: exigir(env, 'STATE_DIR'),
     logFile: exigir(env, 'LOG_FILE'),
+    // Default derivado do HOME: quem instala não precisa declarar o óbvio, e
+    // um destino que não existe já é recusado com a lista dos que existem.
+    projetosDir: env.PROJETOS_DIR?.trim() || join(env.HOME ?? homedir(), 'projetos'),
     chatsPermitidos,
     motorPadrao: env.MOTOR_PADRAO?.trim() || 'claude',
     modeloPadrao: env.MODELO_PADRAO?.trim() || 'sonnet',

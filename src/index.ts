@@ -9,34 +9,32 @@
 // `main` só roda quando o módulo é EXECUTADO; nunca no import (os testes
 // importam este arquivo).
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { hostname } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { type Config, carregarConfig } from './config.js';
 import { abrirDb } from './db/abrir.js';
+import { redatorPadrao } from './dominio/redacao.js';
+import { carregarSkills as carregarSkillsPadrao, type SkillDef } from './dominio/registry.js';
+import { criarPromptDe, parseEntradaSkill } from './fila/skills.js';
 import { aplicarMigrations } from './db/migrations.js';
+import { CONCORRENCIAS, FILAS } from './fila/filas.js';
 import { FilaSqlite } from './fila/store.js';
 import { RUNNERS } from './fila/runner.js';
 import './fila/runner-claude.js'; // efeito colateral: registra RUNNERS.claude
 import { criarTarefas as criarTarefasPadrao } from './fila/tarefas/index.js';
-import type { Agora, Fila, Job } from './fila/types.js';
+import type { Agora } from './fila/types.js';
 import { Worker, type Tarefa } from './fila/worker.js';
-import { executar, parseComando } from './gateway/comandos.js';
+import { tratarMensagem } from './gateway/mensagem.js';
+import { criarBaixadorTelegram } from './gateway/midia.js';
 import { criarNotificador } from './gateway/notificar.js';
 import { type Transporte, criarBot } from './gateway/telegram.js';
 
-/** spec §2.3. As três filas sem tarefa nesta etapa sobem ociosas de propósito:
- * assim a etapa 2 acrescenta tarefas sem mexer no boot. */
-export const CONCORRENCIAS: Record<Fila, number> = {
-  render: 1,
-  navegador: 1,
-  texto: 2,
-  io: 10,
-  cpu: 1,
-};
-
-const FILAS = Object.keys(CONCORRENCIAS) as Fila[];
+// A lista de filas e suas concorrências vivem em `fila/filas.ts` — o gateway
+// precisa da MESMA lista para o `/fila`, e ele não pode importar daqui.
+// Reexportado porque os testes da etapa 1 e o deploy já apontavam para cá.
+export { CONCORRENCIAS, FILAS };
 
 /** O bot é um recurso de ciclo de vida (start/stop), não só um `Transporte` —
  * por isso o serviço recebe as três coisas juntas. */
@@ -80,6 +78,8 @@ export interface DepsServico {
   leaseSegundos?: number;
   /** Só os testes trocam: o catálogo de tarefas é FECHADO na produção. */
   criarTarefas?: (opts: { raizMidia: string }) => Record<string, Tarefa>;
+  /** Idem para o registry de skills: em produção vem de `config/skills.json`. */
+  carregarSkills?: (caminho: string, raiz: string) => SkillDef[];
 }
 
 export interface Servico {
@@ -94,6 +94,10 @@ export interface Servico {
 
 const LEASE_PADRAO_SEGUNDOS = 60;
 
+/** Raiz do repo: `config/` e `prompts/` vivem lá. Funciona igual rodando de
+ * `src/` (teste) e de `dist/` (produção) — os dois estão um nível abaixo. */
+const RAIZ_REPO = fileURLToPath(new URL('..', import.meta.url));
+
 export function criarServico(cfg: Config, deps: DepsServico): Servico {
   // Numa instalação nova o diretório do QUEUE_DB pode não existir ainda, e o
   // erro do SQLite nesse caso é opaco.
@@ -105,6 +109,11 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   /** Identidade DESTA instância — é contra isto que as guardas de posse
    * (`concluir`/`falhar`/`renovar`) comparam. Calculado uma vez. */
   const dono = `${hostname()}:${process.pid}`;
+
+  /** Ponto ÚNICO de saneamento do que sai do sistema (spec §9). O `BOT_TOKEN`
+   * entra como literal porque ele aparece nas URLs da API do Telegram, que é
+   * exatamente o que um erro de download de anexo carrega. */
+  const redigir = redatorPadrao({ segredos: [cfg.botToken], home: homedir() });
 
   let rodando = false;
   let parando: Promise<void> | null = null;
@@ -139,14 +148,23 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     acordadores.clear();
   }
 
-  const aoComando = async (chatId: number, texto: string): Promise<string> =>
-    executar(parseComando(texto), { fila, chatId, agora: deps.agora });
+  // Preenchido em `iniciar()` (o registry é lido lá, junto das migrations). O
+  // handler tem que existir ANTES disso porque `criarTransporte` o recebe.
+  let defs: SkillDef[] = [];
 
-  /** Nenhum job `kind=agent` é enfileirado na etapa 1. Um stub silencioso seria
-   * pior que um erro: o job "rodaria" e devolveria lixo. */
-  const promptDe = async (job: Job): Promise<never> => {
-    throw new Error(`sem agentes na etapa 1: job ${job.id} (${job.tarefa}) é kind=agent`);
-  };
+  const aoComando = async (chatId: number, texto: string): Promise<string> =>
+    tratarMensagem(chatId, texto, {
+      fila,
+      agora: deps.agora,
+      defs,
+      projetosDir: cfg.projetosDir,
+      // Mesmo motor da fila: um lugar só do sistema sabe falar com o Claude.
+      runner: RUNNERS[cfg.motorPadrao] ?? RUNNERS.claude,
+      perfil: { motor: cfg.motorPadrao, modelo: cfg.modeloPadrao, esforco: cfg.esforcoPadrao },
+      cwd: homedir(),
+      logFile: cfg.logFile,
+      redigir,
+    });
 
   /** O `Worker` é um stepper puro por decisão da etapa 0 — quem agenda é aqui. */
   async function laco(w: Worker): Promise<void> {
@@ -200,9 +218,39 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       throw e;
     }
 
-    // 2. raiz de mídia (derivada do STATE_DIR, sem variável nova).
+    // 2. raiz de mídia e de artefatos (derivadas do STATE_DIR, sem variável nova).
     const raizMidia = join(cfg.stateDir, 'midia');
     mkdirSync(raizMidia, { recursive: true });
+    const raizArtefatos = join(cfg.stateDir, 'artefatos');
+    mkdirSync(raizArtefatos, { recursive: true });
+
+    // 2.1 registry de skills. ANTES dos workers, e sem try/catch de propósito:
+    //     registry inválido derruba o boot, igual a checksum de migration
+    //     divergente. Subir com um catálogo que não entendemos é pior que não
+    //     subir — e a alternativa (falhar no primeiro job) queima uma tentativa
+    //     e responde ao usuário com um erro sem sentido.
+    try {
+      defs = (deps.carregarSkills ?? carregarSkillsPadrao)(
+        join(RAIZ_REPO, 'config', 'skills.json'),
+        RAIZ_REPO,
+      );
+    } catch (e) {
+      // Mesmo cuidado das migrations logo acima: o boot morre, mas não deixa o
+      // arquivo do SQLite aberto atrás de si.
+      db.close();
+      throw e;
+    }
+    const promptDe = criarPromptDe({
+      defs,
+      raizRepo: RAIZ_REPO,
+      raizArtefatos,
+      cwd: homedir(),
+      perfilPadrao: {
+        motor: cfg.motorPadrao,
+        modelo: cfg.modeloPadrao,
+        esforco: cfg.esforcoPadrao,
+      },
+    });
 
     // 3. + 4. recuperação ANTES de qualquer `passo()`, e logada — é a única
     //    evidência de que houve queda.
@@ -212,7 +260,21 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     // 5. só então: workers e bot.
     const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
-    const notificar = criarNotificador(transp.transporte);
+    const notificar = criarNotificador(transp.transporte, {
+      redigir,
+      log: deps.log,
+      // Só job de SKILL produz artefato em disco. `http.get` devolve texto e
+      // `ffmpeg.thumb` já responde o caminho — tratá-los como artefato faria a
+      // entrega tentar ler um corpo HTTP como se fosse arquivo.
+      temArtefato: (job) => defs.some((d) => d.command === job.tarefa),
+      destinoDe: (job) => {
+        try {
+          return parseEntradaSkill(job.input).destino;
+        } catch {
+          return undefined;
+        }
+      },
+    });
 
     // 6. §8: a recuperação acabou de marcar jobs como `failed` — uma transição
     //    TERMINAL que acontece fora do `Worker`. Sem isto o chat que pediu o job
@@ -246,6 +308,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
           promptDe,
           log: deps.log,
           aoTerminar: notificar,
+          redigir,
         },
         deps.agora,
       ),
@@ -408,7 +471,17 @@ function criarTransporteReal(
     aoFalhaFatal: (e: Error) => void;
   },
 ): TransporteServico {
-  const { bot, transporte } = criarBot(cfg, { aoComando: deps.aoComando, log: deps.log });
+  const { bot, transporte } = criarBot(cfg, {
+    aoComando: deps.aoComando,
+    log: deps.log,
+    // Anexo cai em `state/midia`, que é a raiz que o `ffmpeg.thumb` já exige —
+    // é o que torna aquele comando alcançável na prática.
+    baixarAnexo: criarBaixadorTelegram(
+      cfg.botToken,
+      join(cfg.stateDir, 'midia'),
+      () => Math.floor(Date.now() / 1000),
+    ),
+  });
   const ciclo = ligarPolling(bot, deps);
   return { ...ciclo, transporte };
 }
