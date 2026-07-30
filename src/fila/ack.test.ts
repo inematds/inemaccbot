@@ -121,3 +121,25 @@ describe('cancelar e reagendar', () => {
     expect(d.tentativas).toBe(1);
   });
 });
+
+describe('priorizar', () => {
+  it('sobe a prioridade de um job pendente e ele passa a sair primeiro de pegar', () => {
+    const a = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
+    const b = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
+    expect(fila.priorizar(b.id, 1_000_000)).toBe(true);
+    expect(fila.pegar('io', 60, 'w1')!.id).toBe(b.id);
+    expect(fila.pegar('io', 60, 'w1')!.id).toBe(a.id);
+  });
+
+  it('não muda nada num job já running', () => {
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
+    fila.pegar('io', 60, 'w1');
+    const antes = fila.obter(job.id)!.prioridade;
+    expect(fila.priorizar(job.id, 1_000_000)).toBe(false);
+    expect(fila.obter(job.id)!.prioridade).toBe(antes);
+  });
+
+  it('devolve false para id inexistente', () => {
+    expect(fila.priorizar(999, 1_000_000)).toBe(false);
+  });
+});

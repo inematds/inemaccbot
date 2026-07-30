@@ -6,17 +6,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { abrirDb } from '../db/abrir.js';
 import { MIGRATIONS, aplicarMigrations } from '../db/migrations.js';
 import { FilaSqlite } from '../fila/store.js';
-import type Database from 'better-sqlite3';
 import { executar, parseComando, type DepsComando } from './comandos.js';
 
 let dir: string;
-let db: Database.Database;
 let fila: FilaSqlite;
 let t = 1_000;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'inemaccbot-comandos-'));
-  db = abrirDb(join(dir, 'fila.db'));
+  const db = abrirDb(join(dir, 'fila.db'));
   aplicarMigrations(db, () => t, MIGRATIONS);
   t = 1_000;
   fila = new FilaSqlite(db, () => t);
@@ -24,7 +22,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function deps(): DepsComando {
-  return { fila, db, chatId: 42, agora: () => t };
+  return { fila, chatId: 42, agora: () => t };
 }
 
 describe('parseComando', () => {

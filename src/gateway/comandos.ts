@@ -1,10 +1,7 @@
 // Comandos do gateway, PUROS: nenhuma linha aqui conhece grammy ou a API do
 // Telegram (regra herdada do v1 — nenhum teste deste bot bate na API real).
-// `executar` só fala com o store (e com o handle bruto de sqlite abaixo, só
-// pro caso de /furar); nunca imprime, nunca envia.
-import type Database from 'better-sqlite3';
-
-import type { Agora, Fila, Job, StatusJob } from '../fila/types.js';
+// `executar` só fala com o store; nunca imprime, nunca envia.
+import type { Agora, Fila, Job } from '../fila/types.js';
 import type { FilaSqlite } from '../fila/store.js';
 
 export type Comando =
@@ -18,16 +15,8 @@ export type Comando =
   | { tipo: 'ajuda' }
   | { tipo: 'desconhecido'; texto: string };
 
-/**
- * `deps.db` é o MESMO handle better-sqlite3 que o composition root passa pro
- * construtor de `FilaSqlite` (ver `store.test.ts`: `abrirDb` -> `new
- * FilaSqlite(db, agora)`). `FilaSqlite` não expõe `db` (é `private`, e a
- * tarefa proíbe adicionar getter/método só pra isso) — então `/furar` precisa
- * do handle aqui, na composição, não escondido dentro do store.
- */
 export interface DepsComando {
   fila: FilaSqlite;
-  db: Database.Database;
   chatId: number;
   agora: Agora;
 }
@@ -180,12 +169,8 @@ export function executar(cmd: Comando, deps: DepsComando): string {
       if (job.status !== 'queued') {
         return `nada mudou: job ${cmd.id} não está pendente (status atual: ${job.status}).`;
       }
-      // FilaSqlite não expõe update de prioridade (de propósito — não é dela).
-      // Mesmo handle sqlite que o store usa, injeta por deps.db (ver DepsComando).
-      const r = deps.db
-        .prepare(`UPDATE jobs SET prioridade = ? WHERE id = ? AND status = 'queued'`)
-        .run(PRIORIDADE_FURO, cmd.id);
-      if (r.changes !== 1) {
+      const furou = deps.fila.priorizar(cmd.id, PRIORIDADE_FURO);
+      if (!furou) {
         return `nada mudou: job ${cmd.id} não está mais pendente.`;
       }
       return `job ${cmd.id} furado — vai na frente da fila.`;

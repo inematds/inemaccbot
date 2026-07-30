@@ -205,6 +205,22 @@ export class FilaSqlite {
   }
 
   /**
+   * Sobe a prioridade de um job pendente pra ele sair primeiro de `pegar`
+   * (`ORDER BY prioridade DESC, id ASC`). Só se aplica a `queued`: um job
+   * `running` já saiu da fila, sua posição nela deixou de existir — mudar
+   * `prioridade` nele não teria efeito nenhum sobre nada, então não fazemos
+   * (e ninguém deve "corrigir" isto pra cobrir `running` depois: seria mudar
+   * um número morto). Sem `dono` de propósito, como `cancelar`: furar é ação
+   * do OPERADOR, não do dono do lease.
+   */
+  priorizar(id: number, prioridade: number): boolean {
+    const r = this.db
+      .prepare(`UPDATE jobs SET prioridade = ? WHERE id = ? AND status = 'queued'`)
+      .run(prioridade, id);
+    return r.changes === 1;
+  }
+
+  /**
    * Devolve o job à fila para nova checagem em `emSegundos` SEM gastar tentativa
    * — é o mecanismo de poll das fases com `espera` (spec §3.2).
    */
