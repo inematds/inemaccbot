@@ -168,6 +168,56 @@ describe('do assunto ao reel, com o portão no meio', () => {
   });
 });
 
+describe('| de=<fase> — começar no meio', () => {
+  // O caso real: a pessoa escreveu os textos (ou já gerou os avatares) por fora
+  // e quer o bot só da 2.5 em diante.
+  function criarDe(de: string, alvos = ['mulheres']): number {
+    return fluxos.criar({
+      tipo: 'promoavatar', definicao: def, hash: 'h',
+      assunto: 'Assunto escrito à mão', alvos, de, chatId: 55,
+    }).id;
+  }
+
+  it('pula a fase 1 e já enfileira o download', () => {
+    const id = criarDe('baixar');
+    const jobs = fila.listar();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.tarefa).toBe('heygen.baixar');
+    expect(estado.fase(id, 'baixar', 'mulheres')!.estado).toBe('rodando');
+  });
+
+  // Marcar como `feito` seria mentir sobre quem fez o trabalho: o bot não
+  // escreveu esses textos.
+  it('as fases anteriores ficam PULADO, não feito', () => {
+    const id = criarDe('baixar');
+    expect(estado.fase(id, 'texto', '')!.estado).toBe('pulado');
+  });
+
+  it('o fluxo ainda fecha normalmente no fim', () => {
+    const id = criarDe('baixar');
+    ackar('A#1/mulheres/baixar', '/tmp/a.mp4');
+    ackar('A#1/mulheres/reel', '/tmp/reel.mp4');
+    expect(estado.obter(id)!.status).toBe('feito');
+  });
+
+  it('fase inexistente é recusada listando as que existem', () => {
+    expect(() => criarDe('inventada')).toThrow(/fases: texto, baixar, reel/);
+  });
+
+  it('sem `de`, nada muda: começa na primeira fase', () => {
+    const id = criar();
+    expect(estado.fase(id, 'texto', '')!.estado).toBe('rodando');
+  });
+
+  it('a sombra respeita a partida — mostra só o que vai rodar', () => {
+    const plano = fluxos.sombra({
+      tipo: 'promoavatar', definicao: def, hash: 'h', assunto: 'x',
+      alvos: ['mulheres'], de: 'baixar',
+    });
+    expect(plano.map((p) => p.fase)).toEqual(['baixar', 'reel']);
+  });
+});
+
 describe('a janela de poll vem do flow.json, não de um default', () => {
   it('o job de download carrega intervalo e timeout da fase', () => {
     const id = criar();

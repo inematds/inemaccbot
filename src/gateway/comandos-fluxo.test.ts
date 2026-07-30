@@ -115,6 +115,27 @@ describe('criar fluxo', () => {
   });
 });
 
+describe('| de=<fase>', () => {
+  it('começa no meio e LISTA os títulos esperados no estúdio', async () => {
+    const r = await manda('/brinquedo Assunto | alvos=um | de=render');
+    // Sem os títulos, quem gera o material fora não tem como acertar o nome —
+    // e o download procura exatamente por ele.
+    expect(r).toContain('começando em "render"');
+    expect(r).toContain('B1-um-v1');
+    expect(fila.listar()[0]!.flow_ref).toBe('B#1/um/render');
+  });
+
+  it('fase inexistente é recusada, sem criar fluxo', async () => {
+    const r = await manda('/brinquedo Assunto | de=inventada');
+    expect(r).toMatch(/não existe neste fluxo/);
+    expect(fila.listar()).toHaveLength(0);
+  });
+
+  it('sem `de`, não polui a resposta com títulos', async () => {
+    expect(await manda('/brinquedo Assunto')).not.toContain('Títulos esperados');
+  });
+});
+
 describe('/status P#N', () => {
   it('mostra fase × alvo e a versão da definição congelada', async () => {
     await manda('/brinquedo Assunto');

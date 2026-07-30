@@ -47,6 +47,14 @@ export interface PedidoFluxo {
   alvos?: string[];
   versao?: number;
   chatId?: number | null;
+  /**
+   * Começa numa fase mais adiante: as anteriores nascem `pulado`.
+   *
+   * O caso real: a pessoa escreveu os textos (ou já gerou os avatares) por
+   * fora, e quer que o bot continue do meio. As fases puladas ficam MARCADAS —
+   * o `/status` não pode dizer que o bot fez um trabalho que ele não fez.
+   */
+  de?: string;
 }
 
 /** Uma linha do plano: o que SERIA enfileirado. É o que o modo sombra imprime. */
@@ -97,8 +105,9 @@ export class Fluxos {
    */
   sombra(pedido: PedidoFluxo): ItemPlano[] {
     const alvos = this.alvosDe(pedido);
+    const partida = this.indiceDePartida(pedido);
     const plano: ItemPlano[] = [];
-    for (const fase of pedido.definicao.fases) {
+    for (const fase of pedido.definicao.fases.slice(partida)) {
       for (const alvo of fase.escopo === 'fluxo' ? [''] : alvos) {
         plano.push({
           fase: fase.id, alvo: alvo || '(todos)', fila: fase.fila,
@@ -119,9 +128,22 @@ export class Fluxos {
     return pedido.alvos;
   }
 
+  /** Índice da fase de partida; erro claro quando o nome não existe. */
+  private indiceDePartida(pedido: PedidoFluxo): number {
+    if (!pedido.de) return 0;
+    const i = pedido.definicao.fases.findIndex((f) => f.id === pedido.de);
+    if (i < 0) {
+      throw new Error(
+        `fase "${pedido.de}" não existe neste fluxo — fases: ${pedido.definicao.fases.map((f) => f.id).join(', ')}`,
+      );
+    }
+    return i;
+  }
+
   /** Cria o fluxo com a definição CONGELADA e enfileira a primeira fase. */
   criar(pedido: PedidoFluxo): Fluxo {
     const alvos = this.alvosDe(pedido);
+    const partida = this.indiceDePartida(pedido);
     const fluxo = this.estado.criar({
       tipo: pedido.tipo,
       prefixo: pedido.definicao.prefixo,
@@ -142,12 +164,23 @@ export class Fluxos {
       ),
     );
 
-    // A primeira fase entra agora; as demais nascem do avanço.
-    const primeira = pedido.definicao.fases[0]!;
+    // Fases anteriores à partida: `pulado`, e ditas como tal. Marcar como
+    // `feito` seria mentir sobre quem fez o trabalho.
+    for (const fase of pedido.definicao.fases.slice(0, partida)) {
+      for (const alvo of fase.escopo === 'fluxo' ? [''] : alvos) {
+        this.estado.atualizarFase(fluxo.id, fase.id, alvo, { estado: 'pulado' });
+      }
+    }
+
+    // A fase de partida entra agora; as demais nascem do avanço.
+    const primeira = pedido.definicao.fases[partida]!;
     for (const alvo of primeira.escopo === 'fluxo' ? [''] : alvos) {
       this.enfileirarFase(fluxo, primeira, alvo);
     }
-    this.log(`${fluxo.prefixo}#${fluxo.id} criado (${alvos.length} alvo(s), ${pedido.definicao.fases.length} fase(s))`);
+    this.log(
+      `${fluxo.prefixo}#${fluxo.id} criado (${alvos.length} alvo(s), `
+      + `${pedido.definicao.fases.length} fase(s)${partida ? `, começando em "${primeira.id}"` : ''})`,
+    );
     return fluxo;
   }
 

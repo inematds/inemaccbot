@@ -50,12 +50,16 @@ export function criarFluxo(
 
   let alvos: string[] | undefined;
   let versao: number | undefined;
+  let de: string | undefined;
   let sombra = false;
   for (const campo of partes.filter(Boolean)) {
-    const m = campo.match(/^(alvos|versao|versão)\s*=\s*(.+)$/i);
+    const m = campo.match(/^(alvos|versao|versão|de)\s*=\s*(.+)$/i);
     if (m) {
-      if (m[1].toLowerCase() === 'alvos') {
+      const chave = m[1].toLowerCase();
+      if (chave === 'alvos') {
         alvos = m[2].split(',').map((a) => a.trim()).filter(Boolean);
+      } else if (chave === 'de') {
+        de = m[2].trim();
       } else {
         const n = Number(m[2].trim());
         if (!Number.isInteger(n) || n <= 0) return `versão inválida: "${m[2].trim()}"`;
@@ -64,7 +68,7 @@ export function criarFluxo(
       continue;
     }
     if (campo.toLowerCase() === 'sombra') { sombra = true; continue; }
-    return `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · sombra`;
+    return `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase> · sombra`;
   }
 
   // A definição é lida do disco AQUI e congelada na criação. Um `flow.json`
@@ -82,7 +86,7 @@ export function criarFluxo(
   }
 
   const pedido = {
-    tipo: registrado.command, definicao, hash, assunto, alvos, versao,
+    tipo: registrado.command, definicao, hash, assunto, alvos, versao, de,
     chatId: deps.chatId,
   };
 
@@ -96,7 +100,19 @@ export function criarFluxo(
     }
     const fluxo = deps.fluxos.criar(pedido);
     const total = Object.keys(definicao.alvos).length;
-    return `criado: ${fluxo.prefixo}#${fluxo.id} (${alvos?.length ?? total} alvo(s)) — acompanhe com /status ${fluxo.prefixo}#${fluxo.id}`;
+    const linhas = [
+      `criado: ${fluxo.prefixo}#${fluxo.id} (${alvos?.length ?? total} alvo(s))`
+      + `${de ? `, começando em "${de}"` : ''} — acompanhe com /status ${fluxo.prefixo}#${fluxo.id}`,
+    ];
+    // Quando o fluxo começa no meio, quem gera o material FORA precisa saber os
+    // títulos exatos — é por eles que o download procura, e errar o nome faz a
+    // fase expirar sem achar nada.
+    if (de) {
+      const usados = alvos ?? Object.keys(definicao.alvos);
+      linhas.push('', 'Títulos esperados no estúdio:');
+      for (const a of usados) linhas.push(`  ${fluxo.prefixo}${fluxo.id}-${a}-v${fluxo.versao}`);
+    }
+    return linhas.join('\n');
   } catch (e) {
     return (e as Error).message;
   }
