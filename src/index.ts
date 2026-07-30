@@ -404,11 +404,6 @@ export async function main(): Promise<void> {
     }
   };
 
-  /** Uma falha fatal VENCE um SIGTERM concorrente: `parar()` é memoizado, então
-   * os dois esperam o mesmo desligamento, e sair 0 esconderia do systemd um
-   * serviço que morreu surdo. */
-  let fatal = false;
-
   const svc = criarServico(cfg, {
     agora: () => Math.floor(Date.now() / 1000),
     criarTransporte: criarTransporteReal,
@@ -420,14 +415,19 @@ export async function main(): Promise<void> {
     leaseSegundos: LEASE_PADRAO_SEGUNDOS,
     // O desligamento já aconteceu quando isto é chamado; aqui só o código de
     // saída. Não-zero é o que faz o `Restart=on-failure` do unit agir.
-    aoFalhaFatal: () => { fatal = true; process.exit(1); },
+    aoFalhaFatal: () => process.exit(1),
   });
 
   for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(sinal, () => {
       log(`sinal ${sinal} recebido — desligando`);
+      // Regra de código de saída: queda do polling SEM sinal antes → sai 1 (o
+      // `Restart=on-failure` reergue). Desligamento iniciado por sinal sai 0
+      // mesmo se o polling rejeitar no meio do dreno: `parar()` é memoizado,
+      // este `.then` foi registrado primeiro, e a parada era intencional —
+      // reiniciar aqui seria desfazer o que o operador pediu.
       void svc.parar().then(
-        () => process.exit(fatal ? 1 : 0),
+        () => process.exit(0),
         (e: unknown) => {
           log(`desligamento falhou: ${(e as Error).message}`);
           process.exit(1);
