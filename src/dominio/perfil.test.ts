@@ -94,4 +94,25 @@ describe('validação', () => {
     expect(() => resolverPerfil({ ...base, override: { esforco: 'turbo' } }))
       .toThrow(/esforço desconhecido/i);
   });
+
+  it('rejeita modelo desconhecido exigido pela skill', () => {
+    expect(() => resolverPerfil({ ...base, skill: { exige: { modelo: 'inventado' } } }))
+      .toThrow(/exige modelo desconhecido/i);
+  });
+
+  it('rejeita esforço desconhecido exigido pela skill', () => {
+    expect(() => resolverPerfil({ ...base, skill: { exige: { esforco: 'turbo' } } }))
+      .toThrow(/exige esforco desconhecido/i);
+  });
+
+  // Caso que sustenta a cobertura: o resolvido (opus) já é mais forte que
+  // qualquer coisa, então uma validação feita só dentro do ramo de elevação
+  // nunca dispararia — o `exige` desconhecido precisa ser checado sempre,
+  // não apenas quando for elevar.
+  it('rejeita modelo exigido desconhecido mesmo quando nenhuma elevação seria necessária', () => {
+    expect(() => resolverPerfil({
+      padrao: { motor: 'claude', modelo: 'opus', esforco: 'low' },
+      skill: { exige: { modelo: 'inventado' } },
+    })).toThrow(/exige modelo desconhecido/i);
+  });
 });
