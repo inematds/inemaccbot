@@ -53,4 +53,28 @@ export class FilaSqlite {
                  ORDER BY id`;
     return this.db.prepare(sql).all(...args) as Job[];
   }
+
+  /**
+   * Claim ATÔMICO: um único UPDATE ... WHERE id = (SELECT ...) RETURNING *.
+   * Fazer SELECT e depois UPDATE (como o mkivideos faz hoje) permite que dois
+   * workers peguem o mesmo job. Ordem: prioridade DESC, id ASC (FIFO dentro da
+   * mesma prioridade). `disponivel_em` cobre poll, backoff e agendamento.
+   */
+  pegar(fila: Fila, leaseSegundos: number): Job | undefined {
+    const agora = this.agora();
+    return this.db
+      .prepare(
+        `UPDATE jobs
+            SET status = 'running',
+                tentativas = tentativas + 1,
+                lease_ate = ?,
+                iniciado_em = COALESCE(iniciado_em, ?)
+          WHERE id = (SELECT id FROM jobs
+                       WHERE fila = ? AND status = 'queued' AND disponivel_em <= ?
+                       ORDER BY prioridade DESC, id ASC
+                       LIMIT 1)
+        RETURNING *`,
+      )
+      .get(agora + leaseSegundos, agora, fila, agora) as Job | undefined;
+  }
 }
