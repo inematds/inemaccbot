@@ -14,7 +14,12 @@ import type { FilaSqlite } from '../fila/store.js';
 import type { Runner } from '../fila/runner.js';
 import type { Agora, Job, Perfil } from '../fila/types.js';
 import type { SkillDef } from '../dominio/registry.js';
+import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
+import type { Fluxos } from '../fluxos/runtime.js';
 import { executar, parseComando } from './comandos.js';
+import {
+  cancelarFluxo, criarFluxo, refazerFluxo, statusFluxo, textoFluxos,
+} from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
 import { interpretar } from './interpret.js';
 
@@ -28,6 +33,9 @@ export interface DepsMensagem {
   perfil: Perfil;
   cwd: string;
   logFile: string;
+  /** Motor de fluxos e o catálogo de repos de domínio. Ausentes = etapa 4. */
+  fluxos?: Fluxos;
+  fluxosRegistrados?: FluxoRegistrado[];
   /**
    * Saneia o que entra no CONTEXTO da resposta. O log do serviço é lido do
    * disco e vai inteiro para o prompt; ele carrega caminhos, mensagens de erro
@@ -35,6 +43,37 @@ export interface DepsMensagem {
    * isso, mas instrução a um modelo não é controle — a redação é (§9).
    */
   redigir?: (texto: string) => string;
+}
+
+/**
+ * Devolve a resposta quando o texto é comando de FLUXO; `undefined` quando não
+ * é — aí o roteamento normal segue.
+ */
+function tratarComandoDeFluxo(
+  chatId: number, texto: string, deps: DepsMensagem,
+): string | undefined {
+  if (!deps.fluxos) return undefined;
+  const registrados = deps.fluxosRegistrados ?? [];
+  const depsFluxo = { fluxos: deps.fluxos, registrados, chatId };
+
+  const t = texto.trim();
+  const [bruto, ...resto] = t.split(/\s+/);
+  const verbo = (bruto ?? '').toLowerCase();
+  const argumento = resto.join(' ');
+
+  if (verbo === '/fluxos') return textoFluxos(registrados);
+
+  if (verbo === '/status' || verbo === '/refazer' || verbo === '/cancelar') {
+    const [ref, alvo] = resto;
+    if (!ref) return undefined; // `/status` sozinho é a lista de jobs
+    if (verbo === '/status') return statusFluxo(ref, depsFluxo);
+    if (verbo === '/refazer') return refazerFluxo(ref, alvo, depsFluxo);
+    return cancelarFluxo(ref, alvo, depsFluxo);
+  }
+
+  const registrado = registrados.find((f) => `/${f.command}` === verbo);
+  if (registrado) return criarFluxo(registrado, argumento, depsFluxo);
+  return undefined;
 }
 
 /** Jobs deste chat, do mais recente para o mais antigo, com teto — o contexto
@@ -49,6 +88,12 @@ function jobsDoChat(fila: FilaSqlite, chatId: number, limite = 15): Job[] {
 export async function tratarMensagem(
   chatId: number, texto: string, deps: DepsMensagem,
 ): Promise<string> {
+  // Fluxos entram ANTES do parser de comandos de job: `/status P#16` e
+  // `/status 12` são o mesmo verbo com argumentos de tipos diferentes, e quem
+  // decide é o formato do argumento.
+  const doFluxo = tratarComandoDeFluxo(chatId, texto, deps);
+  if (doFluxo !== undefined) return doFluxo;
+
   const cmd = parseComando(texto, deps.defs, deps.projetosDir);
   const depsCmd = { fila: deps.fila, chatId, agora: deps.agora, defs: deps.defs, perfilPadrao: deps.perfil };
 
