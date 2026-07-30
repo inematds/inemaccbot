@@ -11,11 +11,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { abrirDb } from '../db/abrir.js';
 import { MIGRATIONS, aplicarMigrations } from '../db/migrations.js';
-import { carregarFlow, hashDefinicao, type FlowDef } from '../dominio/flow.js';
+import { carregarFlow, congelar, hashDefinicao, type FlowDef } from '../dominio/flow.js';
 import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
 import { exportarFluxo, importarFluxo } from '../fluxos/exportar.js';
 import { Fluxos } from '../fluxos/runtime.js';
+import { FakeRunner } from '../fila/runner.js';
+import { criarPromptDe } from '../fila/skills.js';
+import { Worker } from '../fila/worker.js';
 import type { Job } from '../fila/types.js';
 
 let dir: string;
@@ -24,6 +27,7 @@ let fila: FilaSqlite;
 let estado: EstadoFluxos;
 let fluxos: Fluxos;
 let def: FlowDef;
+let db: ReturnType<typeof abrirDb>;
 let t = 1_000;
 
 /** Repo de domínio de brinquedo: 3 fases (a 1ª global), 2 alvos. */
@@ -38,7 +42,10 @@ function escreverDominio(): void {
     fases: [
       { id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/texto.md' },
       { id: 'render', escopo: 'alvo', fila: 'render', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/render.md', max_tentativas: 2 },
-      { id: 'entregar', escopo: 'alvo', fila: 'io', kind: 'function', tarefa: 'fluxo-entrega' },
+      // Só existe UMA tarefa de fase implementada hoje (`fluxo-agente`), e a
+      // validação recusa qualquer outra — é o catálogo fechado do §9 aplicado a
+      // fases. Tarefas de função entram com o primeiro fluxo que precisar.
+      { id: 'entregar', escopo: 'alvo', fila: 'io', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/render.md' },
     ],
   }, null, 2));
 }
@@ -47,7 +54,7 @@ beforeEach(() => {
   t = 1_000;
   dir = mkdtempSync(join(tmpdir(), 'inemaccbot-fluxos-'));
   escreverDominio();
-  const db = abrirDb(join(dir, 'fila.db'));
+  db = abrirDb(join(dir, 'fila.db'));
   aplicarMigrations(db, () => t, MIGRATIONS);
   fila = new FilaSqlite(db, () => t);
   estado = new EstadoFluxos(db, () => t);
@@ -56,9 +63,12 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+/** Cria como o gateway cria: com a definição CONGELADA (texto dos prompts
+ * embutido). Passar a definição crua era o que fazia a fase chegar ao worker
+ * sem prompt. */
 function criar(alvos?: string[]): number {
   return fluxos.criar({
-    tipo: 'brinquedo', definicao: def, hash: hashDefinicao(def, dominio),
+    tipo: 'brinquedo', definicao: congelar(def, dominio), hash: hashDefinicao(def, dominio),
     assunto: 'Assunto de teste', alvos, chatId: 42,
   }).id;
 }
@@ -357,6 +367,137 @@ describe('rede de segurança do boot (§3.6c)', () => {
     const id = criar();
     expect(faseDe(id, 'render', 'mulheres').estado).toBe('pendente');
     expect(fluxos.reenfileirarOrfas()).toBe(0);
+  });
+});
+
+describe('a fase roda pelo WORKER (não só por ack manual)', () => {
+  // Sem este teste, o motor parecia pronto e nenhum job de fase era executável:
+  // `criarPromptDe` procuraria "fluxo-agente" no registry de skills e falharia.
+  // É a mesma forma do `promptDe` que lançava na etapa 1 — código alcançável
+  // sem implementação atrás.
+  it('o worker executa a fase com o prompt CONGELADO, não com o do disco', async () => {
+    const id = criar();
+    const runner = new FakeRunner({ respostas: ['saiu o texto'] });
+    const w = new Worker(fila, {
+      fila: 'texto', dono: 'W', concorrencia: 1, leaseSegundos: 60,
+      tarefas: {}, runners: { fake: runner },
+      promptDe: criarPromptDe({
+        defs: [], raizRepo: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
+        perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
+      }),
+      aoAckar: (job) => fluxos.avancar(job),
+    }, () => t);
+
+    // Alguém edita o prompt no repo de domínio DEPOIS da criação do fluxo.
+    writeFileSync(join(dominio, 'prompts', 'texto.md'), 'INSTRUÇÃO NOVA {{input}} {{saida}}');
+
+    expect(await w.passo()).toBe(true);
+    expect(runner.chamadas[0]!.prompt).toContain('escreva sobre');
+    expect(runner.chamadas[0]!.prompt).not.toContain('INSTRUÇÃO NOVA');
+    expect(runner.chamadas[0]!.prompt).toContain('Assunto de teste');
+
+    // E o avanço aconteceu na mesma transação do ack.
+    expect(faseDe(id, 'texto').estado).toBe('feito');
+    expect(fila.listar().filter((j) => j.flow_ref?.includes('/render'))).toHaveLength(2);
+  });
+
+  it('a fase recebe as variáveis do alvo (canal), sem receber as que o prompt não pede', async () => {
+    criar();
+    concluirJob(fila.listar()[0]!.id);
+    const jobRender = fila.listar().find((j) => j.flow_ref === 'B#1/mulheres/render')!;
+    const ctx = await criarPromptDe({
+      defs: [], raizRepo: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
+      perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
+    })(fila.obter(jobRender.id)!);
+    // O template usa só {{input}} e {{saida}}; `canal` existe no job e NÃO é
+    // passado — `renderizarPrompt` recusaria variável não usada.
+    expect(ctx.prompt).toContain('Assunto de teste');
+    expect(ctx.prompt).not.toContain('{{');
+  });
+});
+
+describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
+  function comEventos(): { eventos: { chatId: number; texto: string }[]; f: Fluxos } {
+    const eventos: { chatId: number; texto: string }[] = [];
+    // MESMA conexão do resto do teste: abrir uma segunda sobre o mesmo arquivo
+    // dá "database is locked" — o WAL permite leitores concorrentes, não dois
+    // escritores no mesmo processo.
+    const f = new Fluxos({
+      fila, estado: new EstadoFluxos(db, () => t), agora: () => t,
+      aoEvento: (e) => eventos.push(e),
+    });
+    return { eventos, f };
+  }
+
+  it('alvo que falha vira mensagem com o motivo e o comando de retentativa', () => {
+    const { eventos, f } = comEventos();
+    fluxos.criar({
+      tipo: 'brinquedo', definicao: congelar(def, dominio), hash: 'h', assunto: 'A', chatId: 77,
+    });
+    const job = fila.listar().find((j) => j.flow_ref === 'B#1//texto')!;
+    fila.pegar('texto', 60, 'W');
+    fila.falhar(job.id, 'estourou tudo', 'W', 1, (j) => f.avancar(j));
+
+    expect(eventos).toHaveLength(2); // falha do alvo + fim do fluxo
+    expect(eventos[0]!.chatId).toBe(77);
+    expect(eventos[0]!.texto).toContain('estourou tudo');
+    expect(eventos[0]!.texto).toContain('/refazer B#1');
+  });
+
+  it('fluxo que termina bem também avisa', () => {
+    const { eventos, f } = comEventos();
+    fluxos.criar({
+      tipo: 'brinquedo', definicao: congelar(def, dominio), hash: 'h',
+      assunto: 'A', alvos: ['mulheres'], chatId: 77,
+    });
+    const ack = (ref: string): void => {
+      const j = fila.listar().find((x) => x.flow_ref === ref)!;
+      reclamar(j.id);
+      fila.concluir(j.id, 'ok', 'W', (job) => f.avancar(job));
+    };
+    ack('B#1//texto');
+    ack('B#1/mulheres/render');
+    ack('B#1/mulheres/entregar');
+    expect(eventos.at(-1)!.texto).toContain('terminou: feito');
+  });
+
+  it('fluxo sem chat_id não gera evento nenhum', () => {
+    const { eventos, f } = comEventos();
+    fluxos.criar({ tipo: 'brinquedo', definicao: congelar(def, dominio), hash: 'h', assunto: 'A', chatId: null });
+    const j = fila.listar().find((x) => x.flow_ref === 'B#1//texto')!;
+    fila.pegar('texto', 60, 'W');
+    fila.falhar(j.id, 'x', 'W', 1, (job) => f.avancar(job));
+    expect(eventos).toHaveLength(0);
+  });
+});
+
+describe('view fluxo_historico', () => {
+  // A view junta `fluxo_fases` (estado atual) com as linhas de `jobs` daquele
+  // flow_ref (o histórico, que nunca é deletado). Se a expressão do JOIN
+  // divergir do `flowRef()`, ela devolve vazio em silêncio — e ninguém nota
+  // até precisar do histórico.
+  it('casa fase com job pelo flow_ref e traz o histórico', () => {
+    const id = criar();
+    concluirJob(fila.listar()[0]!.id);
+    const linhas = db
+      .prepare('SELECT * FROM fluxo_historico WHERE fluxo_id = ? AND fase = ?')
+      .all(id, 'texto') as { job_id: number | null; job_status: string | null }[];
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]!.job_id).not.toBeNull();
+    expect(linhas[0]!.job_status).toBe('done');
+  });
+
+  it('traz TODAS as tentativas daquela fase, não só a última', () => {
+    const id = criar();
+    concluirJob(fila.listar()[0]!.id);
+    const j = fila.listar().find((x) => x.flow_ref === 'B#1/mulheres/render')!;
+    falharJob(j.id); t += 60; falharJob(j.id);
+    fluxos.refazer(id, 'mulheres'); // gera um SEGUNDO job para a mesma fase
+
+    const linhas = db
+      .prepare('SELECT job_id FROM fluxo_historico WHERE fluxo_id = ? AND fase = ? AND alvo = ?')
+      .all(id, 'render', 'mulheres');
+    expect(linhas.length).toBeGreaterThanOrEqual(2);
   });
 });
 

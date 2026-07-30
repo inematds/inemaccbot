@@ -5,7 +5,7 @@
 // `/status`, `/refazer` e `/cancelar` são os MESMOS verbos dos jobs — o que
 // muda é o argumento: `12` é job, `P#16` é fluxo. Ter dois verbos para a mesma
 // pergunta seria atrito puro.
-import { carregarFlow, hashDefinicao, parseRef } from '../dominio/flow.js';
+import { carregarFlow, congelar, hashDefinicao, parseRef } from '../dominio/flow.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
 import type { Fase } from '../fluxos/estado.js';
 import type { Fluxos } from '../fluxos/runtime.js';
@@ -67,8 +67,11 @@ export function criarFluxo(
   let definicao;
   let hash: string;
   try {
-    definicao = carregarFlow(registrado.repo);
-    hash = hashDefinicao(definicao, registrado.repo);
+    const doDisco = carregarFlow(registrado.repo);
+    hash = hashDefinicao(doDisco, registrado.repo);
+    // Congela AQUI: daqui para frente o fluxo não depende mais do disco do repo
+    // de domínio, nem para o texto dos prompts.
+    definicao = congelar(doDisco, registrado.repo);
   } catch (e) {
     return `não consegui ler a definição do fluxo: ${(e as Error).message}`;
   }

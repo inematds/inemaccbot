@@ -15,6 +15,21 @@ export interface OpcoesRuntime {
   estado: EstadoFluxos;
   agora: Agora;
   log?: (m: string) => void;
+  /**
+   * Avisos para o chat. SÍNCRONO e sem rede de propósito: `avancar` roda dentro
+   * da transação do ack, e mandar mensagem ali dentro seguraria a transação por
+   * uma chamada de rede. Quem recebe isto só empilha; o envio acontece depois do
+   * commit (ver src/index.ts).
+   *
+   * Sem isto um fluxo falharia em SILÊNCIO — o §8 proíbe, e a etapa 4 acabou de
+   * gastar um documento inteiro fechando essa classe de buraco.
+   */
+  aoEvento?: (evento: EventoFluxo) => void;
+}
+
+export interface EventoFluxo {
+  chatId: number;
+  texto: string;
 }
 
 /** O que o gateway passa para criar um fluxo. */
@@ -52,12 +67,19 @@ export class Fluxos {
   private readonly fila: FilaSqlite;
   private readonly agora: Agora;
   private readonly log: (m: string) => void;
+  private readonly aoEvento: (evento: EventoFluxo) => void;
 
   constructor(opts: OpcoesRuntime) {
     this.estado = opts.estado;
     this.fila = opts.fila;
     this.agora = opts.agora;
     this.log = opts.log ?? ((): void => {});
+    this.aoEvento = opts.aoEvento ?? ((): void => {});
+  }
+
+  private avisar(fluxo: Fluxo, texto: string): void {
+    if (fluxo.chat_id === null) return;
+    this.aoEvento({ chatId: fluxo.chat_id, texto });
   }
 
   /**
@@ -133,8 +155,11 @@ export class Fluxos {
       tarefa: fase.tarefa,
       input: JSON.stringify({
         entrada: fluxo.assunto,
+        // O TEXTO congelado, não o caminho: o job tem que ser autossuficiente,
+        // senão executar depende do disco do repo de domínio no momento da
+        // execução — o oposto do §3.4.
+        ...(fase.prompt_texto ? { prompt_texto: fase.prompt_texto } : {}),
         fluxo: { ref: `${fluxo.prefixo}#${fluxo.id}`, fase: fase.id, alvo, ...dadosAlvo },
-        ...(fase.prompt ? { prompt: fase.prompt } : {}),
       }),
       max_tentativas: fase.max_tentativas,
       flow_ref: flowRef(fluxo.prefixo, fluxo.id, alvo, fase.id),
@@ -174,8 +199,16 @@ export class Fluxos {
       // traz de volta junto com a fase que falhou.
       this.marcarPosteriores(fluxo, def, fase, 'pulado');
       // Um alvo que falha NÃO derruba o fluxo: os outros seguem (§3.6).
-      this.estado.recalcularStatus(fluxo.id);
+      const statusFalha = this.estado.recalcularStatus(fluxo.id);
       this.log(`${fluxo.prefixo}#${fluxo.id}/${fase.alvo || '-'}/${fase.fase} FALHOU`);
+      // §3.6.2: falha de alvo NOTIFICA no chat. Sem isto o fluxo morre calado.
+      this.avisar(
+        fluxo,
+        `❌ ${fluxo.prefixo}#${fluxo.id} — alvo ${fase.alvo || '(todos)'} falhou na fase ${fase.fase}.\n`
+        + `${(job.erro ?? '').slice(0, 300)}\n`
+        + `Retentar: /refazer ${fluxo.prefixo}#${fluxo.id} ${fase.alvo}`.trimEnd(),
+      );
+      if (statusFalha !== 'rodando') this.avisarFim(fluxo, statusFalha);
       return;
     }
 
@@ -195,7 +228,19 @@ export class Fluxos {
           : [fase.alvo];
       for (const alvo of alvos) this.enfileirarFase(fluxo, proxima, alvo);
     }
-    this.estado.recalcularStatus(fluxo.id);
+    const status = this.estado.recalcularStatus(fluxo.id);
+    if (status !== 'rodando') this.avisarFim(fluxo, status);
+  }
+
+  private avisarFim(fluxo: Fluxo, status: string): void {
+    const fases = this.estado.fases(fluxo.id);
+    const feitas = fases.filter((f) => f.estado === 'feito').length;
+    const falhas = fases.filter((f) => f.estado === 'falhou').length;
+    this.avisar(
+      fluxo,
+      `${status === 'feito' ? '✅' : '⚠️'} ${fluxo.prefixo}#${fluxo.id} terminou: ${status}`
+      + ` — ${feitas} fase(s) feita(s)${falhas ? `, ${falhas} falhada(s)` : ''}.`,
+    );
   }
 
   /** Aplica `novo` às fases posteriores do MESMO alvo que estejam `pendente`
@@ -207,10 +252,18 @@ export class Fluxos {
     if (i < 0) return;
     const de = novo === 'pulado' ? 'pendente' : 'pulado';
     for (const posterior of def.fases.slice(i + 1)) {
-      const alvo = posterior.escopo === 'fluxo' ? '' : fase.alvo;
-      const atual = this.estado.fase(fluxo.id, posterior.id, alvo);
-      if (atual?.estado === de) {
-        this.estado.atualizarFase(fluxo.id, posterior.id, alvo, { estado: novo });
+      // Quando quem falhou é uma fase GLOBAL, ela derruba os posteriores de
+      // TODOS os alvos — não do alvo `''`, que nem existe nas fases por alvo.
+      // Sem isto o fluxo ficava "rodando" para sempre depois de a fase global
+      // falhar, e nunca avisava ninguém.
+      const alvos = posterior.escopo === 'fluxo'
+        ? ['']
+        : fase.escopo === 'fluxo' ? this.alvosDoFluxo(fluxo) : [fase.alvo];
+      for (const alvo of alvos) {
+        const atual = this.estado.fase(fluxo.id, posterior.id, alvo);
+        if (atual?.estado === de) {
+          this.estado.atualizarFase(fluxo.id, posterior.id, alvo, { estado: novo });
+        }
       }
     }
   }

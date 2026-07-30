@@ -142,6 +142,9 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   let notificar: ((job: Job) => Promise<void>) | null = null;
   let fluxos: Fluxos | null = null;
   let fluxosRegistrados: FluxoRegistrado[] = [];
+  /** Avisos de fluxo produzidos DENTRO da transação do ack, drenados logo
+   * depois dela — ver `aoEvento` abaixo. */
+  const eventosDeFluxo: { chatId: number; texto: string }[] = [];
   let lacos: Promise<void>[] = [];
 
   const timeouts = new Set<NodeJS.Timeout>();
@@ -318,7 +321,13 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     // Motor de fluxos: o estado vive no MESMO banco da fila, e é isso que torna
     // o avanço transacional possível (§3.3).
     const estadoFluxos = new EstadoFluxos(db, deps.agora);
-    fluxos = new Fluxos({ fila, estado: estadoFluxos, agora: deps.agora, log: deps.log });
+    fluxos = new Fluxos({
+      fila, estado: estadoFluxos, agora: deps.agora, log: deps.log,
+      // O evento é SÓ empilhado aqui: `avancar` roda dentro da transação do
+      // ack, e uma chamada de rede lá dentro seguraria a transação. O envio
+      // acontece logo depois do commit, no `aoTerminar`.
+      aoEvento: (e) => eventosDeFluxo.push(e),
+    });
     fluxosRegistrados = (deps.carregarFluxos ?? carregarFluxosPadrao)(
       join(RAIZ_REPO, 'config', 'fluxos.json'),
       cfg.projetosDir,
@@ -348,7 +357,21 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     // 5. só então: workers e bot.
     const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
-    notificar = criarNotificador(transp.transporte, {
+    const transporte = transp.transporte;
+    /** Drena os avisos de fluxo. Chamado depois do ack, nunca dentro dele. */
+    const soltarEventosDeFluxo = async (): Promise<void> => {
+      while (eventosDeFluxo.length) {
+        const e = eventosDeFluxo.shift()!;
+        try {
+          await transporte.responder(e.chatId, e.texto);
+        } catch (erro) {
+          // §8: perder o aviso é ruim, derrubar o worker é pior. O log fica.
+          deps.log(`fluxo: aviso não entregue: ${(erro as Error).message}`);
+        }
+      }
+    };
+
+    const notificarJob = criarNotificador(transp.transporte, {
       redigir,
       log: deps.log,
       // Só job de SKILL produz artefato em disco. `http.get` devolve texto e
@@ -373,6 +396,13 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
         }
       },
     });
+
+    // O notificador do worker faz as duas coisas: avisa sobre o JOB (quando ele
+    // tem dono no chat) e solta os avisos de FLUXO que o avanço empilhou.
+    notificar = async (job: Job): Promise<void> => {
+      await notificarJob(job);
+      await soltarEventosDeFluxo();
+    };
 
     // 6. §8: a recuperação acabou de marcar jobs como `failed` — uma transição
     //    TERMINAL que acontece fora do `Worker`. Sem isto o chat que pediu o job

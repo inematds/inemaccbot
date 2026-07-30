@@ -22,6 +22,13 @@ export interface FaseDef {
   tarefa: string;
   /** Caminho do prompt, relativo à raiz do repo de domínio. Só em `kind=agent`. */
   prompt?: string;
+  /**
+   * O CONTEÚDO do prompt, preenchido no congelamento. É ele que vai para o job,
+   * não o caminho: ler o arquivo na hora de executar seria exatamente o que o
+   * §3.4 proíbe — um prompt editado no meio da execução mudaria as regras de um
+   * fluxo em voo, sem mudar uma vírgula do flow.json.
+   */
+  prompt_texto?: string;
   max_tentativas: number;
   /** Fase de POLL: reagenda a si mesma até achar o que espera, ou estourar. */
   espera?: { intervalo: number; timeout: number };
@@ -60,6 +67,9 @@ function texto(v: unknown, campo: string): string {
  * Valida a definição já parseada. `raiz` é o repo de DOMÍNIO — é lá que os
  * prompts das fases vivem, não neste repo.
  */
+/** Tarefas que uma FASE pode nomear. Catálogo fechado (§9), como o das skills. */
+export const TAREFAS_DE_FASE = new Set(['fluxo-agente']);
+
 export function validarFlow(dados: unknown, raiz: string): FlowDef {
   if (typeof dados !== 'object' || dados === null || Array.isArray(dados)) {
     throw new Error('flow.json: precisa ser um objeto');
@@ -118,6 +128,9 @@ export function validarFlow(dados: unknown, raiz: string): FlowDef {
     // Catálogo fechado também aqui (§9): a fase nomeia a tarefa, e quem confere
     // se ela existe é o runtime, contra o registry de skills e o de funções.
     const tarefa = texto(f.tarefa, `fases[${i}].tarefa`);
+    if (!TAREFAS_DE_FASE.has(tarefa)) {
+      erro(`fases[${i}].tarefa`, `"${tarefa}" não existe — implementadas: ${[...TAREFAS_DE_FASE].join(', ')}`);
+    }
 
     let prompt: string | undefined;
     if (kind === 'agent') {
@@ -146,7 +159,10 @@ export function validarFlow(dados: unknown, raiz: string): FlowDef {
         erro(`fases[${i}].espera.timeout`, 'segundos, maior que o intervalo');
       }
       if (kind !== 'function') erro(`fases[${i}].espera`, 'só faz sentido em fase kind=function');
-      espera = { intervalo, timeout };
+      // Aceitar um campo que ninguém lê é pior que recusá-lo: o autor do
+      // flow.json acharia que configurou um poll. O reagendamento entra junto
+      // com a primeira fase que precisar dele (`heygen.baixar`, no promoclub).
+      erro(`fases[${i}].espera`, 'ainda não implementado — a fase rodaria uma vez só, sem poll');
     }
 
     return {
@@ -179,6 +195,19 @@ export function carregarFlow(raiz: string): FlowDef {
     if ((e as Error).message.startsWith('flow.json')) throw e;
     throw new Error(`flow.json: JSON inválido em ${caminho}: ${(e as Error).message}`);
   }
+}
+
+/**
+ * Congela a definição: devolve uma cópia com o TEXTO de cada prompt embutido.
+ * Daqui para frente o fluxo não depende mais do disco do repo de domínio.
+ */
+export function congelar(def: FlowDef, raiz: string): FlowDef {
+  return {
+    ...def,
+    fases: def.fases.map((f) => (f.prompt
+      ? { ...f, prompt_texto: readFileSync(join(raiz, f.prompt), 'utf8') }
+      : f)),
+  };
 }
 
 /**

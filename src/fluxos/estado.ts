@@ -134,9 +134,13 @@ export class EstadoFluxos {
   recalcularStatus(fluxoId: number): StatusFluxo {
     const fases = this.fases(fluxoId);
     const aberto = fases.some((f) => f.estado === 'pendente' || f.estado === 'rodando');
+    // A ordem importa: um fluxo cujos alvos foram todos cancelados um a um não
+    // é um fluxo "feito" — ele não fez nada. Sem este caso, `/cancelar` alvo a
+    // alvo terminaria anunciando sucesso.
     const status: StatusFluxo = aberto
       ? 'rodando'
-      : fases.some((f) => f.estado === 'falhou') ? 'falhou' : 'feito';
+      : fases.some((f) => f.estado === 'falhou') ? 'falhou'
+        : fases.every((f) => f.estado === 'pulado') ? 'cancelado' : 'feito';
     this.db
       .prepare('UPDATE fluxos SET status = ?, terminado_em = ? WHERE id = ?')
       .run(status, status === 'rodando' ? null : this.agora(), fluxoId);
