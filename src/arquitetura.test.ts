@@ -46,8 +46,17 @@ describe('fronteiras entre camadas', () => {
       } catch {
         return; // camada ainda não existe nesta etapa
       }
+      // Sem esta asserção, uma lista vazia de arquivos passa verde e o teste
+      // vira decoração — o mesmo defeito que ele existe pra impedir em
+      // outros lugares.
+      const arquivos = arquivosTs(dir);
+      expect(
+        arquivos.length,
+        `nenhum .ts encontrado em ${dir} — o teste de fronteiras estaria passando sem inspecionar nada`,
+      ).toBeGreaterThan(0);
+
       const violacoes: string[] = [];
-      for (const arquivo of arquivosTs(dir)) {
+      for (const arquivo of arquivos) {
         const codigo = readFileSync(arquivo, 'utf8');
         for (const alvo of vetados) {
           const re = new RegExp(`from\\s+['"][^'"]*\\b${alvo}/([^'"]+)['"]`, 'g');
