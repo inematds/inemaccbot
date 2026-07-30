@@ -65,10 +65,6 @@ export function cortar(texto: string, limite = 4000): string[] {
  * daqui; só vai pro log. */
 const MENSAGEM_ERRO_GENERICA = 'Deu erro por aqui. Já ficou registrado, tenta de novo daqui a pouco.';
 
-export interface Roteador {
-  chatPermitido(chatId: number): boolean;
-}
-
 /** Política completa de roteamento de uma mensagem recebida, pura — sem grammy.
  * chat fora da allowlist: [] + log da rejeição, `aoComando` nunca chamado (spec §9,
  * esse log é o único rastro de uma tentativa não autorizada).
@@ -95,6 +91,21 @@ export async function rotear(
   }
 }
 
+/** Envia os `pedacos` SEQUENCIALMENTE, aguardando cada um antes de disparar o
+ * próximo. Em paralelo (`pedacos.map(enviar)` sem await) o Telegram entrega
+ * fora de ordem, e uma resposta longa chega embaralhada no chat — por isso o
+ * `for...of` com `await`, nunca `Promise.all`/`map`. Único lugar que drena
+ * pedaços; `criarBot` e `Transporte.responder` chamam esta função em vez de
+ * reimplementar o loop cada um por conta própria. */
+export async function enviarPedacos(
+  enviar: (texto: string) => Promise<void>,
+  pedacos: string[],
+): Promise<void> {
+  for (const pedaco of pedacos) {
+    await enviar(pedaco);
+  }
+}
+
 /** Seam usado por tarefas futuras (ex.: notificar conclusão de job) sem que
  * quem chama precise conhecer grammy. */
 export interface Transporte {
@@ -117,16 +128,12 @@ export function criarBot(
       { chatId: ctx.chat.id, texto: ctx.message.text },
       { permitido, aoComando: deps.aoComando, log },
     );
-    for (const pedaco of pedacos) {
-      await ctx.reply(pedaco);
-    }
+    await enviarPedacos(async (pedaco) => { await ctx.reply(pedaco); }, pedacos);
   });
 
   const transporte: Transporte = {
     async responder(chatId: number, texto: string): Promise<void> {
-      for (const pedaco of cortar(texto)) {
-        await bot.api.sendMessage(chatId, pedaco);
-      }
+      await enviarPedacos(async (pedaco) => { await bot.api.sendMessage(chatId, pedaco); }, cortar(texto));
     },
   };
 

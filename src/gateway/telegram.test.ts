@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { cortar, rotear, criarBot } from './telegram.js';
+import { cortar, rotear, criarBot, enviarPedacos } from './telegram.js';
 import type { Config } from '../config.js';
 
 // --- cortar: portado de inemaccvbot/src/reply.ts (splitForTelegram), mesma suíte ---
@@ -90,6 +90,65 @@ describe('rotear', () => {
     expect(resultado.length).toBe(1);
     expect(resultado[0]).not.toContain(erroReal);
     expect(logs.some((l) => l.includes(erroReal))).toBe(true);
+  });
+});
+
+// --- enviarPedacos: drena os pedaços sequencialmente, na ordem ---
+
+describe('enviarPedacos', () => {
+  it('três pedaços: enviar é chamado exatamente três vezes, na ordem', async () => {
+    const chamadas: string[] = [];
+    const enviar = vi.fn(async (t: string) => { chamadas.push(t); });
+    await enviarPedacos(enviar, ['a', 'b', 'c']);
+    expect(enviar).toHaveBeenCalledTimes(3);
+    expect(chamadas).toEqual(['a', 'b', 'c']);
+  });
+
+  it('um pedaço: exatamente uma chamada', async () => {
+    const enviar = vi.fn(async () => {});
+    await enviarPedacos(enviar, ['único']);
+    expect(enviar).toHaveBeenCalledTimes(1);
+  });
+
+  it('zero pedaços: nenhuma chamada (caminho não autorizado não deve gerar mensagem vazia)', async () => {
+    const enviar = vi.fn(async () => {});
+    await enviarPedacos(enviar, []);
+    expect(enviar).not.toHaveBeenCalled();
+  });
+
+  it('ordem de CONCLUSÃO respeita a ordem de entrada mesmo sob latência assíncrona variável — ' +
+    'uma implementação paralela (map sem await) terminaria fora de ordem e faria este teste falhar',
+  async () => {
+    // Cada `enviar` só resolve quando o teste manda (`resolvers`), com atrasos deliberadamente
+    // invertidos: o pedaço 'a' (primeiro) resolve por ÚLTIMO, 'c' (último) resolve PRIMEIRO. Uma
+    // implementação sequencial (await dentro do for) nunca chega a chamar `enviar('b')` antes de
+    // `enviar('a')` ter resolvido — então a ordem de CONCLUSÃO fica 'a','b','c' de qualquer jeito.
+    // Uma implementação paralela chamaria as três de uma vez e completaria 'c','b','a'.
+    const resolvers: Array<() => void> = [];
+    const concluidos: string[] = [];
+    const enviar = vi.fn((t: string) => new Promise<void>((resolve) => {
+      resolvers.push(() => { concluidos.push(t); resolve(); });
+    }));
+
+    const promessa = enviarPedacos(enviar, ['a', 'b', 'c']);
+
+    // Só o primeiro `enviar` foi chamado até aqui — prova que a implementação é sequencial
+    // (se fosse `map`, as três já teriam sido chamadas nesta linha).
+    expect(enviar).toHaveBeenCalledTimes(1);
+    resolvers[0]();
+    await Promise.resolve(); // deixa o loop `for...of` avançar até a próxima chamada
+    await Promise.resolve();
+
+    expect(enviar).toHaveBeenCalledTimes(2);
+    resolvers[1]();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(enviar).toHaveBeenCalledTimes(3);
+    resolvers[2]();
+
+    await promessa;
+    expect(concluidos).toEqual(['a', 'b', 'c']);
   });
 });
 
