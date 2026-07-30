@@ -4,7 +4,9 @@ import type { Tarefa } from '../worker.js';
 import { criarHttpGet } from './http.js';
 import { criarFfmpegThumb } from './ffmpeg.js';
 
-export const TAREFAS: Record<string, Tarefa> = {
-  'http.get': criarHttpGet(),
-  'ffmpeg.thumb': criarFfmpegThumb(),
-};
+export function criarTarefas(opts: { raizMidia: string }): Record<string, Tarefa> {
+  return {
+    'http.get': criarHttpGet(),
+    'ffmpeg.thumb': criarFfmpegThumb('ffmpeg', opts.raizMidia),
+  };
+}
