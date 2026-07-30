@@ -66,6 +66,21 @@ describe('planejarEntrega', () => {
     expect(e.anexo).toBeDefined();
   });
 
+  // A faixa onde vivem as transcrições REAIS (uns 20 KB = ~15 min de fala).
+  // Com o limite antigo (100 KB) isto virava ~5 mensagens seguidas — e uma de
+  // 40 min, ~25, o que o Telegram corta no meio. O teste fixa o limiar na
+  // fronteira certa: uma mensagem.
+  it('transcrição de tamanho real (20 KB) vai como ANEXO, não em N mensagens', () => {
+    const e = planejarEntrega(arquivo('real.txt', 'a fala '.repeat(3_000)));
+    expect(e.anexo).toBeDefined();
+  });
+
+  it('o que cabe numa mensagem continua chegando como texto legível', () => {
+    const e = planejarEntrega(arquivo('curta.txt', 'x'.repeat(LIMITE_TEXTO_BYTES - 1)));
+    expect(e.anexo).toBeUndefined();
+    expect(e.mensagem.length).toBeLessThanOrEqual(LIMITE_TEXTO_BYTES);
+  });
+
   it('binário dentro do limite vira anexo', () => {
     const e = planejarEntrega(arquivo('v.mp4', 'bytes'));
     expect(e.anexo).toContain('v.mp4');

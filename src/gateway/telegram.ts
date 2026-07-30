@@ -17,7 +17,12 @@ import { comandoDeAnexo, type BaixarAnexo } from './midia.js';
  *   2. se uma "linha" sozinha ainda estoura o limite, quebra em espaços;
  *   3. se um único token (sem espaço) ainda estoura o limite, corta na marra (último recurso).
  */
-export function cortar(texto: string, limite = 4000): string[] {
+/** Teto de UMA mensagem. Exportado porque a entrega precisa do MESMO número:
+ * decidir "isto cabe numa mensagem?" com um valor próprio criaria duas fontes
+ * de verdade para o mesmo limite do Telegram. */
+export const LIMITE_MENSAGEM = 4_000;
+
+export function cortar(texto: string, limite = LIMITE_MENSAGEM): string[] {
   if (texto.length <= limite) return texto.length ? [texto] : [];
 
   const chunks: string[] = [];

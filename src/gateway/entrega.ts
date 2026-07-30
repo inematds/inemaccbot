@@ -17,8 +17,22 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, resolve, sep } from 'node:path';
 
-/** Acima disso, uma transcrição vira parede de texto no chat — vai como arquivo. */
-export const LIMITE_TEXTO_BYTES = 100_000;
+import { LIMITE_MENSAGEM } from './telegram.js';
+
+/**
+ * Acima disso, a transcrição vai como ARQUIVO em vez de texto.
+ *
+ * O valor é UMA mensagem do Telegram, não um número redondo qualquer. Com o
+ * limite antigo (100 KB), uma transcrição de 40 minutos — o caso ORDINÁRIO desta
+ * skill — virava ~25 `sendMessage` seguidos: o Telegram limita mensagens por
+ * chat, então o envio quebraria no meio e o usuário ficaria com metade da
+ * transcrição e nenhuma explicação (o job estaria `done` e correto; o que falhou
+ * seria a entrega).
+ *
+ * Transcrição curta continua chegando como texto legível; longa chega como .txt,
+ * que é mais útil de qualquer forma — e é o que o v1 fazia.
+ */
+export const LIMITE_TEXTO_BYTES = LIMITE_MENSAGEM;
 /** Teto do `sendDocument` da API do Telegram é 50 MB; ficamos abaixo. */
 export const LIMITE_DOCUMENTO_BYTES = 45 * 1024 * 1024;
 
