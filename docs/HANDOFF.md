@@ -176,22 +176,31 @@ que passavam pelo motivo errado.
 **Não confie em relatório de subagente sem verificar.** Três vezes nesta sessão um relatório
 descreveu o mecanismo errado de uma falha que ele mesmo tinha observado.
 
-## 9. O que ficou FALTANDO da etapa 2 (leia antes de tocar no cutover)
+## 9. Validação da etapa 2 e o que falta do cutover
 
-O código da etapa 2 está pronto, verde e no ar. O que **não** foi feito é a aceitação do
-§7.4, que é manual por natureza: **mesma entrada nos dois bots → saída equivalente**. Ela
-custa GPU e token e depende de um link real.
+A aceitação do §7.4 dizia "mesma entrada nos dois bots → saída equivalente". **Ela caiu**:
+o dono declarou em 2026-07-30 que não usa mais o sistema antigo, então não há com o que
+comparar. A validação virou "o novo funciona de ponta a ponta", e foi feita:
 
-Sequência que falta, nesta ordem:
+- **dois jobs `transcrever` REAIS** rodaram no serviço no ar (não em teste): `claude -p`
+  de verdade, `transcrever_v1.py` com Whisper large-v3, artefato gravado no caminho exato
+  que o prompt mandou, `RESULT:` cumprido, job `done` com o caminho em ~70s;
+- o segundo passou pelo caminho de comando completo com override (`| modelo=haiku`) e
+  provou o §1.5 ponta a ponta: `[job 2] motor=claude modelo=haiku esforco=low` no log e
+  `perfil: claude/haiku/low` no `/status`;
+- a falha de notificação daquele job (`chat not found`, porque o chat era falso no teste)
+  provou de lambuja que perder a notificação não derruba o worker.
 
-1. rodar `transcrever: <link real>` no bot NOVO e o equivalente no velho, comparar;
-2. só então, com o dono confirmando: `systemctl --user disable --now mkitexto`;
-3. e tirar `transcrever`/`dublar` do `config/skills.json` do **v1** (uma linha de config,
-   reversível) — senão o bot velho segue aceitando pedidos que ninguém mais executa.
+O primeiro job real é que revelou o defeito do perfil não gravado — corrigido em `2b4a525`+.
 
-Enquanto o passo 2 não acontece, **as duas filas de texto estão vivas ao mesmo tempo**.
-Para `texto` isso não briga por GPU como o render brigaria, mas os dois bots respondem —
-mande o pedido para um de cada vez, de propósito, ao comparar.
+### O que falta
 
-Atenção ao commit do passo 3: o repo do v1 tem alterações não commitadas em `src/config.ts`,
+Só desligar o `mkitexto.service`, quando o dono disser. Ele pediu explicitamente para
+manter de pé até bater o martelo, mesmo sem usar. Quando for:
+
+1. `systemctl --user disable --now mkitexto`;
+2. tirar `transcrever`/`dublar` do `config/skills.json` do **v1** — senão o bot velho
+   segue aceitando pedidos que ninguém mais executa.
+
+Atenção ao commit do passo 2: o repo do v1 tem alterações não commitadas em `src/config.ts`,
 `src/interpret.ts` e `src/promoclub.ts`. Não varra isso para dentro do commit de cutover.
