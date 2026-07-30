@@ -109,8 +109,14 @@ export class FilaSqlite {
    * justamente o caminho que um crash pula, então requeue cego eternizaria um
    * job que mata o processo (max_tentativas=1 + OOM = loop infinito). Quem já
    * gastou todas as tentativas vira `failed` direto.
+   *
+   * Devolve `falhados` como LINHAS COMPLETAS, não uma contagem: quem chama
+   * (`src/index.ts`) precisa de `chat_id` e `erro` para notificar cada job que
+   * esta transição terminou (spec §8 — falha sempre notifica). Devolver só um
+   * número obrigaria uma segunda consulta que já não saberia QUAIS linhas foram
+   * afetadas. O requeue continua contagem: retentativa não é término.
    */
-  recuperarLeasesVencidos(): { requeued: number; failed: number } {
+  recuperarLeasesVencidos(): { requeued: number; falhados: Job[] } {
     const agora = this.agora();
     const vencido = `status = 'running' AND lease_ate IS NOT NULL AND lease_ate <= ?`;
     return this.db.transaction(() => {
@@ -122,14 +128,21 @@ export class FilaSqlite {
             WHERE ${vencido} AND tentativas < max_tentativas`,
         )
         .run(agora);
-      const fal = this.db
+      // Ids ANTES do UPDATE: depois dele o predicado `vencido` já não casa.
+      const ids = this.db
+        .prepare(`SELECT id FROM jobs WHERE ${vencido} AND tentativas >= max_tentativas`)
+        .all(agora) as { id: number }[];
+      this.db
         .prepare(
           `UPDATE jobs SET status = 'failed', erro = ?, lease_ate = NULL,
                            lease_owner = NULL, terminado_em = ?
             WHERE ${vencido} AND tentativas >= max_tentativas`,
         )
         .run('lease vencido sem ack (worker morreu)', agora, agora);
-      return { requeued: req.changes, failed: fal.changes };
+      const falhados = ids
+        .map(({ id }) => this.obter(id))
+        .filter((j): j is Job => j !== undefined);
+      return { requeued: req.changes, falhados };
     })();
   }
 

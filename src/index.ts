@@ -207,12 +207,30 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     // 3. + 4. recuperação ANTES de qualquer `passo()`, e logada — é a única
     //    evidência de que houve queda.
     const r = fila.recuperarLeasesVencidos();
-    deps.log(`boot: recuperação de leases — requeued=${r.requeued} failed=${r.failed}`);
+    deps.log(`boot: recuperação de leases — requeued=${r.requeued} failed=${r.falhados.length}`);
 
     // 5. só então: workers e bot.
     const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
     const notificar = criarNotificador(transp.transporte);
+
+    // 6. §8: a recuperação acabou de marcar jobs como `failed` — uma transição
+    //    TERMINAL que acontece fora do `Worker`. Sem isto o chat que pediu o job
+    //    nunca fica sabendo que ele morreu no `kill -9`, e silêncio não é estado
+    //    válido. Mesmo notificador do worker (um único formato de mensagem).
+    //
+    //    Posição: DEPOIS de `criarTransporte` (não há para onde mandar antes) e
+    //    ANTES dos laços começarem — assim a notificação do boot chega antes de
+    //    qualquer mensagem de job novo, que é a ordem que o operador espera.
+    //    Uma falha aqui não pode derrubar o boot: o job já está durável como
+    //    `failed`, perder a notificação é ruim, não subir é pior.
+    for (const job of r.falhados) {
+      try {
+        await notificar(job);
+      } catch (e) {
+        deps.log(`boot: notificação da recuperação falhou (job ${job.id}): ${(e as Error).message}`);
+      }
+    }
 
     workers = FILAS.map((f) => ({
       n: CONCORRENCIAS[f],

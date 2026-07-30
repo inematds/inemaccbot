@@ -104,7 +104,7 @@ it('crash DEPOIS do efeito e ANTES do ack não duplica o efeito externo', async 
 
   // Boot depois do crash: o lease vence e o job volta pra fila.
   t = 1_061;
-  expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, failed: 0 });
+  expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, falhados: [] });
 
   // Tentativa 2, noutra instância: tem que ADOTAR o efeito, não criar outro.
   const wB = novoWorker('B', tarefaComEfeito(async (id) => id));

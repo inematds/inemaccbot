@@ -89,13 +89,14 @@ function montar(tarefas: Record<string, Tarefa>, over: Partial<DepsServico> = {}
 
 /** Semeia o banco ANTES do serviço subir, deixando um job preso em `running`
  * com lease vencido — exatamente o rastro de um `kill -9`. */
-function semearJobPreso(opts: { maxTentativas: number }): void {
+function semearJobPreso(opts: { maxTentativas: number; chatId?: number }): void {
   const db = abrirDb(join(dir, 'fila.db'));
   aplicarMigrations(db, agora, MIGRATIONS);
   const fila = new FilaSqlite(db, agora);
   fila.enfileirar({
     fila: 'io', kind: 'function', tarefa: 'fake.ok', input: 'x',
     max_tentativas: opts.maxTentativas,
+    chat_id: opts.chatId ?? null,
   });
   // Outra instância pegou o job e morreu com ele na mão.
   const pego = fila.pegar('io', 60, 'instancia-morta:1');
@@ -269,6 +270,59 @@ describe('notificação', () => {
     expect(registro.mensagens[0]?.chatId).toBe(42);
     expect(registro.mensagens[0]?.texto).toMatch(/Job 1 conclu/);
   });
+
+  // §8 não abre exceção por caminho: a recuperação de boot é uma transição
+  // TERMINAL fora do Worker. Sem a notificação aqui, o chat que pediu o job
+  // nunca fica sabendo que ele morreu no `kill -9` — silêncio permanente.
+  it('job morto no kill -9 e esgotado de tentativas avisa o chat no próximo boot', async () => {
+    semearJobPreso({ maxTentativas: 1, chatId: 42 });
+    const { svc, registro } = montar(OK);
+    await svc.iniciar();
+    // Já durante o `iniciar()`: nada de esperar laço nenhum.
+    expect(registro.mensagens).toHaveLength(1);
+    expect(registro.mensagens[0]?.chatId).toBe(42);
+    expect(registro.mensagens[0]?.texto).toMatch(/Job 1 falhou/);
+    expect(registro.mensagens[0]?.texto).toMatch(/lease vencido sem ack/);
+    await svc.parar();
+  });
+
+  it('job recuperado que só volta pra fila NÃO avisa o chat (retentativa não é término)', async () => {
+    semearJobPreso({ maxTentativas: 3, chatId: 42 });
+    const { svc, registro } = montar(OK);
+    await svc.iniciar();
+    const naFalha = registro.mensagens.filter((m) => /falhou/.test(m.texto));
+    expect(naFalha).toHaveLength(0);
+    await svc.parar();
+  });
+
+  // §8 de novo, no outro extremo do ciclo de vida: `abortar()` fecha o job como
+  // `failed` fora do `passo()` (o catch de `passo()` pula o id em `abortados`).
+  // E a mensagem tem que estar FEITA quando `parar()` resolve — `main()` chama
+  // `process.exit(0)` logo em seguida e cortaria um envio solto.
+  it('job abortado no encerramento avisa o chat antes de parar() resolver', async () => {
+    let comecou = false;
+    const tarefas: Record<string, Tarefa> = {
+      'fake.travada': async () => {
+        comecou = true;
+        await new Promise(() => { /* nunca resolve */ });
+        return 'inalcançável';
+      },
+    };
+    const { svc, registro } = montar(tarefas, { timeoutDrenoMs: 60 });
+    await svc.iniciar();
+    svc.fila.enfileirar({
+      fila: 'cpu', kind: 'function', tarefa: 'fake.travada', input: 'x',
+      chat_id: 42, max_tentativas: 1,
+    });
+    await ate(() => comecou);
+    await svc.parar();
+
+    expect(registro.mensagens.map((m) => m.texto)).toEqual([
+      expect.stringMatching(/Job 1 falhou/) as unknown as string,
+    ]);
+    expect(registro.mensagens[0]?.texto).toMatch(/interrompido no encerramento/);
+  });
+
 });
 
 describe('gateway caído depois do boot', () => {

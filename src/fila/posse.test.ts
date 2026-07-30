@@ -51,7 +51,7 @@ describe('lease_owner no store', () => {
 
     // A estola; o lease vence; a recuperação devolve o job à fila; B pega.
     t = 1_061;
-    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, failed: 0 });
+    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, falhados: [] });
     const jobB = fila.pegar('render', 60, 'B')!;
     expect(jobB.id).toBe(jobA.id);
 

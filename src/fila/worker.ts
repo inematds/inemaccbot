@@ -147,15 +147,26 @@ export class Worker {
       this.ativos.delete(job.id);
       this.abortados.delete(job.id);
     }
-    if (terminou && this.opts.aoTerminar) {
-      try {
-        const relido = this.fila.obter(job.id);
-        if (relido) await this.opts.aoTerminar(relido);
-      } catch (e) {
-        log(`[job ${job.id}] aoTerminar falhou: ${(e as Error).message}`);
-      }
-    }
+    if (terminou) await this.notificarTermino(job.id);
     return true;
+  }
+
+  /**
+   * Único ponto que dispara `aoTerminar`. Existe porque o término NÃO acontece
+   * só em `passo()`: `abortar()` também fecha jobs como `failed`, e a spec §8
+   * não abre exceção por caminho — silêncio nunca é estado válido.
+   * Relê o job para carregar `status`/`erro` finais, e nunca propaga: o ack já
+   * aconteceu, perder a notificação é aceitável, perder o worker não é.
+   */
+  private async notificarTermino(id: number): Promise<void> {
+    if (!this.opts.aoTerminar) return;
+    const log = this.opts.log ?? (() => {});
+    try {
+      const relido = this.fila.obter(id);
+      if (relido) await this.opts.aoTerminar(relido);
+    } catch (e) {
+      log(`[job ${id}] aoTerminar falhou: ${(e as Error).message}`);
+    }
   }
 
   private async rodarFuncao(job: Job): Promise<string> {
@@ -230,7 +241,13 @@ export class Worker {
       // processo e escreve a saída de um job marcado como `failed`.
       ativo.ctrl?.abort(new Error('serviço encerrando'));
       await ativo.exec?.cancelar();
-      this.fila.falhar(id, 'interrompido no encerramento do serviço', this.opts.dono, 30);
+      const r = this.fila.falhar(id, 'interrompido no encerramento do serviço', this.opts.dono, 30);
+      // §8: esta é uma transição terminal FORA de `passo()` — e o catch de
+      // `passo()` a pula de propósito (o id está em `abortados`). Sem este
+      // await o job morreria em silêncio. `await` e não fire-and-forget porque
+      // `desligar()` chama `abortar()` com await e logo depois `main()` faz
+      // `process.exit(0)`: uma notificação solta seria cortada no meio.
+      if (r === 'failed') await this.notificarTermino(id);
     }
     this.ativos.clear();
   }

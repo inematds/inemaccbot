@@ -372,6 +372,38 @@ describe('aoTerminar', () => {
     expect(logs.some((l) => l.includes('falha ao notificar'))).toBe(true);
   });
 
+  // §8 não abre exceção por caminho: `abortar()` é a OUTRA transição terminal —
+  // e o catch de `passo()` a pula de propósito (o id está em `abortados`).
+  it('abortar() no encerramento também notifica (failed), e o await termina dentro dele', async () => {
+    const vistos: Job[] = [];
+    let liberar: (() => void) | undefined;
+    let notificou = false;
+    const w = novoWorker({
+      tarefas: { lento: () => new Promise<string>((r) => { liberar = () => r('fim'); }) },
+      aoTerminar: async (j) => {
+        // Um tick real: se `abortar()` não aguardasse, o `process.exit(0)` de
+        // `main()` cortaria a mensagem exatamente aqui.
+        await new Promise((r) => setTimeout(r, 5));
+        vistos.push(j);
+        notificou = true;
+      },
+    });
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '', max_tentativas: 1 });
+    const emCurso = w.passo();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await w.abortar();
+
+    expect(notificou).toBe(true);
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]!.status).toBe('failed');
+    expect(vistos[0]!.erro).toMatch(/interrompido no encerramento/);
+
+    liberar!();
+    await emCurso;
+  });
+
   it('worker sem aoTerminar continua funcionando normalmente', async () => {
     const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
     expect(await novoWorker().passo()).toBe(true);

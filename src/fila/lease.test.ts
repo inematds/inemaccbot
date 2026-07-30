@@ -35,6 +35,7 @@ describe('renovar', () => {
     const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
     expect(fila.renovar(job.id, 60, 'w1')).toBe(false);
   });
+
 });
 
 describe('recuperarLeasesVencidos', () => {
@@ -44,7 +45,7 @@ describe('recuperarLeasesVencidos', () => {
     expect(job.tentativas).toBe(1);
 
     t = 1_061;
-    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, failed: 0 });
+    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, falhados: [] });
 
     const depois = fila.obter(job.id)!;
     expect(depois.status).toBe('queued');
@@ -63,7 +64,10 @@ describe('recuperarLeasesVencidos', () => {
     fila.pegar('render', 60, 'w1');
 
     t = 1_061;
-    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 0, failed: 1 });
+    const rec = fila.recuperarLeasesVencidos();
+    expect(rec.requeued).toBe(0);
+    expect(rec.falhados.map((j) => j.id)).toEqual([job.id]);
+    expect(rec.falhados[0]!.status).toBe('failed');
 
     const depois = fila.obter(job.id)!;
     expect(depois.status).toBe('failed');
@@ -78,7 +82,7 @@ describe('recuperarLeasesVencidos', () => {
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
     fila.pegar('io', 60, 'w1');
     t = 1_030;
-    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 0, failed: 0 });
+    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 0, falhados: [] });
   });
 
   it('não mexe em job terminal', () => {
@@ -90,7 +94,7 @@ describe('recuperarLeasesVencidos', () => {
       db.prepare('UPDATE jobs SET status = ? WHERE id = ?').run(status, job.id);
       t = 5_000;
       const recovered = fila.recuperarLeasesVencidos();
-      expect(recovered).toEqual({ requeued: 0, failed: 0 });
+      expect(recovered).toEqual({ requeued: 0, falhados: [] });
       expect(fila.obter(job.id)!.status).toBe(status);
     }
   });
@@ -99,7 +103,7 @@ describe('recuperarLeasesVencidos', () => {
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '', max_tentativas: 3 });
     fila.pegar('io', 60, 'w1');
     t = 1_061;
-    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, failed: 0 });
-    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 0, failed: 0 });
+    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, falhados: [] });
+    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 0, falhados: [] });
   });
 });
