@@ -62,6 +62,39 @@ describe('execução real de subprocesso (usa /bin/echo como binário)', () => {
     expect(decorrido).toBeLessThan(1_500);
   });
 
+  // Sem teto de parede, um `claude -p` travado segura um slot da fila PARA
+  // SEMPRE: o heartbeat renova o lease enquanto o processo existir, o job nunca
+  // termina e nada notifica (§8). O binário aqui é o próprio node, com um
+  // programa que só espera — é a forma de ter um processo realmente travado sem
+  // depender do `claude` existir no ambiente de teste.
+  it('mata a execução que passa do timeoutMs e falha com a causa explícita', async () => {
+    const r = new ClaudeRunner({
+      binario: process.execPath,
+      montarArgs: () => ['-e', 'setTimeout(() => {}, 60_000)'],
+    });
+    const t0 = Date.now();
+    await expect(r.iniciar({ ...ctx('sonnet', 'low'), timeoutMs: 300 }).aguardar())
+      .rejects.toThrow(/timeout/i);
+    expect(Date.now() - t0).toBeLessThan(5_000);
+  });
+
+  it('sem timeoutMs não há prazo — o processo curto termina normalmente', async () => {
+    const r = new ClaudeRunner('/bin/echo');
+    await expect(r.iniciar(ctx('sonnet', 'low')).aguardar()).resolves.toContain('--model');
+  });
+
+  // `stdout += String(d)` sem teto: um agente em laço de log come a memória do
+  // serviço inteiro. O v1 tinha `maxBuffer: 10MB`; aqui isso tinha se perdido.
+  it('para de acumular saída no teto configurado', async () => {
+    const r = new ClaudeRunner({
+      binario: process.execPath,
+      montarArgs: () => ['-e', 'process.stdout.write("x".repeat(200000))'],
+      limiteSaidaBytes: 1_000,
+    });
+    const saida = await r.iniciar(ctx('sonnet', 'low')).aguardar();
+    expect(saida.length).toBeLessThanOrEqual(1_000);
+  });
+
   // O teste de "sem shell" acima olha só o ARRAY de argumentos — função pura que
   // nunca faz spawn. Aqui o payload atravessa o spawn de verdade: tem que chegar
   // como STRING LITERAL e não pode executar nada.

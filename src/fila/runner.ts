@@ -8,6 +8,13 @@ export interface ContextoExecucao {
   cwd: string;
   perfil: Perfil;
   vars: Record<string, string>;
+  /**
+   * Teto de PAREDE desta execução (vem do registry da skill). Ausente = sem
+   * teto, que é o comportamento que só faz sentido em teste: em produção um
+   * agente sem prazo ocupa um slot da fila para sempre, porque o heartbeat
+   * renova o lease enquanto o processo existir.
+   */
+  timeoutMs?: number;
 }
 
 /** Uma execução em curso. `cancelar` encerra a ÁRVORE de processos (spec §3.7). */
