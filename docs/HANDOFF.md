@@ -35,9 +35,19 @@ Leia pelo menos §1 (camadas), §2.5 e §2.5.1 (efeito único e posse do lease),
   | serviço | active | enabled | |
   |---|---|---|---|
   | `inemaccbot` | sim | **sim** | o novo |
-  | `inemaccvbot` | sim | não | v1: segue por causa de render e `/promoclub` |
-  | `mkivideos` | sim | não | fila de render do v1 (etapa 3 desliga) |
-  | `mkitexto` | **não** | não | **desligado no cutover da etapa 2** |
+  | `inemaccvbot` | **não** | não | desligado a pedido do dono (ver abaixo) |
+  | `mkivideos` | **não** | não | idem |
+  | `mkitexto` | **não** | não | desligado no cutover da etapa 2 |
+
+  **O v1 inteiro está parado desde 2026-07-30.** Isso NÃO foi o cutover das etapas 3–6:
+  foi decisão explícita do dono, que declarou não usar mais nada de lá — inclusive o
+  `/promoclub` ("pode até parar o promoclub, que não vou usar mais lá"). Ele confirmou
+  depois de eu dizer, com todas as letras, que ficaria só com `transcrever`/`dublar` até as
+  etapas 3 e 5 existirem.
+
+  Nada foi perdido no desligamento: a fila do `mkivideos` só tinha job terminal (291 done,
+  54 failed, 19 canceled), sem nada `queued` nem `running`, e não havia fluxo de promoclub
+  em voo. Reverter é `systemctl --user start <serviço>` — nada foi apagado nem migrado.
 
 ### O que o bot novo faz hoje
 
@@ -214,10 +224,14 @@ Os três arquivos não commitados do v1 (`src/config.ts`, `src/interpret.ts`,
 
 ### Próximo: etapa 3 (`render`)
 
-`explicativo`, `curso`, `demo`, `reel`, `reelinematds` — ao fim desligam o
-`mkivideos.service`. A regra de ouro do §7.1 vale inteira ali, e com dente: **dois renders
-simultâneos disputam a mesma GPU sem saber um do outro**. A etapa 2 não teve esse risco
-(`texto` não briga por GPU do mesmo jeito); a etapa 3 tem.
+`explicativo`, `curso`, `demo`, `reel`, `reelinematds`.
+
+**O que mudou com o v1 parado:** a regra de ouro do §7.1 (nunca duas filas da mesma classe
+vivas, porque dois renders disputam a mesma GPU sem saber um do outro) deixou de ser um
+risco de cutover — não há mais fila velha para competir. Em compensação, some a rede de
+segurança: **enquanto a etapa 3 não existir, não há como renderizar nada**. Isso torna a
+etapa 3 a prioridade, e o `mkivideos` o rollback (`systemctl --user start mkivideos`) caso
+alguma coisa precise sair no meio do caminho.
 
 Uma decisão da etapa 2 precisa ser reexaminada antes: a execução SÍNCRONA. Para transcrição
 (minutos) o preço de perder o job num restart é aceitável. Para um render de 15 min a 2h,
