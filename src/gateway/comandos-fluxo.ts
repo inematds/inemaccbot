@@ -17,7 +17,8 @@ export interface DepsFluxo {
 }
 
 const ICONE: Record<Fase['estado'], string> = {
-  pendente: '·', rodando: '▶️', feito: '✅', falhou: '❌', pulado: '⏭️',
+  pendente: '·', rodando: '▶️', feito: '✅', 'aguardando-ok': '⏸️',
+  falhou: '❌', pulado: '⏭️',
 };
 
 export function textoFluxos(registrados: FluxoRegistrado[]): string {
@@ -125,6 +126,10 @@ export function statusFluxo(ref: string, deps: DepsFluxo): string | undefined {
       .join(' · ');
     linhas.push(`${fase}: ${alvos}`);
   }
+  const esperando = fases.filter((f) => f.estado === 'aguardando-ok');
+  if (esperando.length) {
+    linhas.push('', `⏸️ esperando você em "${esperando[0]!.fase}" — libere com /aprovar ${fluxo.prefixo}#${fluxo.id}`);
+  }
   const falhas = fases.filter((f) => f.estado === 'falhou');
   if (falhas.length) {
     linhas.push('', 'Falhas:');
@@ -132,6 +137,17 @@ export function statusFluxo(ref: string, deps: DepsFluxo): string | undefined {
     linhas.push(`Retentar: /refazer ${fluxo.prefixo}#${fluxo.id} [alvo]`);
   }
   return linhas.join('\n');
+}
+
+/** `/aprovar P#16` — solta o portão humano. */
+export function aprovarFluxo(ref: string, deps: DepsFluxo): string | undefined {
+  const r = parseRef(ref);
+  if (!r) return undefined;
+  const visao = deps.fluxos.status(r.id);
+  if (!visao || visao.fluxo.prefixo !== r.prefixo) return `${ref} não existe neste bot.`;
+  const { liberados, fase } = deps.fluxos.aprovar(r.id);
+  if (!liberados) return `${ref} não está esperando aprovação agora.`;
+  return `${ref}: ${fase} aprovada — ${liberados} job(s) enfileirado(s).`;
 }
 
 export function refazerFluxo(ref: string, alvo: string | undefined, deps: DepsFluxo): string | undefined {

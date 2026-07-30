@@ -16,7 +16,10 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const ctx = (input: string, sinal = new AbortController().signal): ContextoTarefa =>
-  ({ job: { input } as never, fila: {} as never, agora: () => 1_000, log: () => {}, sinal });
+  ({
+    job: { input } as never, fila: {} as never, agora: () => 1_000, log: () => {}, sinal,
+    aindaNao: (m: string) => { throw new Error(m); },
+  });
 
 describe('ffmpeg.thumb', () => {
   it('rejeita entrada que não existe, sem chamar o binário', async () => {

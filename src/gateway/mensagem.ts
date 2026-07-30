@@ -18,7 +18,7 @@ import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
 import type { Fluxos } from '../fluxos/runtime.js';
 import { executar, parseComando } from './comandos.js';
 import {
-  cancelarFluxo, criarFluxo, refazerFluxo, statusFluxo, textoFluxos,
+  aprovarFluxo, cancelarFluxo, criarFluxo, refazerFluxo, statusFluxo, textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
 import { interpretar } from './interpret.js';
@@ -62,6 +62,12 @@ function tratarComandoDeFluxo(
   const argumento = resto.join(' ');
 
   if (verbo === '/fluxos') return textoFluxos(registrados);
+
+  if (verbo === '/aprovar' || verbo === '/ok') {
+    const [ref] = resto;
+    if (!ref) return 'diga qual: /aprovar P#16';
+    return aprovarFluxo(ref, depsFluxo) ?? `não entendi "${ref}" — use /aprovar P#16`;
+  }
 
   if (verbo === '/status' || verbo === '/refazer' || verbo === '/cancelar') {
     const [ref, alvo] = resto;

@@ -216,6 +216,24 @@ export class Fluxos {
       estado: 'feito', dados: job.resultado, tentativas: job.tentativas, erro: null,
     });
 
+    const faseDef = def.fases.find((f) => f.id === fase.fase);
+
+    // PORTÃO: a fase terminou, mas o fluxo não segue sozinho. Fica esperando
+    // `/aprovar` — é assim que se modela tanto "quero revisar antes de gastar
+    // render" quanto "esta etapa é feita fora do bot, por uma pessoa".
+    if (faseDef?.pausa_apos) {
+      this.estado.atualizarFase(fluxo.id, fase.fase, fase.alvo, { estado: 'aguardando-ok' });
+      this.estado.recalcularStatus(fluxo.id);
+      if (this.portaoCompleto(fluxo, def, fase.fase)) {
+        this.avisar(
+          fluxo,
+          `⏸️ ${fluxo.prefixo}#${fluxo.id} — fase ${fase.fase} concluída e AGUARDANDO você.\n`
+          + `Quando estiver pronto: /aprovar ${fluxo.prefixo}#${fluxo.id}`,
+        );
+      }
+      return;
+    }
+
     const proxima = this.proximaFase(def, fase);
     if (proxima) {
       // Fase de escopo `fluxo` alimenta TODOS os alvos; fase de alvo alimenta só
@@ -266,6 +284,46 @@ export class Fluxos {
         }
       }
     }
+  }
+
+  /** Todos os alvos daquela fase já chegaram ao portão? Só então vale avisar —
+   * senão um fluxo de 12 públicos mandaria 12 mensagens de "aguardando". */
+  private portaoCompleto(fluxo: Fluxo, def: FlowDef, fase: string): boolean {
+    const daFase = this.estado.fases(fluxo.id).filter((f) => f.fase === fase);
+    return daFase.every((f) => f.estado === 'aguardando-ok' || f.estado === 'pulado');
+  }
+
+  /**
+   * `/aprovar P#16`: solta o portão e enfileira a fase seguinte de cada alvo.
+   * Idempotente — aprovar duas vezes não duplica job, porque a fase deixa de
+   * estar `aguardando-ok` na primeira.
+   */
+  aprovar(fluxoId: number): { liberados: number; fase?: string } {
+    const fluxo = this.estado.obter(fluxoId);
+    if (!fluxo) throw new Error('fluxo não existe');
+    const def = this.estado.definicaoDe(fluxo);
+    const esperando = this.estado.fases(fluxoId).filter((f) => f.estado === 'aguardando-ok');
+    if (!esperando.length) return { liberados: 0 };
+
+    let liberados = 0;
+    for (const fase of esperando) {
+      this.estado.atualizarFase(fluxoId, fase.fase, fase.alvo, { estado: 'feito' });
+      const proxima = this.proximaFase(def, fase);
+      if (!proxima) continue;
+      const alvos = proxima.escopo === 'fluxo'
+        ? ['']
+        : fase.escopo === 'fluxo' ? this.alvosDoFluxo(fluxo) : [fase.alvo];
+      for (const alvo of alvos) {
+        // Não reenfileira o que já está em voo: aprovar duas vezes seguidas
+        // poria dois jobs no mesmo trabalho.
+        const atual = this.estado.fase(fluxoId, proxima.id, alvo);
+        if (atual && (atual.estado === 'rodando' || atual.estado === 'feito')) continue;
+        this.enfileirarFase(fluxo, proxima, alvo);
+        liberados += 1;
+      }
+    }
+    this.estado.recalcularStatus(fluxoId);
+    return { liberados, fase: esperando[0]!.fase };
   }
 
   private alvosDoFluxo(fluxo: Fluxo): string[] {

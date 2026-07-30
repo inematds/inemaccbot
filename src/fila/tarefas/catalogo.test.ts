@@ -53,6 +53,7 @@ function contexto(nome: string, sinal: AbortSignal): ContextoTarefa {
     agora: () => 0,
     log: () => {},
     sinal,
+    aindaNao: (m: string) => { throw new Error(m); },
   };
 }
 

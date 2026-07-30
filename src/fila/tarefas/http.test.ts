@@ -4,7 +4,10 @@ import { criarHttpGet } from './http.js';
 import type { ContextoTarefa } from '../types.js';
 
 const ctx = (input: string, sinal = new AbortController().signal): ContextoTarefa =>
-  ({ job: { input } as never, fila: {} as never, agora: () => 1_000, log: () => {}, sinal });
+  ({
+    job: { input } as never, fila: {} as never, agora: () => 1_000, log: () => {}, sinal,
+    aindaNao: (m: string) => { throw new Error(m); },
+  });
 
 describe('http.get', () => {
   it('devolve o corpo de uma resposta 200', async () => {

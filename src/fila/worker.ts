@@ -3,7 +3,7 @@
 // falha registrada, e drain que NÃO solta o lease do que está em voo (spec §1.3).
 import type { Execucao, ContextoExecucao, Runner } from './runner.js';
 import type { FilaSqlite, GanchoTransacional } from './store.js';
-import type { Agora, ContextoTarefa, Fila, Job } from './types.js';
+import { AindaNao, type Agora, type ContextoTarefa, type Fila, type Job } from './types.js';
 
 export type Tarefa = (ctx: ContextoTarefa) => Promise<string>;
 
@@ -48,6 +48,8 @@ export interface WorkerOpts {
    * job — sem que `fila/` conheça `fluxos/`.
    */
   aoAckar?: GanchoTransacional;
+  /** Espera entre checagens de uma tarefa de poll (`aindaNao`). */
+  intervaloPollSegundos?: number;
 }
 
 /**
@@ -173,6 +175,18 @@ export class Worker {
         log(`[job ${job.id}] terminou mas não era mais nosso (cancelado/roubado?) — done rejeitado`);
       }
     } catch (e) {
+      // POLL: a tarefa não achou o que espera. Não é falha — o job volta para a
+      // fila com atraso e SEM gastar tentativa (§3.2). Sem este caminho, uma
+      // fase de espera queimaria as tentativas em minutos.
+      if (e instanceof AindaNao && !this.abortados.has(job.id)) {
+        const segundos = this.opts.intervaloPollSegundos ?? 60;
+        if (this.fila.reagendar(job.id, segundos, this.opts.dono)) {
+          log(`[job ${job.id}] ainda não: ${e.message} — nova checagem em ${segundos}s`);
+        }
+        this.ativos.delete(job.id);
+        this.abortados.delete(job.id);
+        return true;
+      }
       // `abortar()` já fechou este job; falhar de novo aqui seria uma corrida
       // decidida por ordem de microtask (ver `abortados`).
       if (!this.abortados.has(job.id)) {
@@ -236,6 +250,7 @@ export class Worker {
         agora: this.agora,
         log: this.opts.log ?? (() => {}),
         sinal: ctrl.signal,
+        aindaNao: (motivo: string) => { throw new AindaNao(motivo); },
       });
     } finally {
       if (ativo) ativo.ctrl = null;
