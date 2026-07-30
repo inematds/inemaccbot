@@ -15,7 +15,42 @@ export function checksum(sql: string): string {
 }
 
 /** Migrations do sistema, em ordem crescente de `version`. */
-export const MIGRATIONS: Migration[] = [];
+export const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    nome: 'jobs',
+    sql: `
+      CREATE TABLE jobs (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        fila           TEXT    NOT NULL,
+        kind           TEXT    NOT NULL,
+        tarefa         TEXT    NOT NULL,
+        input          TEXT    NOT NULL,
+        prioridade     INTEGER NOT NULL DEFAULT 0,
+        status         TEXT    NOT NULL DEFAULT 'queued',
+        tentativas     INTEGER NOT NULL DEFAULT 0,
+        max_tentativas INTEGER NOT NULL DEFAULT 1,
+        lease_ate      INTEGER,
+        disponivel_em  INTEGER NOT NULL DEFAULT 0,
+        idem_key       TEXT,
+        flow_ref       TEXT,
+        chat_id        INTEGER,
+        motor          TEXT,
+        modelo         TEXT,
+        esforco        TEXT,
+        resultado      TEXT,
+        erro           TEXT,
+        criado_em      INTEGER NOT NULL,
+        iniciado_em    INTEGER,
+        terminado_em   INTEGER
+      );
+      CREATE INDEX idx_jobs_claim
+        ON jobs (fila, status, disponivel_em, prioridade DESC, id);
+      CREATE INDEX idx_jobs_flow_ref ON jobs (flow_ref);
+      CREATE INDEX idx_jobs_idem_key ON jobs (idem_key);
+    `,
+  },
+];
 
 const SCHEMA_CONTROLE = `
   CREATE TABLE IF NOT EXISTS schema_migrations (
