@@ -52,4 +52,48 @@ describe('migrations', () => {
     expect(() => aplicarMigrations(db, agora, [adulterada])).toThrow(/checksum/i);
     db.close();
   });
+
+  it('divergent checksum found during validation does NOT apply any pending migrations', () => {
+    const db = abrirDb(caminho);
+    const M2: Migration = { version: 2, nome: 'cria_u', sql: 'CREATE TABLE u (b INTEGER);' };
+    // First, apply M2 so it exists in schema_migrations
+    aplicarMigrations(db, agora, [M2]);
+    // Now try to apply [M1 pending, M2 tampered]
+    const M2tampered: Migration = { ...M2, sql: 'CREATE TABLE u (b TEXT);' };
+    expect(() => aplicarMigrations(db, agora, [M1, M2tampered])).toThrow(/checksum/i);
+    // Verify M1 was NOT applied (table t does not exist)
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='t'").all();
+    expect(tables).toHaveLength(0);
+    // Verify no schema_migrations row for M1
+    const rows = db.prepare('SELECT version FROM schema_migrations WHERE version = 1').all();
+    expect(rows).toHaveLength(0);
+    db.close();
+  });
+
+  it('malformed SQL does not apply and leaves schema_migrations clean', () => {
+    const db = abrirDb(caminho);
+    const malformed: Migration = { version: 1, nome: 'bad', sql: 'CREATE TABLE ( ;' };
+    expect(() => aplicarMigrations(db, agora, [malformed])).toThrow();
+    // Verify no schema_migrations row for version 1
+    const rows = db.prepare('SELECT version FROM schema_migrations WHERE version = 1').all();
+    expect(rows).toHaveLength(0);
+    db.close();
+  });
+
+  it('transaction rollback on partial SQL failure leaves no partial state', () => {
+    const db = abrirDb(caminho);
+    const partial: Migration = {
+      version: 1,
+      nome: 'partial',
+      sql: 'CREATE TABLE bom (a INTEGER); CREATE TABLE ( ;',
+    };
+    expect(() => aplicarMigrations(db, agora, [partial])).toThrow();
+    // Verify the first table (bom) was NOT created (rollback worked)
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='bom'").all();
+    expect(tables).toHaveLength(0);
+    // Verify no schema_migrations row for version 1
+    const rows = db.prepare('SELECT version FROM schema_migrations WHERE version = 1').all();
+    expect(rows).toHaveLength(0);
+    db.close();
+  });
 });

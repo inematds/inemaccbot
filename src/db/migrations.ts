@@ -39,17 +39,26 @@ export function aplicarMigrations(
     }[]).map((l) => [l.version, l.checksum]),
   );
 
+  const sorted = [...migrations].sort((a, b) => a.version - b.version);
+
+  // First pass: validate all already-applied migrations (no side effects)
+  for (const m of sorted) {
+    const soma = checksum(m.sql);
+    const anterior = aplicadas.get(m.version);
+    if (anterior !== undefined && anterior !== soma) {
+      throw new Error(
+        `migration ${m.version} (${m.nome}): checksum divergente — o SQL mudou depois de aplicado`,
+      );
+    }
+  }
+
+  // Second pass: apply pending migrations
   let n = 0;
-  for (const m of [...migrations].sort((a, b) => a.version - b.version)) {
+  for (const m of sorted) {
     const soma = checksum(m.sql);
     const anterior = aplicadas.get(m.version);
     if (anterior !== undefined) {
-      if (anterior !== soma) {
-        throw new Error(
-          `migration ${m.version} (${m.nome}): checksum divergente — o SQL mudou depois de aplicado`,
-        );
-      }
-      continue;
+      continue; // Already applied and validated
     }
     db.transaction(() => {
       db.exec(m.sql);
