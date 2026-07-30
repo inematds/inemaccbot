@@ -120,17 +120,24 @@ describe('passo', () => {
 
   it('aguarda um promptDe assíncrono antes de chamar o runner', async () => {
     let ordem: string[] = [];
+    const rastreador = {
+      nome: 'fake',
+      iniciar: (ctx: any) => {
+        ordem.push('runner');
+        return new FakeRunner({ respostas: ['saida'] }).iniciar(ctx);
+      },
+    };
     const w = novoWorker({
       promptDe: async (job: Job) => {
         await new Promise((r) => setTimeout(r, 5));
         ordem.push('prompt');
         return { prompt: job.input, cwd: '/tmp', perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {} };
       },
-      runners: { fake: new FakeRunner({ respostas: ['saida'] }) },
+      runners: { fake: rastreador },
     });
     fila.enfileirar({ fila: 'io', kind: 'agent', tarefa: 'x', input: 'p', perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' } });
     await w.passo();
-    expect(ordem).toEqual(['prompt']);
+    expect(ordem).toEqual(['prompt', 'runner']);
   });
 });
 
