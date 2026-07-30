@@ -189,6 +189,48 @@ describe('executar', () => {
     });
   });
 
+  describe('/refazer e duração', () => {
+    it('reenfileira um job terminado preservando entrada, perfil e tentativas', () => {
+      executar(parseComando('transcrever: http://x | modelo=opus', defsTeste), depsSkills());
+      // max_tentativas=2: a primeira falha só requeueia. Esgotar as duas é o
+      // que leva o job a um estado terminal — que é o único refazível.
+      fila.pegar('texto', 60, 'w1');
+      fila.falhar(1, 'deu ruim', 'w1', 30);
+      t += 120;
+      fila.pegar('texto', 60, 'w1');
+      fila.falhar(1, 'deu ruim de novo', 'w1', 30);
+      expect(fila.obter(1)!.status).toBe('failed');
+
+      const r = executar(parseComando('/refazer 1'), depsSkills());
+      const novo = fila.obter(2)!;
+      expect(novo.tarefa).toBe('transcrever');
+      expect(novo.input).toBe(fila.obter(1)!.input);
+      expect(novo.modelo).toBe('opus');
+      expect(novo.max_tentativas).toBe(2);
+      expect(r).toContain('job 2');
+      // O velho continua lá: `jobs` é o histórico e nunca é deletado.
+      expect(fila.obter(1)!.status).toBe('failed');
+    });
+
+    // Refazer um job vivo poria dois jobs no mesmo trabalho — em render, dois
+    // processos na mesma GPU.
+    it('recusa refazer job ainda na fila ou rodando', () => {
+      executar(parseComando('transcrever: http://x', defsTeste), depsSkills());
+      expect(executar(parseComando('/refazer 1'), depsSkills())).toMatch(/ainda está queued/);
+      fila.pegar('texto', 60, 'w1');
+      expect(executar(parseComando('/refazer 1'), depsSkills())).toMatch(/ainda está running/);
+      expect(fila.listar()).toHaveLength(1);
+    });
+
+    it('/status mostra a duração de um job terminado', () => {
+      executar(parseComando('transcrever: http://x', defsTeste), depsSkills());
+      fila.pegar('texto', 60, 'w1');
+      t += 90;
+      fila.concluir(1, '/tmp/a.txt', 'w1');
+      expect(executar(parseComando('/status 1'), depsSkills())).toContain('duração: 1m');
+    });
+  });
+
   it('desconhecido aponta para /ajuda e não ecoa o texto cru', () => {
     const texto = 'segredo-super-especifico-xyz';
     const r = executar(parseComando(texto), deps());

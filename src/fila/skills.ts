@@ -11,10 +11,14 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { extrairArtefato } from '../dominio/artefato.js';
+import { extrairAlvo, extrairArtefato } from '../dominio/artefato.js';
 import { renderizarPrompt } from '../dominio/prompt.js';
 import { resolverPerfil } from '../dominio/perfil.js';
 import { acharSkill, type SkillDef } from '../dominio/registry.js';
+import {
+  encerrarTrabalhoDestacado, esperarArtefato, limparMarcadores, trabalhoEmCurso,
+  type OpcoesEspera,
+} from './render.js';
 import type { ContextoExecucao } from './runner.js';
 import type { Job, Perfil } from './types.js';
 
@@ -26,6 +30,8 @@ export interface EntradaSkill {
   destino?: string;
   /** Override pontual do perfil (`| modelo=opus`) — precedência 1 do §1.5. */
   perfil?: { motor?: string; modelo?: string; esforco?: string };
+  /** Campos declarados pela skill (`| vertical`, `| curso skillsx`). */
+  campos?: Record<string, string>;
 }
 
 export function parseEntradaSkill(input: string): EntradaSkill {
@@ -44,6 +50,7 @@ export function parseEntradaSkill(input: string): EntradaSkill {
     entrada: o.entrada,
     destino: typeof o.destino === 'string' ? o.destino : undefined,
     perfil: (typeof o.perfil === 'object' && o.perfil !== null ? o.perfil : undefined) as EntradaSkill['perfil'],
+    campos: (typeof o.campos === 'object' && o.campos !== null ? o.campos : undefined) as EntradaSkill['campos'],
   };
 }
 
@@ -56,7 +63,23 @@ export interface OpcoesSkills {
   /** `cwd` dos processos de agente. Validado: tem que existir. */
   cwd: string;
   perfilPadrao: Perfil;
+  log?: (m: string) => void;
+  /**
+   * Janelas da espera por artefato. A produção NÃO passa nada: valem os valores
+   * reais (poll de 5s, estabilidade de 12s). Só o teste troca — senão cada teste
+   * de render pagaria 12 segundos de relógio de parede, e a regra da §6.1 é
+   * relógio injetável, nunca `sleep`.
+   */
+  espera?: Pick<OpcoesEspera, 'estavelMs' | 'intervaloMs' | 'agoraMs' | 'dormir'>;
 }
+
+/**
+ * Teto do AGENTE numa skill que espera artefato, quando o registry não diz
+ * outro. Serve para quem só monta material e dispara (`explicativo`, `curso`,
+ * `demo`); as skills de reel declaram o próprio, porque nelas o agente roda o
+ * pipeline criativo inteiro inline.
+ */
+const TIMEOUT_SETUP_PADRAO_SEGUNDOS = 20 * 60;
 
 /**
  * Caminho do artefato: determinístico por JOB, não por tentativa. Uma
@@ -66,6 +89,17 @@ export interface OpcoesSkills {
  */
 export function caminhoArtefato(raiz: string, def: SkillDef, job: Job): string {
   return join(raiz, def.command, `${job.id}.${def.artefato_exts[0]}`);
+}
+
+function camposDeclarados(def: SkillDef, doJob: Record<string, string> | undefined): Record<string, string> {
+  const saida: Record<string, string> = {};
+  for (const [nome, c] of Object.entries(def.campos)) {
+    // Campo de ENTREGA (ex.: `mover`) é decisão do gateway depois do job — dar
+    // isso ao agente seria pedir a ele que movesse arquivo.
+    if (c.usa === 'entrega') continue;
+    saida[nome] = doJob?.[nome] ?? c.padrao;
+  }
+  return saida;
 }
 
 export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<ContextoExecucao> {
@@ -88,6 +122,12 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
     const entrada = parseEntradaSkill(job.input);
     const saida = caminhoArtefato(opts.raizArtefatos, def, job);
     mkdirSync(join(opts.raizArtefatos, def.command), { recursive: true });
+
+    // Vamos DISPARAR trabalho novo (não há nada em curso): apaga os marcadores
+    // da tentativa anterior agora, e não na hora de vigiar — ver
+    // `limparMarcadores`.
+    const emCurso = def.aguarda_artefato && trabalhoEmCurso(saida);
+    if (def.aguarda_artefato && !emCurso) limparMarcadores(saida);
 
     // Lido A CADA job de propósito: editar um prompt passa a valer para o
     // próximo job sem reiniciar o serviço. Skill não tem estado — "rodar de novo
@@ -114,12 +154,49 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
       }).perfil;
 
     return {
-      prompt: renderizarPrompt(template, { input: entrada.entrada, saida }),
+      // Os campos DECLARADOS entram sempre, com o default quando o comando os
+      // omitiu — quem monta isso é a gramática. Um campo que o job carrega mas
+      // a skill não declara mais (registry editado depois do enfileiramento) é
+      // descartado aqui, senão `renderizarPrompt` derrubaria o job por uma
+      // variável que o template não usa.
+      prompt: renderizarPrompt(template, {
+        input: entrada.entrada,
+        saida,
+        ...camposDeclarados(def, entrada.campos),
+      }),
       cwd: opts.cwd,
       perfil,
       vars: {},
-      timeoutMs: def.timeout_segundos * 1_000,
-      interpretarSaida: (bruto) => extrairArtefato(bruto, def.artefato_exts),
+      // A skill que espera artefato dá ao AGENTE um prazo curto (ele só faz o
+      // setup e dispara), e à ESPERA o prazo longo. Um só teto para os dois
+      // faria o agente poder gastar as duas horas do render antes de disparar
+      // qualquer coisa.
+      timeoutMs: def.aguarda_artefato
+        ? Math.min(
+          def.timeout_segundos,
+          def.timeout_setup_segundos ?? TIMEOUT_SETUP_PADRAO_SEGUNDOS,
+        ) * 1_000
+        : def.timeout_segundos * 1_000,
+      ...(def.aguarda_artefato
+        ? {
+          interpretarSaida: (bruto: string) => extrairAlvo(bruto, def.artefato_exts),
+          aguardarArtefato: (alvo: string, sinal: AbortSignal) =>
+            esperarArtefato(alvo, {
+              timeoutMs: def.timeout_segundos * 1_000,
+              sinal,
+              log: opts.log,
+              ...opts.espera,
+            }),
+          // Adoção (§2.5 "procure antes de criar"): o `.log` ao lado do alvo
+          // prova que uma tentativa anterior já disparou o trabalho.
+          ...(emCurso ? { alvoEmCurso: saida } : {}),
+          // Só o `/cancelar` mata o trabalho destacado. Desligamento e perda de
+          // lease deixam vivo de propósito — é o que a adoção depende.
+          encerrarTrabalho: () => encerrarTrabalhoDestacado(saida),
+        }
+        : {
+          interpretarSaida: (bruto: string) => extrairArtefato(bruto, def.artefato_exts),
+        }),
     };
   };
 }

@@ -3,7 +3,8 @@
 // chama isto direto via `WorkerOpts.aoTerminar` — sem que `fila/` conheça
 // `gateway/` (o callback é injetado, ver src/index.ts).
 import type { Transporte } from './telegram.js';
-import { planejarEntrega } from './entrega.js';
+import { duracao } from './comandos.js';
+import { planejarEntrega, type OpcoesEntrega } from './entrega.js';
 import type { Job } from '../fila/types.js';
 
 /**
@@ -20,9 +21,9 @@ export interface DepsNotificador {
    * gravado; aplicar de novo na saída custa nada e cobre o caminho em que a
    * linha veio de outro lugar (recuperação de lease no boot, por exemplo). */
   redigir?: (texto: string) => string;
-  /** Extrai o destino pedido no comando a partir do `input` do job. Injetado
-   * porque quem sabe o formato do input é o gateway de skills, não este módulo. */
-  destinoDe?: (job: Job) => string | undefined;
+  /** Como entregar ESTE job: destino, nome final, copiar ou mover. Injetado
+   * porque quem sabe o formato do input e o registry é o boot, não este módulo. */
+  entregaDe?: (job: Job) => OpcoesEntrega;
   /** true quando o resultado do job é um CAMINHO de artefato a entregar (skills)
    * e não um texto já pronto (`http.get`). */
   temArtefato?: (job: Job) => boolean;
@@ -57,12 +58,16 @@ export function criarNotificador(
       // chat tem que receber ao menos o caminho.
       let entrega;
       try {
-        entrega = planejarEntrega(bruto, deps.destinoDe?.(job));
+        entrega = planejarEntrega(bruto, deps.entregaDe?.(job) ?? {});
       } catch (e) {
         log(`[job ${job.id}] entrega falhou: ${(e as Error).message}`);
         entrega = { mensagem: `✅ Job ${job.id} concluído, mas a entrega falhou: ${redigir((e as Error).message)}\n${bruto}` };
       }
-      await transporte.responder(job.chat_id, `✅ Job ${job.id} concluído.\n${entrega.mensagem}`);
+      const d = duracao(job.iniciado_em, job.terminado_em);
+      await transporte.responder(
+        job.chat_id,
+        `✅ Job ${job.id} concluído${d ? ` em ${d}` : ''}.\n${entrega.mensagem}`,
+      );
       if (entrega.anexo && transporte.enviarDocumento) {
         try {
           await transporte.enviarDocumento(job.chat_id, entrega.anexo);

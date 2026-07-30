@@ -61,6 +61,8 @@ export interface WorkerOpts {
 interface Ativo {
   exec: Execucao | null;
   ctrl: AbortController | null;
+  /** Só em job que disparou trabalho FORA da árvore de processos (render). */
+  encerrar: (() => Promise<boolean>) | null;
 }
 
 export class Worker {
@@ -113,6 +115,18 @@ export class Worker {
       log(`[job ${id}] ${motivo} — abandonando o trabalho em voo`);
       this.abortados.add(id);
       this.ativos.delete(id);
+      // CANCELAR é diferente de perder o lease: o trabalho destacado (um render
+      // fora da árvore de processos) precisa morrer, senão ele segue ocupando a
+      // GPU enquanto o próximo job de render já reclamou o slot — dois renders
+      // na mesma GPU, que é o invariante que toda esta fila protege.
+      if (status === 'canceled' && ativo.encerrar) {
+        try {
+          const matou = await ativo.encerrar();
+          log(`[job ${id}] trabalho destacado ${matou ? 'encerrado' : 'não encontrado (pode seguir rodando)'}`);
+        } catch (e) {
+          log(`[job ${id}] não consegui encerrar o trabalho destacado: ${(e as Error).message}`);
+        }
+      }
       // Se `exec` ainda é null (job reclamado mas a Execução ainda não foi
       // atribuída em `ativos`), `exec?.cancelar()` é um no-op: se um processo
       // filho já tinha sido gerado, ele segue rodando sem supervisão até
@@ -137,7 +151,7 @@ export class Worker {
     const job = this.fila.pegar(this.opts.fila, this.opts.leaseSegundos, this.opts.dono);
     if (!job) return false;
 
-    this.ativos.set(job.id, { exec: null, ctrl: null });
+    this.ativos.set(job.id, { exec: null, ctrl: null, encerrar: null });
     const log = this.opts.log ?? (() => {});
     const ref = job.flow_ref ? ` ${job.flow_ref}` : '';
     log(`[job ${job.id}${ref}] ${job.fila}/${job.tarefa} motor=${job.motor ?? '-'} modelo=${job.modelo ?? '-'} esforco=${job.esforco ?? '-'}`);
@@ -216,6 +230,23 @@ export class Worker {
 
   private async rodarAgente(job: Job): Promise<string> {
     const ctx = await this.opts.promptDe(job);
+
+    // O trabalho já está em curso desde uma tentativa anterior (o serviço caiu
+    // e o processo destacado sobreviveu): não chama o agente de novo — só
+    // espera. Sem este caminho, um restart no meio de um render dispararia um
+    // SEGUNDO render sobre o primeiro.
+    // O encerrador vale para as duas rotas (dispara agora ou adota o que já
+    // estava rodando): nos dois casos existe trabalho destacado a matar se o
+    // operador cancelar.
+    const ativoInicial = this.ativos.get(job.id);
+    if (ativoInicial && ctx.encerrarTrabalho) ativoInicial.encerrar = ctx.encerrarTrabalho;
+
+    if (ctx.alvoEmCurso && ctx.aguardarArtefato) {
+      const log = this.opts.log ?? ((): void => {});
+      log(`[job ${job.id}] trabalho já disparado — adotando ${ctx.alvoEmCurso}`);
+      return this.esperarArtefato(job, ctx.aguardarArtefato, ctx.alvoEmCurso);
+    }
+
     const runner = this.opts.runners[ctx.perfil.motor];
     if (!runner) throw new Error(`motor desconhecido: ${ctx.perfil.motor}`);
     const exec = runner.iniciar(ctx);
@@ -231,9 +262,36 @@ export class Worker {
       // chat. Uma exceção aqui é falha do job, e é o comportamento correto:
       // agente que não declarou onde gravou é indistinguível de agente que não
       // gravou nada.
-      return ctx.interpretarSaida ? ctx.interpretarSaida(bruto) : bruto;
+      const saida = ctx.interpretarSaida ? ctx.interpretarSaida(bruto) : bruto;
+      // Trabalho destacado: o agente só DISPAROU. Continuamos segurando o job
+      // (e o slot da fila) enquanto o artefato não aparece.
+      if (ctx.aguardarArtefato) return this.esperarArtefato(job, ctx.aguardarArtefato, saida);
+      return saida;
     } finally {
       await exec.limpar();
+    }
+  }
+
+  /**
+   * Espera o artefato de trabalho destacado, com um `AbortController` guardado
+   * no MESMO campo que as tarefas `function` usam — assim `bater()` (lease
+   * perdido) e `abortar()` (encerramento) já interrompem esta espera sem
+   * nenhuma fiação nova. O processo destacado segue vivo de propósito: a
+   * próxima tentativa o adota.
+   */
+  private async esperarArtefato(
+    job: Job,
+    aguardar: (alvo: string, sinal: AbortSignal) => Promise<string>,
+    alvo: string,
+  ): Promise<string> {
+    const ctrl = new AbortController();
+    const ativo = this.ativos.get(job.id);
+    if (ativo) ativo.ctrl = ctrl;
+    else ctrl.abort(new Error('job não é mais deste worker'));
+    try {
+      return await aguardar(alvo, ctrl.signal);
+    } finally {
+      if (ativo) ativo.ctrl = null;
     }
   }
 

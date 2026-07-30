@@ -24,6 +24,14 @@ beforeEach(() => {
   defs = validarSkills([
     { ...comum, command: 'transcrever', aceita_destino: false },
     { ...comum, command: 'dublar', artefato_exts: ['mp4'], aceita_destino: true },
+    {
+      ...comum, command: 'explicativo', fila: 'render', artefato_exts: ['mp4'],
+      aceita_destino: true, aguarda_artefato: true,
+      campos: {
+        vertical: { tipo: 'bandeira', padrao: 'não' },
+        curso: { tipo: 'texto', padrao: '' },
+      },
+    },
   ], raiz);
 });
 afterEach(() => rmSync(raiz, { recursive: true, force: true }));
@@ -100,5 +108,43 @@ describe('textoSkills', () => {
     expect(t).toContain('transcrever');
     expect(t).toContain('dublar');
     expect(t).toContain('ex: x');
+  });
+});
+
+describe('campos declarados pela skill', () => {
+  // O v1 conhecia `vertical`, `pesquisa`, `narracao`, `visuais` e `mover` DENTRO
+  // do parser, e cada skill nova obrigava a editá-lo. Aqui quem declara é a
+  // skill; o parser só confere contra a declaração.
+  it('bandeira presente liga; ausente cai no padrão', () => {
+    const a = an('explicativo: RAG | vertical');
+    expect((a as { pedido: { campos: unknown } }).pedido.campos).toEqual({ vertical: 'sim', curso: '' });
+    const b = an('explicativo: RAG');
+    expect((b as { pedido: { campos: unknown } }).pedido.campos).toEqual({ vertical: 'não', curso: '' });
+  });
+
+  it('texto aceita as duas formas digitadas', () => {
+    for (const t of ['explicativo: RAG | curso skillsx', 'explicativo: RAG | curso=skillsx']) {
+      expect((an(t) as { pedido: { campos: Record<string, string> } }).pedido.campos.curso).toBe('skillsx');
+    }
+  });
+
+  // Estes valores viram nome de arquivo na entrega — regra que o v1 já aplicava.
+  it('valor de texto com espaço é recusado, com exemplo', () => {
+    const a = an('explicativo: RAG | curso t1 m1');
+    expect((a as { mensagem: string }).mensagem).toMatch(/espaço/);
+  });
+
+  it('campo de OUTRA skill não vale nesta, e o erro diz o que vale', () => {
+    // `dublar` não declara `vertical` — quem declara é `explicativo`.
+    const a = an('dublar: http://x | vertical');
+    expect((a as { mensagem: string }).mensagem).toContain('dublar');
+    expect((a as { mensagem: string }).mensagem).toContain('livesN');
+    // Skill sem destino não pode sugerir destino na dica.
+    const b = an('transcrever: http://x | vertical');
+    expect((b as { mensagem: string }).mensagem).not.toContain('livesN');
+  });
+
+  it('texto sem valor é erro nomeado, não silêncio', () => {
+    expect((an('explicativo: RAG | curso') as { mensagem: string }).mensagem).toMatch(/precisa de um valor/);
   });
 });

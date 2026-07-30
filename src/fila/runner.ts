@@ -22,6 +22,34 @@ export interface ContextoExecucao {
    * stdout cru vira o resultado (é o que os testes de fila usam).
    */
   interpretarSaida?: (bruto: string) => string;
+  /**
+   * O agente DISPARA o trabalho e sai; o resultado aparece depois, fora dele
+   * (etapa 3: render destacado). Quando presente, o worker chama isto com o
+   * caminho que `interpretarSaida` extraiu e espera aqui — segurando o lease
+   * (o heartbeat continua) e, portanto, o SLOT da fila.
+   *
+   * Segurar o slot é requisito, não detalhe: liberar a vaga entre um poll e
+   * outro deixaria um segundo render ser reclamado, e os dois escreveriam na
+   * mesma GPU — que é exatamente o que a concorrência 1 da fila existe para
+   * impedir.
+   */
+  aguardarArtefato?: (alvo: string, sinal: AbortSignal) => Promise<string>;
+  /**
+   * O trabalho já foi disparado numa tentativa anterior (o serviço caiu no meio
+   * e o processo destacado sobreviveu). O agente NÃO é chamado: vai direto
+   * esperar o artefato deste caminho. Sem isto, um restart no meio de um render
+   * dispararia um SEGUNDO render sobre o primeiro.
+   */
+  alvoEmCurso?: string;
+  /**
+   * Encerra o trabalho DESTACADO. Chamado só quando o operador cancelou o job:
+   * no desligamento e na perda de lease o processo destacado tem que sobreviver,
+   * porque é ele que a próxima tentativa adota.
+   *
+   * Devolve `true` se havia o que matar — a mensagem no chat depende disso: um
+   * render que continuou rodando não pode ser anunciado como cancelado (§3.7).
+   */
+  encerrarTrabalho?: () => Promise<boolean>;
 }
 
 /** Uma execução em curso. `cancelar` encerra a ÁRVORE de processos (spec §3.7). */

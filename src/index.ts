@@ -28,6 +28,7 @@ import type { Agora } from './fila/types.js';
 import { Worker, type Tarefa } from './fila/worker.js';
 import { tratarMensagem } from './gateway/mensagem.js';
 import { criarBaixadorTelegram } from './gateway/midia.js';
+import { nomeDeEntrega } from './gateway/entrega.js';
 import { criarNotificador } from './gateway/notificar.js';
 import { type Transporte, criarBot } from './gateway/telegram.js';
 
@@ -245,6 +246,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       raizRepo: RAIZ_REPO,
       raizArtefatos,
       cwd: homedir(),
+      log: deps.log,
       perfilPadrao: {
         motor: cfg.motorPadrao,
         modelo: cfg.modeloPadrao,
@@ -267,11 +269,21 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // `ffmpeg.thumb` já responde o caminho — tratá-los como artefato faria a
       // entrega tentar ler um corpo HTTP como se fosse arquivo.
       temArtefato: (job) => defs.some((d) => d.command === job.tarefa),
-      destinoDe: (job) => {
+      entregaDe: (job) => {
+        const def = defs.find((d) => d.command === job.tarefa);
+        if (!def) return {};
         try {
-          return parseEntradaSkill(job.input).destino;
+          const e = parseEntradaSkill(job.input);
+          return {
+            destinoDir: e.destino,
+            nome: nomeDeEntrega({
+              command: def.command, id: job.id,
+              ext: def.artefato_exts[0], campos: e.campos,
+            }),
+            mover: e.campos?.mover === 'sim',
+          };
         } catch {
-          return undefined;
+          return {};
         }
       },
     });
@@ -325,6 +337,22 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       void Promise.all(workers.map(({ w }) => w.bater())).catch((e: unknown) => {
         deps.log(`heartbeat: ${(e as Error).message}`);
       });
+      // Recuperação PERIÓDICA, não só no boot (spec §3.6b: `running` sem worker
+      // vivo volta pra fila). Rodar só no boot bastava enquanto os jobs duravam
+      // segundos; com um render de 2h, um `kill -9` seguido de restart DENTRO da
+      // janela do lease deixava o job `running` com lease vivo e ninguém para
+      // reclamá-lo — preso para sempre. Com a adoção do render em pé, requeue
+      // aqui é seguro: a tentativa seguinte adota o trabalho destacado em vez de
+      // disparar outro.
+      try {
+        const r = fila.recuperarLeasesVencidos();
+        if (r.requeued || r.falhados.length) {
+          deps.log(`recuperação periódica: requeued=${r.requeued} failed=${r.falhados.length}`);
+          for (const job of r.falhados) void notificar(job).catch(() => { /* §8: melhor esforço */ });
+        }
+      } catch (e) {
+        deps.log(`recuperação periódica falhou: ${(e as Error).message}`);
+      }
     }, deps.heartbeatMs);
 
     // Depois deste ponto os laços já estão girando e o heartbeat já está de pé.

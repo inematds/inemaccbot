@@ -4,7 +4,7 @@ import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  LIMITE_TEXTO_BYTES, copiarParaDestino, nomeSeguro, planejarEntrega,
+  LIMITE_TEXTO_BYTES, copiarParaDestino, nomeDeEntrega, nomeSeguro, planejarEntrega,
 } from './entrega.js';
 
 let dir: string;
@@ -54,6 +54,27 @@ describe('copiarParaDestino', () => {
   });
 });
 
+describe('nomeDeEntrega', () => {
+  it('usa curso e modulo quando existem, com o formato no fim', () => {
+    expect(nomeDeEntrega({ command: 'curso', id: 9, ext: 'mp4', campos: { curso: 'skillsx', modulo: 't1m1' } }))
+      .toBe('skillsx-t1m1-16.mp4');
+  });
+
+  it('marca 9 quando vertical', () => {
+    expect(nomeDeEntrega({ command: 'explicativo', id: 9, ext: 'mp4', campos: { vertical: 'sim' } }))
+      .toBe('explicativo-9-9.mp4');
+  });
+
+  it('sem rótulo, cai em skill-id', () => {
+    expect(nomeDeEntrega({ command: 'demo', id: 3, ext: 'mp4' })).toBe('demo-3-16.mp4');
+  });
+
+  it('rótulo hostil é sanitizado (o nome vai pro disco)', () => {
+    expect(nomeDeEntrega({ command: 'curso', id: 1, ext: 'mp4', campos: { curso: '../../etc' } }))
+      .not.toContain('..');
+  });
+});
+
 describe('planejarEntrega', () => {
   it('texto curto vai como CONTEÚDO — caminho no disco não serve no celular', () => {
     const e = planejarEntrega(arquivo('t.txt', 'a transcrição inteira'));
@@ -87,7 +108,7 @@ describe('planejarEntrega', () => {
   });
 
   it('com destino, copia e responde o caminho final — sem anexar', () => {
-    const e = planejarEntrega(arquivo('v.mp4', 'bytes'), destino);
+    const e = planejarEntrega(arquivo('v.mp4', 'bytes'), { destinoDir: destino });
     expect(e.mensagem).toContain(destino);
     expect(e.anexo).toBeUndefined();
     expect(existsSync(join(destino, 'v.mp4'))).toBe(true);
@@ -97,6 +118,30 @@ describe('planejarEntrega', () => {
   // Mandar um caminho quebrado seria pior que dizer o que houve.
   it('artefato ausente é dito com todas as letras', () => {
     expect(planejarEntrega(join(dir, 'fantasma.txt')).mensagem).toMatch(/não está lá/);
+  });
+
+  it('entrega com o nome ordenável pedido, não com o nome do arquivo de trabalho', () => {
+    const e = planejarEntrega(arquivo('7.mp4', 'bytes'), {
+      destinoDir: destino, nome: 'skillsx-t1m1-16.mp4',
+    });
+    expect(existsSync(join(destino, 'skillsx-t1m1-16.mp4'))).toBe(true);
+    expect(e.mensagem).toContain('skillsx-t1m1-16.mp4');
+  });
+
+  // Default é COPIAR: a skill de reel grava na convenção dela e o original tem
+  // que ficar lá (o v1 nunca passava --pasta nessas skills por isso).
+  it('copia por default, deixando o original', () => {
+    const src = arquivo('r.mp4', 'bytes');
+    planejarEntrega(src, { destinoDir: destino });
+    expect(existsSync(src)).toBe(true);
+  });
+
+  it('| mover apaga o original só depois de copiar', () => {
+    const src = arquivo('r.mp4', 'bytes');
+    const e = planejarEntrega(src, { destinoDir: destino, mover: true });
+    expect(existsSync(src)).toBe(false);
+    expect(existsSync(join(destino, 'r.mp4'))).toBe(true);
+    expect(e.mensagem).toContain('movido');
   });
 
   it('resultado vazio não explode', () => {
