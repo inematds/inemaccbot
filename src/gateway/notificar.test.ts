@@ -1,5 +1,8 @@
 // src/gateway/notificar.test.ts
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { criarNotificador } from './notificar.js';
 import type { Transporte } from './telegram.js';
@@ -46,6 +49,29 @@ function fakeTransporte(): { transporte: Transporte; chamadas: Array<{ chatId: n
   };
 }
 
+/** Transporte que também registra anexos — o de cima cobre só texto de propósito
+ * (`enviarDocumento` é opcional na interface). */
+function transporteComAnexo(): {
+  transporte: Transporte;
+  textos: string[];
+  anexos: string[];
+} {
+  const textos: string[] = [];
+  const anexos: string[] = [];
+  return {
+    textos,
+    anexos,
+    transporte: {
+      async responder(_c: number, texto: string): Promise<void> { textos.push(texto); },
+      async enviarDocumento(_c: number, caminho: string): Promise<void> { anexos.push(caminho); },
+    },
+  };
+}
+
+let dir: string;
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'inemaccbot-notif-')); });
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
 describe('criarNotificador', () => {
   it('job done: uma mensagem pro chat certo, contendo o id e o resultado', async () => {
     const { transporte, chamadas } = fakeTransporte();
@@ -87,5 +113,52 @@ describe('criarNotificador', () => {
     const notificar = criarNotificador(transporte);
     await notificar(job({ status: 'queued', chat_id: 42 }));
     expect(chamadas).toHaveLength(0);
+  });
+
+  describe('entrega de artefato (job de skill)', () => {
+    const skill = { temArtefato: () => true };
+
+    it('transcrição curta chega como TEXTO no chat', async () => {
+      const { transporte, textos, anexos } = transporteComAnexo();
+      const arq = join(dir, 'a.txt');
+      writeFileSync(arq, 'o que foi falado');
+      await criarNotificador(transporte, skill)(job({ status: 'done', resultado: arq }));
+      expect(textos.join('\n')).toContain('o que foi falado');
+      expect(anexos).toEqual([]);
+    });
+
+    it('vídeo dublado chega como ANEXO', async () => {
+      const { transporte, anexos } = transporteComAnexo();
+      const arq = join(dir, 'v.mp4');
+      writeFileSync(arq, 'bytes');
+      await criarNotificador(transporte, skill)(job({ status: 'done', resultado: arq }));
+      expect(anexos).toEqual([arq]);
+    });
+
+    // Sem `temArtefato`, o resultado de um `http.get` (corpo da resposta) seria
+    // tratado como caminho de arquivo.
+    it('job que NÃO é skill continua com o resultado cru na mensagem', async () => {
+      const { transporte, textos } = transporteComAnexo();
+      await criarNotificador(transporte)(job({ status: 'done', resultado: 'corpo http' }));
+      expect(textos.join('')).toContain('corpo http');
+    });
+
+    it('falha ao enviar o anexo não derruba nada — o caminho já foi no texto', async () => {
+      const arq = join(dir, 'v.mp4');
+      writeFileSync(arq, 'bytes');
+      const transporte: Transporte = {
+        async responder(): Promise<void> { /* ok */ },
+        async enviarDocumento(): Promise<void> { throw new Error('rede caiu'); },
+      };
+      await expect(criarNotificador(transporte, skill)(job({ status: 'done', resultado: arq })))
+        .resolves.toBeUndefined();
+    });
+
+    it('erro de job passa pelo redator antes de ir pro chat', async () => {
+      const { transporte, chamadas } = fakeTransporte();
+      const notificar = criarNotificador(transporte, { redigir: (t) => t.replace('segredo', '«x»') });
+      await notificar(job({ status: 'failed', erro: 'vazou segredo aqui' }));
+      expect(chamadas[0]!.texto).not.toContain('segredo');
+    });
   });
 });

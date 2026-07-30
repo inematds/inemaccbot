@@ -1,7 +1,7 @@
 // Adaptador Telegram (grammy). ÚNICO arquivo do gateway que conhece a API do
 // Telegram — tudo que é política (allowlist, corte, log) vive em `rotear`,
 // que é pura e testável sem grammy. `criarBot` é só a fiação.
-import { Bot } from 'grammy';
+import { Bot, InputFile } from 'grammy';
 import type { Config } from '../config.js';
 
 /** Telegram rejeita qualquer mensagem acima de 4096 chars (UTF-16 code units) com
@@ -110,6 +110,9 @@ export async function enviarPedacos(
  * quem chama precise conhecer grammy. */
 export interface Transporte {
   responder(chatId: number, texto: string): Promise<void>;
+  /** Envia um arquivo do disco como documento. Opcional: um transporte de teste
+   * que só verifica texto não precisa implementar. */
+  enviarDocumento?(chatId: number, caminho: string): Promise<void>;
 }
 
 /** Único ponto de fiação com grammy. Não tem política — só liga `rotear` ao
@@ -136,6 +139,9 @@ export function criarBot(
   const transporte: Transporte = {
     async responder(chatId: number, texto: string): Promise<void> {
       await enviarPedacos(async (pedaco) => { await bot.api.sendMessage(chatId, pedaco); }, cortar(texto));
+    },
+    async enviarDocumento(chatId: number, caminho: string): Promise<void> {
+      await bot.api.sendDocument(chatId, new InputFile(caminho));
     },
   };
 

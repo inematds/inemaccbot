@@ -17,7 +17,7 @@ import { type Config, carregarConfig } from './config.js';
 import { abrirDb } from './db/abrir.js';
 import { redatorPadrao } from './dominio/redacao.js';
 import { carregarSkills as carregarSkillsPadrao, type SkillDef } from './dominio/registry.js';
-import { criarPromptDe } from './fila/skills.js';
+import { criarPromptDe, parseEntradaSkill } from './fila/skills.js';
 import { aplicarMigrations } from './db/migrations.js';
 import { CONCORRENCIAS, FILAS } from './fila/filas.js';
 import { FilaSqlite } from './fila/store.js';
@@ -246,7 +246,21 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     // 5. só então: workers e bot.
     const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
-    const notificar = criarNotificador(transp.transporte);
+    const notificar = criarNotificador(transp.transporte, {
+      redigir,
+      log: deps.log,
+      // Só job de SKILL produz artefato em disco. `http.get` devolve texto e
+      // `ffmpeg.thumb` já responde o caminho — tratá-los como artefato faria a
+      // entrega tentar ler um corpo HTTP como se fosse arquivo.
+      temArtefato: (job) => defs.some((d) => d.command === job.tarefa),
+      destinoDe: (job) => {
+        try {
+          return parseEntradaSkill(job.input).destino;
+        } catch {
+          return undefined;
+        }
+      },
+    });
 
     // 6. §8: a recuperação acabou de marcar jobs como `failed` — uma transição
     //    TERMINAL que acontece fora do `Worker`. Sem isto o chat que pediu o job
