@@ -177,4 +177,32 @@ export class FilaSqlite {
       .run(this.agora() + emSegundos, id);
     return r.changes === 1;
   }
+
+  /** Job já concluído com essa chave de idempotência — a tarefa pode adotar o resultado. */
+  jaConcluido(idemKey: string): Job | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM jobs WHERE idem_key = ? AND status = 'done' ORDER BY id DESC LIMIT 1`,
+      )
+      .get(idemKey) as Job | undefined;
+  }
+
+  /**
+   * Enfileira só se não houver job com a mesma `idem_key` já concluído ou em voo.
+   * `failed`/`canceled` NÃO bloqueiam: retentar é legítimo (é o que /refazer faz).
+   */
+  enfileirarSeNovo(n: NovoJob): { job: Job; novo: boolean } {
+    if (!n.idem_key) return { job: this.enfileirar(n), novo: true };
+    return this.db.transaction(() => {
+      const existente = this.db
+        .prepare(
+          `SELECT * FROM jobs
+            WHERE idem_key = ? AND status IN ('queued', 'running', 'done')
+            ORDER BY id DESC LIMIT 1`,
+        )
+        .get(n.idem_key) as Job | undefined;
+      if (existente) return { job: existente, novo: false };
+      return { job: this.enfileirar(n), novo: true };
+    })();
+  }
 }
