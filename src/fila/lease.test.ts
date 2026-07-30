@@ -36,6 +36,18 @@ describe('renovar', () => {
     expect(fila.renovar(job.id, 60, 'w1')).toBe(false);
   });
 
+  // É este `false` que faz o `/cancelar` MATAR o processo filho: `bater()` lê
+  // o false e dispara `ctrl.abort()`. Aqui o `lease_owner` é preservado de
+  // propósito — assim o único predicado que pode recusar é `status='running'`,
+  // e um mutante que o remova fica vermelho neste teste (o `cancelar()` real
+  // também zera o dono, o que mascararia a regressão no teste de ponta a ponta).
+  it('não renova job cancelado mesmo com o lease_owner ainda casando', () => {
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
+    const job = fila.pegar('io', 60, 'w1')!;
+    db.prepare(`UPDATE jobs SET status = 'canceled' WHERE id = ?`).run(job.id);
+    expect(fila.obter(job.id)!.lease_owner).toBe('w1');
+    expect(fila.renovar(job.id, 60, 'w1')).toBe(false);
+  });
 });
 
 describe('recuperarLeasesVencidos', () => {

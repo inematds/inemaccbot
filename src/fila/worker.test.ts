@@ -319,6 +319,41 @@ describe('drain', () => {
     await emCurso;
   });
 
+  // A cadeia que faz o `/cancelar` MATAR o ffmpeg é emergente e mora em três
+  // arquivos: `cancelar()` põe status='canceled' → o `WHERE status='running'`
+  // do `renovar()` deixa de casar → `bater()` vê false → `ctrl.abort()`. Sem
+  // este teste, tirar `AND status = 'running'` do `renovar` mantém tudo verde e
+  // transforma o `/cancelar` numa flag no banco com um ffmpeg vivo atrás.
+  it('/cancelar mata o processo filho: cancelar + bater dispara ctx.sinal e larga o job', async () => {
+    let liberar: (() => void) | undefined;
+    let sinal: AbortSignal | undefined;
+    const logs: string[] = [];
+    const w = novoWorker({
+      tarefas: {
+        lento: (ctx) => new Promise<string>((r) => { sinal = ctx.sinal; liberar = () => r('fim'); }),
+      },
+      log: (m: string) => logs.push(m),
+    });
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+    const emCurso = w.passo();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(w.emVoo).toBe(1);
+    expect(sinal!.aborted).toBe(false);
+
+    expect(fila.cancelar(job.id)).toBe(true);
+    await w.bater();
+
+    expect(sinal!.aborted).toBe(true);
+    expect(w.emVoo).toBe(0);
+    // E o log não pode chamar isto de "lease perdido": foi o operador.
+    expect(logs.some((l) => /CANCELADO pelo operador/.test(l))).toBe(true);
+
+    liberar!();
+    await emCurso;
+    expect(fila.obter(job.id)!.status).toBe('canceled');
+  });
+
   it('NÃO dispara ctx.sinal no caminho de conclusão normal', async () => {
     let sinal: AbortSignal | undefined;
     const w = novoWorker({

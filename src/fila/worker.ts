@@ -90,7 +90,16 @@ export class Worker {
     const log = this.opts.log ?? (() => {});
     for (const [id, ativo] of [...this.ativos]) {
       if (this.fila.renovar(id, this.opts.leaseSegundos, this.opts.dono)) continue;
-      log(`[job ${id}] LEASE PERDIDO (dono=${this.opts.dono}) — abandonando o trabalho em voo`);
+      // `renovar` devolve false por DUAS causas muito diferentes, e chamar as
+      // duas de "LEASE PERDIDO" mente para o operador: o `/cancelar` dele põe
+      // o job em `canceled`, e é o `WHERE status = 'running'` do `renovar` que
+      // rejeita — este é o caminho por onde o ffmpeg do job cancelado morre.
+      // O status é uma leitura só; distinguir sai barato.
+      const status = this.fila.obter(id)?.status;
+      const motivo = status === 'canceled'
+        ? 'CANCELADO pelo operador'
+        : `LEASE PERDIDO (dono=${this.opts.dono})`;
+      log(`[job ${id}] ${motivo} — abandonando o trabalho em voo`);
       this.abortados.add(id);
       this.ativos.delete(id);
       // Se `exec` ainda é null (job reclamado mas a Execução ainda não foi
