@@ -248,6 +248,38 @@ export class FilaSqlite {
     return r.changes === 1;
   }
 
+  /**
+   * Jobs que TERMINARAM e cujo dono ainda não foi avisado. É a rede de segurança
+   * do §8: uma notificação que falhou (Telegram fora do ar, processo morto
+   * entre o ack e o envio) some para sempre se ninguém reprocurar.
+   *
+   * `canceled` fica de fora de propósito: o cancelamento já foi confirmado no
+   * chat pelo próprio comando que o disparou.
+   */
+  pendentesDeNotificacao(limite = 20): Job[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM jobs
+          WHERE status IN ('done', 'failed')
+            AND chat_id IS NOT NULL
+            AND notificado_em IS NULL
+          ORDER BY id LIMIT ?`,
+      )
+      .all(limite) as Job[];
+  }
+
+  /**
+   * Marca a notificação como entregue. Só DEPOIS do envio ter sucesso — marcar
+   * antes trocaria "avisa duas vezes" (chato) por "nunca avisa" (o modo de
+   * falha que a §8 proíbe).
+   */
+  marcarNotificado(id: number): boolean {
+    const r = this.db
+      .prepare('UPDATE jobs SET notificado_em = ? WHERE id = ? AND notificado_em IS NULL')
+      .run(this.agora(), id);
+    return r.changes === 1;
+  }
+
   /** Job já concluído com essa chave de idempotência — a tarefa pode adotar o resultado. */
   jaConcluido(idemKey: string): Job | undefined {
     return this.db

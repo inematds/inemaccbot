@@ -38,6 +38,8 @@ export interface Job {
   esforco: string | null;
   resultado: string | null;
   erro: string | null;
+  /** Quando o término foi notificado ao `chat_id`. NULL = ainda não avisamos. */
+  notificado_em: number | null;
   criado_em: number;
   iniciado_em: number | null;
   terminado_em: number | null;

@@ -24,7 +24,7 @@ import { FilaSqlite } from './fila/store.js';
 import { RUNNERS } from './fila/runner.js';
 import './fila/runner-claude.js'; // efeito colateral: registra RUNNERS.claude
 import { criarTarefas as criarTarefasPadrao } from './fila/tarefas/index.js';
-import type { Agora } from './fila/types.js';
+import type { Agora, Job } from './fila/types.js';
 import { Worker, type Tarefa } from './fila/worker.js';
 import { tratarMensagem } from './gateway/mensagem.js';
 import { criarBaixadorTelegram } from './gateway/midia.js';
@@ -121,6 +121,9 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   let heartbeat: NodeJS.Timeout | null = null;
   let transp: TransporteServico | null = null;
   let workers: { w: Worker; n: number }[] = [];
+  /** Preenchido no `iniciar()`, junto do transporte — antes dele não há para
+   * onde notificar. */
+  let notificar: ((job: Job) => Promise<void>) | null = null;
   let lacos: Promise<void>[] = [];
 
   const timeouts = new Set<NodeJS.Timeout>();
@@ -209,6 +212,31 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     );
   }
 
+  /**
+   * Reentrega notificações de término que nunca chegaram. Best-effort e nunca
+   * lança: é rede de segurança, não caminho principal — se falhar de novo, o
+   * job continua marcado como não-notificado e a próxima passagem tenta.
+   */
+  async function reentregarNotificacoes(): Promise<void> {
+    if (!notificar) return;
+    let pendentes: Job[];
+    try {
+      pendentes = fila.pendentesDeNotificacao();
+    } catch (e) {
+      deps.log(`reentrega: não consegui listar pendentes: ${(e as Error).message}`);
+      return;
+    }
+    for (const job of pendentes) {
+      try {
+        await notificar(job);
+        fila.marcarNotificado(job.id);
+        deps.log(`[job ${job.id}] notificação reentregue`);
+      } catch (e) {
+        deps.log(`[job ${job.id}] reentrega falhou: ${(e as Error).message}`);
+      }
+    }
+  }
+
   async function iniciar(): Promise<void> {
     // 1. schema. Checksum divergente derruba o boot: subir sobre um schema que
     //    não reconhecemos é pior que não subir.
@@ -262,7 +290,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     // 5. só então: workers e bot.
     const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
-    const notificar = criarNotificador(transp.transporte, {
+    notificar = criarNotificador(transp.transporte, {
       redigir,
       log: deps.log,
       // Só job de SKILL produz artefato em disco. `http.get` devolve texto e
@@ -301,6 +329,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     for (const job of r.falhados) {
       try {
         await notificar(job);
+        fila.marcarNotificado(job.id);
       } catch (e) {
         deps.log(`boot: notificação da recuperação falhou (job ${job.id}): ${(e as Error).message}`);
       }
@@ -319,7 +348,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
           runners: RUNNERS,
           promptDe,
           log: deps.log,
-          aoTerminar: notificar,
+          aoTerminar: notificar ?? undefined,
           redigir,
         },
         deps.agora,
@@ -344,11 +373,18 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // reclamá-lo — preso para sempre. Com a adoção do render em pé, requeue
       // aqui é seguro: a tentativa seguinte adota o trabalho destacado em vez de
       // disparar outro.
+      // Reentrega do que ficou sem aviso (§8). Vale para os dois casos que o
+      // log sozinho não resolve: Telegram fora do ar na hora do ack, e processo
+      // morto entre gravar o término e enviar a mensagem.
+      void reentregarNotificacoes();
       try {
         const r = fila.recuperarLeasesVencidos();
         if (r.requeued || r.falhados.length) {
           deps.log(`recuperação periódica: requeued=${r.requeued} failed=${r.falhados.length}`);
-          for (const job of r.falhados) void notificar(job).catch(() => { /* §8: melhor esforço */ });
+          // Sem notificação inline aqui de propósito: estes jobs acabaram de
+          // virar `failed` com `notificado_em` nulo, então a própria varredura
+          // de reentrega (que roda no mesmo tick) os pega — e ela é quem marca
+          // a entrega. Notificar aqui também mandaria a mensagem duas vezes.
         }
       } catch (e) {
         deps.log(`recuperação periódica falhou: ${(e as Error).message}`);

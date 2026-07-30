@@ -19,7 +19,7 @@ function job(over: Partial<Job> = {}): Job {
     prioridade: 0, status: 'running', tentativas: 1, max_tentativas: 2,
     lease_ate: null, lease_owner: null, disponivel_em: 0, idem_key: null,
     flow_ref: null, chat_id: 1, motor: null, modelo: null, esforco: null,
-    resultado: null, erro: null, criado_em: 0, iniciado_em: null, terminado_em: null,
+    resultado: null, erro: null, notificado_em: null, criado_em: 0, iniciado_em: null, terminado_em: null,
     ...over,
   };
 }

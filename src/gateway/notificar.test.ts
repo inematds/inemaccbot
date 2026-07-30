@@ -30,6 +30,7 @@ function job(over: Partial<Job> = {}): Job {
     esforco: null,
     resultado: null,
     erro: null,
+    notificado_em: null,
     criado_em: 0,
     iniciado_em: null,
     terminado_em: null,

@@ -198,9 +198,17 @@ export class Worker {
     const log = this.opts.log ?? (() => {});
     try {
       const relido = this.fila.obter(id);
-      if (relido) await this.opts.aoTerminar(relido);
+      if (!relido) return;
+      await this.opts.aoTerminar(relido);
+      // Só DEPOIS do envio ter sucesso. Marcar antes trocaria "avisa duas
+      // vezes" (chato) por "nunca avisa" — e é o segundo que a §8 proíbe.
+      // Enquanto isto não é marcado, a varredura de reentrega vê o job.
+      this.fila.marcarNotificado(id);
     } catch (e) {
-      log(`[job ${id}] aoTerminar falhou: ${(e as Error).message}`);
+      // A mensagem NÃO se perde: o job segue com `notificado_em` nulo e a
+      // varredura periódica tenta de novo. No v1 isso era o watcher
+      // reencontrando um job ainda pendente; aqui é uma coluna.
+      log(`[job ${id}] aoTerminar falhou (será reentregue): ${(e as Error).message}`);
     }
   }
 

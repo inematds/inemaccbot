@@ -57,6 +57,24 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE jobs ADD COLUMN lease_owner TEXT;
     `,
   },
+  {
+    version: 3,
+    nome: 'notificado_em',
+    // Quando a notificação de término foi ENTREGUE. NULL num job terminal com
+    // `chat_id` significa "o dono ainda não sabe" — e é o que a varredura de
+    // reentrega procura.
+    //
+    // Isto fecha um buraco que o v1 não tinha: lá, se a notificação falhasse, o
+    // job continuava pendente e a próxima passagem do watcher reentregava
+    // exatamente uma vez (`watcher.test.ts` tinha caso dedicado). No v2 o
+    // `aoTerminar` que falhava só ia para o log, e a mensagem sumia para
+    // sempre — silêncio, que a §8 proíbe.
+    sql: `
+      ALTER TABLE jobs ADD COLUMN notificado_em INTEGER;
+      CREATE INDEX idx_jobs_pendente_notificacao
+        ON jobs (status, notificado_em, chat_id);
+    `,
+  },
 ];
 
 const SCHEMA_CONTROLE = `
