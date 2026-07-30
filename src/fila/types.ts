@@ -51,6 +51,9 @@ export interface Job {
  */
 export interface ContextoTarefa {
   job: Job;
+  // import inline de propósito — types.ts precisa continuar sem import de
+  // runtime, senão a exceção de fronteira dominio/ -> fila/types.js vira
+  // acoplamento de verdade.
   fila: import('./store.js').FilaSqlite;
   agora: Agora;
   log: (m: string) => void;

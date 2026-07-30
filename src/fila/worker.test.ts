@@ -83,18 +83,21 @@ describe('passo', () => {
   });
 
   it('entrega à tarefa um contexto com job, fila e relógio', async () => {
-    let visto: { id: number; temFila: boolean; agora: number } | undefined;
+    // Identidade, não forma: uma tarefa que recebesse outra instância do store
+    // veria o mesmo banco mas não a mesma sessão, e um teste de forma (ex.:
+    // "tem método obter") não distinguiria os dois casos.
+    let visto: { id: number; mesmaFila: boolean; agora: number } | undefined;
     const w = novoWorker({
       tarefas: {
         espia: async (ctx) => {
-          visto = { id: ctx.job.id, temFila: typeof ctx.fila.obter === 'function', agora: ctx.agora() };
+          visto = { id: ctx.job.id, mesmaFila: ctx.fila === fila, agora: ctx.agora() };
           return 'ok';
         },
       },
     });
     const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'espia', input: '' });
     await w.passo();
-    expect(visto).toEqual({ id: job.id, temFila: true, agora: 1_000 });
+    expect(visto).toEqual({ id: job.id, mesmaFila: true, agora: 1_000 });
   });
 
   it('a tarefa consegue consultar jaConcluido pelo contexto (§2.5 alcançável)', async () => {
