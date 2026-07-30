@@ -111,6 +111,35 @@ Onde o lock-in **de fato** mora, e que trocar de motor não resolve:
 Conclusão: portar o `inemaccbot` é barato; portar o *catálogo de skills* é o trabalho real. A
 interface existe para manter essa porta aberta, não porque a troca esteja planejada.
 
+### 1.5 Perfil de execução: motor, modelo e esforço
+
+Hoje isso é **hardcoded no código**, em dois lugares, e nunca decidido pelo operador:
+
+| onde (v1) | valor | efeito |
+|---|---|---|
+| `mkivideos/src/cli-lib.ts:171` | `--model sonnet --effort low` | vale para **toda** skill de render, do `explicativo` ao `reelinematds` |
+| `inemaccvbot/src/interpret.ts` | `--model claude-opus-5 --effort low` | só para interpretar texto livre |
+
+Mudar exige editar TS, recompilar e reiniciar o serviço — e o job não registra com que perfil rodou.
+
+No v2, `{ motor, modelo, esforco }` é **configuração**, resolvida por precedência (mais forte
+primeiro):
+
+1. **override no comando** — `/explicativo … | modelo=opus` (pontual, decisão do operador)
+2. **fase no `flow.json`** — uma fase específica pode pedir mais esforço
+3. **entrada no registry** (`skills.json` / `fluxos.json`) — o lugar natural, por tarefa
+4. **default no `.env`** — `MOTOR_PADRAO`, `MODELO_PADRAO`, `ESFORCO_PADRAO`
+
+Duas consequências que valem o custo:
+
+- tarefas de dificuldade diferente deixam de compartilhar perfil por acidente (`explicativo` em
+  sonnet/low; `reelinematds`, que tem revisor independente, em opus/high) — são linhas distintas de
+  um JSON, não um `if` no código;
+- **o perfil efetivo é gravado no job** e aparece no log e no `/status`: quando um render sai ruim,
+  dá para saber com que modelo e esforço ele rodou, sem arqueologia de commit.
+
+Esta é a principal alavanca de custo do sistema, e por isso mora em config, na mão do operador.
+
 **Escape hatch documentado:** como `fluxos/` só fala com `fila/` por interface, mover os workers
 para um segundo processo depois é trocar chamada de função por IPC — sem tocar fluxo, skill ou
 domínio. Gatilho para reconsiderar: restart do gateway doer com frequência, ou segunda máquina.
