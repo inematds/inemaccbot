@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 
-import { abrirDb } from './abrir.js';
-import { MIGRATIONS, aplicarMigrations } from './migrations.js';
-import { backupPara } from './backup.js';
+import { abrirDb } from '../db/abrir.js';
+import { MIGRATIONS, aplicarMigrations } from '../db/migrations.js';
+import { backupPara } from '../db/backup.js';
 import { FilaSqlite } from '../fila/store.js';
 
 let dir: string;
