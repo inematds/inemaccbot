@@ -11,13 +11,17 @@ export interface WorkerOpts {
   fila: Fila;
   concorrencia: number;
   leaseSegundos: number;
-  heartbeatSegundos: number;
   tarefas: Record<string, Tarefa>;
   runners: Record<string, Runner>;
   promptDe: (job: Job) => ContextoExecucao;
   log?: (m: string) => void;
 }
 
+/**
+ * Worker é um stepper puro: não se agenda sozinho. Quem chama `passo()` em
+ * loop, chama `bater()` periodicamente e liga `SIGTERM` a `drenar()` é o
+ * `src/index.ts` — não esta classe.
+ */
 export class Worker {
   private drenando = false;
   private readonly ativos = new Map<number, Execucao | null>();
