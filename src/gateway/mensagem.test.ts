@@ -132,6 +132,17 @@ describe('tratarMensagem', () => {
     expect(runner.chamadas[1]!.prompt).toContain('job 1');
   });
 
+  it('o log que entra no contexto da resposta passa pelo redator', async () => {
+    writeFileSync(join(dir, 'servico.log'), 'boot ok\nBOT_TOKEN=1234567890:AAsegredoqueNAOpodesairdaqui000000000\n');
+    const runner = new FakeRunner({ respostas: [JSON.stringify({ pergunta: 'e aí?' }), 'tudo certo.'] });
+    await tratarMensagem(1, 'e aí?', {
+      ...deps([]),
+      runner,
+      redigir: (t2) => t2.replace(/\d{8,}:[A-Za-z0-9_-]{30,}/g, '«redigido»'),
+    });
+    expect(runner.chamadas[1]!.prompt).not.toContain('segredoqueNAOpodesair');
+  });
+
   it('contexto da resposta NUNCA carrega job de outro chat', async () => {
     fila.enfileirar({ fila: 'texto', kind: 'agent', tarefa: 'transcrever', input: '{}', chat_id: 777 });
     const runner = new FakeRunner({ respostas: [JSON.stringify({ pergunta: 'e aí?' }), 'nada seu por aqui.'] });

@@ -28,7 +28,13 @@ export interface DepsMensagem {
   perfil: Perfil;
   cwd: string;
   logFile: string;
-  log?: (m: string) => void;
+  /**
+   * Saneia o que entra no CONTEXTO da resposta. O log do serviço é lido do
+   * disco e vai inteiro para o prompt; ele carrega caminhos, mensagens de erro
+   * de job e, no pior caso, um segredo que escapou. O prompt manda não repetir
+   * isso, mas instrução a um modelo não é controle — a redação é (§9).
+   */
+  redigir?: (texto: string) => string;
 }
 
 /** Jobs deste chat, do mais recente para o mais antigo, com teto — o contexto
@@ -61,7 +67,7 @@ export async function tratarMensagem(
       interpretacao.pergunta,
       {
         jobsDoChat: jobsDoChat(deps.fila, chatId),
-        cauda: caudaDoLog(deps.logFile),
+        cauda: (deps.redigir ?? ((x: string) => x))(caudaDoLog(deps.logFile)),
         defs: deps.defs,
         agora: deps.agora(),
       },
