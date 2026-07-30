@@ -103,4 +103,78 @@ export class FilaSqlite {
       .run(this.agora());
     return r.changes;
   }
+
+  /**
+   * Fecha o job como done. O `AND status = 'running'` é a proteção contra a
+   * corrida "cancelei, mas o worker terminou depois": job cancelado NUNCA vira
+   * done (spec §3.7).
+   */
+  concluir(id: number, resultado: string): boolean {
+    const agora = this.agora();
+    const r = this.db
+      .prepare(
+        `UPDATE jobs SET status = 'done', resultado = ?, erro = NULL,
+                         lease_ate = NULL, terminado_em = ?
+          WHERE id = ? AND status = 'running'`,
+      )
+      .run(resultado, agora, id);
+    return r.changes === 1;
+  }
+
+  /**
+   * Falha o job. Se ainda há tentativa, volta pra fila com backoff exponencial
+   * (base * 2^(tentativas-1)); senão vira `failed`. Nunca reabre job cancelado.
+   */
+  falhar(id: number, erro: string, backoffBase = 30): 'requeued' | 'failed' {
+    const agora = this.agora();
+    return this.db.transaction(() => {
+      const job = this.db
+        .prepare(`SELECT * FROM jobs WHERE id = ? AND status = 'running'`)
+        .get(id) as Job | undefined;
+      if (!job) return 'failed';
+
+      if (job.tentativas < job.max_tentativas) {
+        const espera = backoffBase * 2 ** (job.tentativas - 1);
+        this.db
+          .prepare(
+            `UPDATE jobs SET status = 'queued', erro = ?, lease_ate = NULL, disponivel_em = ?
+              WHERE id = ?`,
+          )
+          .run(erro, agora + espera, id);
+        return 'requeued';
+      }
+      this.db
+        .prepare(
+          `UPDATE jobs SET status = 'failed', erro = ?, lease_ate = NULL, terminado_em = ?
+            WHERE id = ?`,
+        )
+        .run(erro, agora, id);
+      return 'failed';
+    })();
+  }
+
+  /** Cancela job pendente ou em execução. Job terminal não é cancelável. */
+  cancelar(id: number): boolean {
+    const r = this.db
+      .prepare(
+        `UPDATE jobs SET status = 'canceled', lease_ate = NULL, terminado_em = ?
+          WHERE id = ? AND status IN ('queued', 'running')`,
+      )
+      .run(this.agora(), id);
+    return r.changes === 1;
+  }
+
+  /**
+   * Devolve o job à fila para nova checagem em `emSegundos` SEM gastar tentativa
+   * — é o mecanismo de poll das fases com `espera` (spec §3.2).
+   */
+  reagendar(id: number, emSegundos: number): boolean {
+    const r = this.db
+      .prepare(
+        `UPDATE jobs SET status = 'queued', lease_ate = NULL, disponivel_em = ?
+          WHERE id = ? AND status = 'running'`,
+      )
+      .run(this.agora() + emSegundos, id);
+    return r.changes === 1;
+  }
 }
