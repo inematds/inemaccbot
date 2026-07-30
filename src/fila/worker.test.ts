@@ -139,4 +139,49 @@ describe('drain', () => {
     await emCurso;
     await drenando;
   });
+
+  it('a flag de drain, sozinha, recusa claim mesmo com folga na concorrência', async () => {
+    let liberar: (() => void) | undefined;
+    const w = novoWorker({
+      concorrencia: 2,
+      tarefas: { lento: () => new Promise<string>((r) => { liberar = () => r('fim'); }) },
+    });
+    const j1 = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+    const j2 = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+
+    const emCurso = w.passo();
+    await Promise.resolve(); // deixa passo() registrar o job em ativos antes de checar
+
+    // Com concorrencia:2 e só 1 job em voo, o portão de concorrência (ativos.size >= concorrencia)
+    // NÃO está saturado — então só a flag de drenagem pode explicar a recusa abaixo.
+    expect(w.emVoo).toBe(1);
+
+    const drenando = w.drenar();
+    expect(await w.passo()).toBe(false);
+    expect(fila.obter(j2.id)!.status).toBe('queued');
+
+    liberar!();
+    await emCurso;
+    await drenando;
+
+    expect(fila.obter(j1.id)!.status).toBe('done');
+  });
+
+  it('abortar finaliza também um job function em voo (entrada ainda null em ativos)', async () => {
+    let liberar: (() => void) | undefined;
+    const w = novoWorker({
+      tarefas: { lento: () => new Promise<string>((r) => { liberar = () => r('fim'); }) },
+    });
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+    const emCurso = w.passo();
+    await Promise.resolve(); // job entra em ativos como null (tarefa function não tem Execucao)
+
+    await w.abortar();
+
+    expect(fila.obter(job.id)!.status).not.toBe('running');
+    expect(fila.obter(job.id)!.erro).toMatch(/encerramento do serviço/);
+
+    liberar!(); // libera a promise pendente pra não deixar handle solto
+    await emCurso;
+  });
 });
