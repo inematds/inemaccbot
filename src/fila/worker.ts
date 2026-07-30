@@ -225,7 +225,13 @@ export class Worker {
     if (ativo) ativo.exec = exec;
     else await exec.cancelar();
     try {
-      return await exec.aguardar();
+      const bruto = await exec.aguardar();
+      // O resultado gravado é o que o domínio disser que é (para uma skill, o
+      // caminho do `RESULT:`) — nunca o stdout cru, que iria verbatim para o
+      // chat. Uma exceção aqui é falha do job, e é o comportamento correto:
+      // agente que não declarou onde gravou é indistinguível de agente que não
+      // gravou nada.
+      return ctx.interpretarSaida ? ctx.interpretarSaida(bruto) : bruto;
     } finally {
       await exec.limpar();
     }

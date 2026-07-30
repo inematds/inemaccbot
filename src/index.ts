@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { type Config, carregarConfig } from './config.js';
 import { abrirDb } from './db/abrir.js';
 import { redatorPadrao } from './dominio/redacao.js';
+import { carregarSkills as carregarSkillsPadrao, type SkillDef } from './dominio/registry.js';
+import { criarPromptDe } from './fila/skills.js';
 import { aplicarMigrations } from './db/migrations.js';
 import { CONCORRENCIAS, FILAS } from './fila/filas.js';
 import { FilaSqlite } from './fila/store.js';
@@ -75,6 +77,8 @@ export interface DepsServico {
   leaseSegundos?: number;
   /** Só os testes trocam: o catálogo de tarefas é FECHADO na produção. */
   criarTarefas?: (opts: { raizMidia: string }) => Record<string, Tarefa>;
+  /** Idem para o registry de skills: em produção vem de `config/skills.json`. */
+  carregarSkills?: (caminho: string, raiz: string) => SkillDef[];
 }
 
 export interface Servico {
@@ -88,6 +92,10 @@ export interface Servico {
 }
 
 const LEASE_PADRAO_SEGUNDOS = 60;
+
+/** Raiz do repo: `config/` e `prompts/` vivem lá. Funciona igual rodando de
+ * `src/` (teste) e de `dist/` (produção) — os dois estão um nível abaixo. */
+const RAIZ_REPO = fileURLToPath(new URL('..', import.meta.url));
 
 export function criarServico(cfg: Config, deps: DepsServico): Servico {
   // Numa instalação nova o diretório do QUEUE_DB pode não existir ainda, e o
@@ -142,12 +150,6 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   const aoComando = async (chatId: number, texto: string): Promise<string> =>
     executar(parseComando(texto), { fila, chatId, agora: deps.agora });
 
-  /** Nenhum job `kind=agent` é enfileirado na etapa 1. Um stub silencioso seria
-   * pior que um erro: o job "rodaria" e devolveria lixo. */
-  const promptDe = async (job: Job): Promise<never> => {
-    throw new Error(`sem agentes na etapa 1: job ${job.id} (${job.tarefa}) é kind=agent`);
-  };
-
   /** O `Worker` é um stepper puro por decisão da etapa 0 — quem agenda é aqui. */
   async function laco(w: Worker): Promise<void> {
     while (rodando) {
@@ -200,9 +202,32 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       throw e;
     }
 
-    // 2. raiz de mídia (derivada do STATE_DIR, sem variável nova).
+    // 2. raiz de mídia e de artefatos (derivadas do STATE_DIR, sem variável nova).
     const raizMidia = join(cfg.stateDir, 'midia');
     mkdirSync(raizMidia, { recursive: true });
+    const raizArtefatos = join(cfg.stateDir, 'artefatos');
+    mkdirSync(raizArtefatos, { recursive: true });
+
+    // 2.1 registry de skills. ANTES dos workers, e sem try/catch de propósito:
+    //     registry inválido derruba o boot, igual a checksum de migration
+    //     divergente. Subir com um catálogo que não entendemos é pior que não
+    //     subir — e a alternativa (falhar no primeiro job) queima uma tentativa
+    //     e responde ao usuário com um erro sem sentido.
+    const defs = (deps.carregarSkills ?? carregarSkillsPadrao)(
+      join(RAIZ_REPO, 'config', 'skills.json'),
+      RAIZ_REPO,
+    );
+    const promptDe = criarPromptDe({
+      defs,
+      raizRepo: RAIZ_REPO,
+      raizArtefatos,
+      cwd: homedir(),
+      perfilPadrao: {
+        motor: cfg.motorPadrao,
+        modelo: cfg.modeloPadrao,
+        esforco: cfg.esforcoPadrao,
+      },
+    });
 
     // 3. + 4. recuperação ANTES de qualquer `passo()`, e logada — é a única
     //    evidência de que houve queda.
