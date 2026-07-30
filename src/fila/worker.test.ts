@@ -264,6 +264,71 @@ describe('drain', () => {
     liberar!(); // libera a promise pendente pra não deixar handle solto
     await emCurso;
   });
+
+  // Sem sinal, um `ffmpeg` gerado por tarefa `function` sobrevive ao processo:
+  // vira órfão do init e escreve a saída de um job que o banco diz `failed`.
+  it('abortar dispara ctx.sinal da tarefa function em voo', async () => {
+    let liberar: (() => void) | undefined;
+    let sinal: AbortSignal | undefined;
+    let abortou = false;
+    const w = novoWorker({
+      tarefas: {
+        lento: (ctx) => new Promise<string>((r) => {
+          sinal = ctx.sinal;
+          ctx.sinal.addEventListener('abort', () => { abortou = true; });
+          liberar = () => r('fim');
+        }),
+      },
+    });
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+    const emCurso = w.passo();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sinal!.aborted).toBe(false);
+
+    await w.abortar();
+
+    expect(abortou).toBe(true);
+    expect(sinal!.aborted).toBe(true);
+
+    liberar!();
+    await emCurso;
+  });
+
+  it('lease perdido também dispara ctx.sinal (job roubado não pode deixar filho vivo)', async () => {
+    let liberar: (() => void) | undefined;
+    let sinal: AbortSignal | undefined;
+    const w = novoWorker({
+      tarefas: {
+        lento: (ctx) => new Promise<string>((r) => { sinal = ctx.sinal; liberar = () => r('fim'); }),
+      },
+    });
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+    const emCurso = w.passo();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    t += 10_000;                 // lease vence
+    fila.recuperarLeasesVencidos();
+    fila.pegar('io', 60, 'outra-instancia');  // outro worker rouba o job
+    await w.bater();
+
+    expect(sinal!.aborted).toBe(true);
+
+    liberar!();
+    await emCurso;
+  });
+
+  it('NÃO dispara ctx.sinal no caminho de conclusão normal', async () => {
+    let sinal: AbortSignal | undefined;
+    const w = novoWorker({
+      tarefas: { ok: async (ctx) => { sinal = ctx.sinal; return 'pronto'; } },
+    });
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    await w.passo();
+    expect(fila.obter(job.id)!.status).toBe('done');
+    expect(sinal!.aborted).toBe(false);
+  });
 });
 
 describe('aoTerminar', () => {

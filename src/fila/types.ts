@@ -57,6 +57,16 @@ export interface ContextoTarefa {
   fila: import('./store.js').FilaSqlite;
   agora: Agora;
   log: (m: string) => void;
+  /**
+   * Dispara quando o worker desiste deste job — encerramento do serviço
+   * (`abortar()`) ou lease perdido (`bater()`). Uma tarefa `function` PRECISA
+   * repassar este sinal para tudo que ela gera (processo filho, `fetch`) e
+   * parar. Ignorá-lo é o bug do processo órfão: o serviço sai, o filho é
+   * reparentado ao init e continua queimando CPU — escrevendo a saída de um job
+   * que o banco já marcou como `failed`, e ainda concorrendo com a próxima
+   * instância que reexecuta o mesmo trabalho.
+   */
+  sinal: AbortSignal;
 }
 
 export interface NovoJob {

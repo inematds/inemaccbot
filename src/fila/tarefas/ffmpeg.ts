@@ -25,8 +25,19 @@ export function criarFfmpegThumb(binario: string, raizPermitida: string): Tarefa
     const saida = `${alvo}.jpg`;
     try {
       // Argumentos em array, nunca shell: o caminho vem do usuário.
-      await pExecFile(binario, ['-y', '-i', alvo, '-frames:v', '1', saida], { timeout: 60_000 });
+      // `signal` e `timeout` cobrem falhas diferentes: o timeout é o ffmpeg que
+      // travou sozinho; o sinal é o worker desistindo do job (encerramento ou
+      // lease perdido). Sem `signal`, o filho sobrevive ao processo pai.
+      await pExecFile(binario, ['-y', '-i', alvo, '-frames:v', '1', saida], {
+        timeout: 60_000,
+        signal: ctx.sinal,
+      });
     } catch (e) {
+      // O erro de abort não tem `code`; sem este caso especial ele viraria
+      // "saiu com código ?" e seria indistinguível de um ffmpeg quebrado.
+      if (ctx.sinal.aborted || (e as Error).name === 'AbortError') {
+        throw new Error('ffmpeg.thumb: abortado (worker desistiu do job)');
+      }
       const código = (e as { code?: number }).code ?? '?';
       throw new Error(`ffmpeg.thumb: saiu com código ${código}`);
     }

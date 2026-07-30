@@ -15,7 +15,8 @@ export function criarHttpGet(fetchFn: typeof fetch = fetch): Tarefa {
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
       throw new Error(`http.get: esquema não permitido: ${u.protocol}`);
     }
-    const r = await fetchFn(u);
+    // Requisição em voo também para no encerramento: ver ContextoTarefa.sinal.
+    const r = await fetchFn(u, { signal: ctx.sinal });
     if (!r.ok) throw new Error(`http.get: HTTP ${r.status}`);
     const corpo = await r.text();
     return corpo.length > LIMITE ? `${corpo.slice(0, LIMITE)}\n… (truncado)` : corpo;

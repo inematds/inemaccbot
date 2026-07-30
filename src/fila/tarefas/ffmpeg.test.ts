@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -15,8 +15,8 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const ctx = (input: string): ContextoTarefa =>
-  ({ job: { input } as never, fila: {} as never, agora: () => 1_000, log: () => {} });
+const ctx = (input: string, sinal = new AbortController().signal): ContextoTarefa =>
+  ({ job: { input } as never, fila: {} as never, agora: () => 1_000, log: () => {}, sinal });
 
 describe('ffmpeg.thumb', () => {
   it('rejeita entrada que não existe, sem chamar o binário', async () => {
@@ -87,6 +87,56 @@ describe('ffmpeg.thumb', () => {
     const saida = await criarFfmpegThumb('/bin/true', raiz)(ctx(JSON.stringify({ entrada })));
     // A saída deve ser o caminho RESOLVIDO, não a entrada bruta
     expect(saida).toBe(`${join(raiz, 'v.mp4')}.jpg`);
+  });
+});
+
+describe('aborto', () => {
+  /** Wrapper que grava o PID do processo que ELE VIRA (`exec`), não de um
+   * filho seu: assim o PID do arquivo é o mesmo processo que o Node gerou, e o
+   * ESRCH depois prova que aquele processo morreu. */
+  function wrapperSleep(pidFile: string): string {
+    const script = join(dir, 'sleeper.sh');
+    writeFileSync(script, `#!/bin/sh\necho $$ > "${pidFile}"\nexec /bin/sleep 30\n`, { mode: 0o755 });
+    return script;
+  }
+
+  async function ate(cond: () => boolean, limiteMs: number): Promise<boolean> {
+    const fim = Date.now() + limiteMs;
+    while (Date.now() < fim) {
+      if (cond()) return true;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return cond();
+  }
+
+  const vivo = (pid: number): boolean => {
+    try { process.kill(pid, 0); return true; } catch { return false; }
+  };
+
+  it('aborta o processo filho quando o worker desiste do job', async () => {
+    const pidFile = join(dir, 'pid');
+    const entrada = join(raiz, 'v.mp4');
+    writeFileSync(entrada, 'x');
+    const c = new AbortController();
+    // Captura a promise ANTES de abortar — senão a rejeição fica sem handler.
+    const p = criarFfmpegThumb(wrapperSleep(pidFile), raiz)(
+      ctx(JSON.stringify({ entrada }), c.signal),
+    );
+    p.catch(() => {}); // rejeição já é esperada abaixo; evita unhandled no meio
+    await ate(() => existsSync(pidFile), 5_000);
+    const pid = Number(readFileSync(pidFile, 'utf8').trim());
+    expect(pid).toBeGreaterThan(0);
+    expect(vivo(pid)).toBe(true);
+
+    c.abort(new Error('encerrando'));
+    await expect(p).rejects.toThrow(/abortado/i);
+
+    // Poll limitado: a morte do filho é assíncrona, mas 2s é folga enorme.
+    const morreu = await ate(() => !vivo(pid), 2_000);
+    if (!morreu) {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* já morto */ }
+    }
+    expect(morreu).toBe(true);
   });
 });
 
