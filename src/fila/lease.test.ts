@@ -2,19 +2,21 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type Database from 'better-sqlite3';
 
 import { abrirDb } from '../db/abrir.js';
 import { MIGRATIONS, aplicarMigrations } from '../db/migrations.js';
 import { FilaSqlite } from './store.js';
 
 let dir: string;
+let db: Database.Database;
 let fila: FilaSqlite;
 let t = 1_000;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'inemaccbot-'));
   t = 1_000;
-  const db = abrirDb(join(dir, 'fila.db'));
+  db = abrirDb(join(dir, 'fila.db'));
   aplicarMigrations(db, () => t, MIGRATIONS);
   fila = new FilaSqlite(db, () => t);
 });
@@ -59,10 +61,24 @@ describe('recuperarLeasesVencidos', () => {
   });
 
   it('não mexe em job terminal', () => {
+    const statuses: Array<'done' | 'failed' | 'canceled'> = ['done', 'failed', 'canceled'];
+    for (const status of statuses) {
+      const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
+      fila.pegar('io', 60);
+      // Deliberately force terminal status while leaving lease_ate populated and expired
+      db.prepare('UPDATE jobs SET status = ? WHERE id = ?').run(status, job.id);
+      t = 5_000;
+      const recovered = fila.recuperarLeasesVencidos();
+      expect(recovered).toBe(0);
+      expect(fila.obter(job.id)!.status).toBe(status);
+    }
+  });
+
+  it('recuperar duas vezes não recupera de novo (lease já nulo)', () => {
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
     fila.pegar('io', 60);
-    t = 5_000;
-    fila.recuperarLeasesVencidos();
+    t = 1_061;
+    expect(fila.recuperarLeasesVencidos()).toBe(1);
     expect(fila.recuperarLeasesVencidos()).toBe(0);
   });
 });
