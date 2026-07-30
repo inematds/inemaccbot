@@ -111,4 +111,36 @@ describe('Worker.bater', () => {
     expect(d.lease_owner).toBe('B');
     expect(d.erro).toBeNull();
   });
+
+  it('job roubado não gera log de "failed" (o ack já é bloqueado pela posse, o log não pode mentir)', async () => {
+    const logs: string[] = [];
+    const runner = new FakeRunner({ respostas: ['nunca'], travar: true });
+    const w = new Worker(fila, {
+      fila: 'io', dono: 'A', concorrencia: 1, leaseSegundos: 60,
+      tarefas: {}, runners: { fake: runner },
+      promptDe: (job: Job) => ({
+        prompt: job.input, cwd: '/tmp',
+        perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {},
+      }),
+      log: (m) => logs.push(m),
+    });
+    const job = fila.enfileirar({
+      fila: 'io', kind: 'agent', tarefa: 'x', input: '', max_tentativas: 3,
+      perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
+    });
+    const emCurso = w.passo();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // B rouba o job: lease de A vence, recuperação devolve à fila, B pega.
+    t = 1_061;
+    fila.recuperarLeasesVencidos();
+    fila.pegar('io', 60, 'B');
+
+    await w.bater();
+    await emCurso;
+
+    const doJob = logs.filter((m) => m.includes(`[job ${job.id}]`));
+    expect(doJob.some((m) => /LEASE PERDIDO/.test(m))).toBe(true);
+    expect(doJob.some((m) => /failed|requeued/.test(m))).toBe(false);
+  });
 });

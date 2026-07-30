@@ -59,7 +59,8 @@ loader de configuração nesta etapa** (isso entra quando `src/index.ts` deixar 
 `src/fila/worker.ts` não tem `iniciar()` nem agenda a si mesmo. Ele expõe `passo()` (processa no
 máximo um job), `bater()` (renova o lease do que está em voo — e LARGA o job cujo lease já não é
 mais nosso, sem dar ack), `drenar()` (para de aceitar novos
-jobs e espera o que está em voo, renovando o lease enquanto espera) e `abortar()` (cancela à força
+jobs e espera o que este worker ainda possui, renovando o lease enquanto espera — um job roubado no
+meio do drain é abandonado, então retornar não garante que todo `passo()` já terminou) e `abortar()` (cancela à força
 o que sobrou depois do timeout do drain). Quem chama `passo()` em loop, quem chama `bater()`
 periodicamente e quem liga `SIGTERM` a `drenar()` é `src/index.ts` — isso é trabalho da etapa 1,
 não desta classe. `WorkerOpts.dono` identifica a instância do worker (etapa 1: algo estável como

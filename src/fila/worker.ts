@@ -55,13 +55,26 @@ export class Worker {
    * venceu, a recuperação o devolveu à fila e outra instância o pegou). Nesse
    * caso largamos o trabalho: cancela a execução, tira de `ativos` para nunca
    * dar ack. Não chamamos `falhar` — o job agora pertence a outro worker.
+   *
+   * Também marcamos o id em `abortados` ANTES de tirar de `ativos`: job roubado
+   * não é job que falhou. O `passo()` abandonado continua rodando, a execução
+   * cancelada rejeita, e o catch de `passo()` chamaria `falhar()` — a guarda de
+   * posse no store bloqueia o ack (seguro), mas sem `abortados` o log ainda
+   * registraria "[job N] failed: ..." para um job que só foi roubado, não falhou.
    */
   async bater(): Promise<void> {
     const log = this.opts.log ?? (() => {});
     for (const [id, exec] of [...this.ativos]) {
       if (this.fila.renovar(id, this.opts.leaseSegundos, this.opts.dono)) continue;
       log(`[job ${id}] LEASE PERDIDO (dono=${this.opts.dono}) — abandonando o trabalho em voo`);
+      this.abortados.add(id);
       this.ativos.delete(id);
+      // Se `exec` ainda é null (job reclamado mas a Execução ainda não foi
+      // atribuída em `ativos`), `exec?.cancelar()` é um no-op: se um processo
+      // filho já tinha sido gerado, ele segue rodando sem supervisão até
+      // terminar sozinho. Janela estreita (entre `passo()` reclamar o job e
+      // `rodarAgente`/`rodarFuncao` atribuir a Execução) e nenhum ack é possível
+      // de qualquer forma, então não há dado em risco — só um processo órfão.
       await exec?.cancelar();
     }
   }
@@ -124,6 +137,12 @@ export class Worker {
    * Drain: para de aceitar novos claims e espera o que está em voo, RENOVANDO o
    * lease enquanto espera. Soltar o lease aqui permitiria outro worker pegar o
    * mesmo job com o nosso processo ainda vivo.
+   *
+   * Contrato real: espera só o trabalho que este worker ainda POSSUI. Um job
+   * roubado no meio do drain é removido de `ativos` por `bater()` e
+   * deliberadamente abandonado — seu `passo()` pode continuar assentando em
+   * segundo plano (ack bloqueado pela guarda de posse) — então `drenar()`
+   * retornar NÃO garante que toda promise de `passo()` já se resolveu.
    */
   async drenar(): Promise<void> {
     this.drenando = true;
