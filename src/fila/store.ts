@@ -59,8 +59,12 @@ export class FilaSqlite {
    * Fazer SELECT e depois UPDATE (como o mkivideos faz hoje) permite que dois
    * workers peguem o mesmo job. Ordem: prioridade DESC, id ASC (FIFO dentro da
    * mesma prioridade). `disponivel_em` cobre poll, backoff e agendamento.
+   *
+   * `dono` grava QUEM pegou o job no mesmo UPDATE atômico: é o que permite ao
+   * ack (`concluir`/`falhar`/`reagendar`/`renovar`) recusar um worker zumbi que
+   * acordou depois de o lease dele ter sido recuperado por outra instância.
    */
-  pegar(fila: Fila, leaseSegundos: number): Job | undefined {
+  pegar(fila: Fila, leaseSegundos: number, dono: string): Job | undefined {
     const agora = this.agora();
     return this.db
       .prepare(
@@ -68,6 +72,7 @@ export class FilaSqlite {
             SET status = 'running',
                 tentativas = tentativas + 1,
                 lease_ate = ?,
+                lease_owner = ?,
                 iniciado_em = COALESCE(iniciado_em, ?)
           WHERE id = (SELECT id FROM jobs
                        WHERE fila = ? AND status = 'queued' AND disponivel_em <= ?
@@ -75,69 +80,99 @@ export class FilaSqlite {
                        LIMIT 1)
         RETURNING *`,
       )
-      .get(agora + leaseSegundos, agora, fila, agora) as Job | undefined;
+      .get(agora + leaseSegundos, dono, agora, fila, agora) as Job | undefined;
   }
 
   /**
    * Heartbeat: empurra o lease enquanto o trabalho está vivo. Obrigatório em job
    * longo (render de ~15 min) e durante o drain — soltar lease com o processo
    * vivo é exatamente o que permitiria dupla execução (spec §1.3).
+   *
+   * Devolve `false` quando o job não é mais nosso — o chamador DEVE largar o
+   * trabalho em voo em vez de continuar batendo (ver `Worker.bater`).
    */
-  renovar(id: number, leaseSegundos: number): boolean {
+  renovar(id: number, leaseSegundos: number, dono: string): boolean {
     const r = this.db
-      .prepare(`UPDATE jobs SET lease_ate = ? WHERE id = ? AND status = 'running'`)
-      .run(this.agora() + leaseSegundos, id);
+      .prepare(
+        `UPDATE jobs SET lease_ate = ?
+          WHERE id = ? AND status = 'running' AND lease_owner = ?`,
+      )
+      .run(this.agora() + leaseSegundos, id, dono);
     return r.changes === 1;
   }
 
   /**
-   * Devolve à fila todo job `running` com lease vencido (worker morto, kill -9,
-   * queda de energia). `tentativas` NÃO é zerado: o job já consumiu uma.
+   * Recupera todo job `running` com lease vencido (worker morto, kill -9, queda
+   * de energia). `tentativas` NÃO é zerado: o job já consumiu uma.
+   *
+   * O teto de tentativas tem que ser aplicado AQUI também: `falhar()` é
+   * justamente o caminho que um crash pula, então requeue cego eternizaria um
+   * job que mata o processo (max_tentativas=1 + OOM = loop infinito). Quem já
+   * gastou todas as tentativas vira `failed` direto.
    */
-  recuperarLeasesVencidos(): number {
-    const r = this.db
-      .prepare(
-        `UPDATE jobs SET status = 'queued', lease_ate = NULL
-          WHERE status = 'running' AND lease_ate IS NOT NULL AND lease_ate <= ?`,
-      )
-      .run(this.agora());
-    return r.changes;
+  recuperarLeasesVencidos(): { requeued: number; failed: number } {
+    const agora = this.agora();
+    const vencido = `status = 'running' AND lease_ate IS NOT NULL AND lease_ate <= ?`;
+    return this.db.transaction(() => {
+      // Ordem importa: o requeue roda primeiro e tira essas linhas de `running`,
+      // então o UPDATE seguinte não pode pegá-las por engano.
+      const req = this.db
+        .prepare(
+          `UPDATE jobs SET status = 'queued', lease_ate = NULL, lease_owner = NULL
+            WHERE ${vencido} AND tentativas < max_tentativas`,
+        )
+        .run(agora);
+      const fal = this.db
+        .prepare(
+          `UPDATE jobs SET status = 'failed', erro = ?, lease_ate = NULL,
+                           lease_owner = NULL, terminado_em = ?
+            WHERE ${vencido} AND tentativas >= max_tentativas`,
+        )
+        .run('lease vencido sem ack (worker morreu)', agora, agora);
+      return { requeued: req.changes, failed: fal.changes };
+    })();
   }
 
   /**
    * Fecha o job como done. O `AND status = 'running'` é a proteção contra a
    * corrida "cancelei, mas o worker terminou depois": job cancelado NUNCA vira
-   * done (spec §3.7).
+   * done (spec §3.7). O `AND lease_owner = ?` é a segunda proteção: um worker
+   * que perdeu o lease (estol + recuperação + reclaim por outra instância) não
+   * pode sobrescrever o resultado de quem está rodando o job agora.
    */
-  concluir(id: number, resultado: string): boolean {
+  concluir(id: number, resultado: string, dono: string): boolean {
     const agora = this.agora();
     const r = this.db
       .prepare(
         `UPDATE jobs SET status = 'done', resultado = ?, erro = NULL,
-                         lease_ate = NULL, terminado_em = ?
-          WHERE id = ? AND status = 'running'`,
+                         lease_ate = NULL, lease_owner = NULL, terminado_em = ?
+          WHERE id = ? AND status = 'running' AND lease_owner = ?`,
       )
-      .run(resultado, agora, id);
+      .run(resultado, agora, id, dono);
     return r.changes === 1;
   }
 
   /**
    * Falha o job. Se ainda há tentativa, volta pra fila com backoff exponencial
-   * (base * 2^(tentativas-1)); senão vira `failed`. Nunca reabre job cancelado.
+   * (base * 2^(tentativas-1)); senão vira `failed`. Nunca reabre job cancelado
+   * nem job que já pertence a outro dono.
    */
-  falhar(id: number, erro: string, backoffBase = 30): 'requeued' | 'failed' {
+  falhar(id: number, erro: string, dono: string, backoffBase = 30): 'requeued' | 'failed' {
     const agora = this.agora();
     return this.db.transaction(() => {
       const job = this.db
-        .prepare(`SELECT * FROM jobs WHERE id = ? AND status = 'running'`)
-        .get(id) as Job | undefined;
+        .prepare(
+          `SELECT * FROM jobs WHERE id = ? AND status = 'running' AND lease_owner = ?`,
+        )
+        .get(id, dono) as Job | undefined;
       if (!job) return 'failed';
 
       if (job.tentativas < job.max_tentativas) {
         const espera = backoffBase * 2 ** (job.tentativas - 1);
         this.db
           .prepare(
-            `UPDATE jobs SET status = 'queued', erro = ?, lease_ate = NULL, disponivel_em = ?
+            `UPDATE jobs SET status = 'queued', erro = ?, lease_ate = NULL,
+                             lease_owner = NULL, disponivel_em = ?
               WHERE id = ?`,
           )
           .run(erro, agora + espera, id);
@@ -145,7 +180,8 @@ export class FilaSqlite {
       }
       this.db
         .prepare(
-          `UPDATE jobs SET status = 'failed', erro = ?, lease_ate = NULL, terminado_em = ?
+          `UPDATE jobs SET status = 'failed', erro = ?, lease_ate = NULL,
+                           lease_owner = NULL, terminado_em = ?
             WHERE id = ?`,
         )
         .run(erro, agora, id);
@@ -153,11 +189,15 @@ export class FilaSqlite {
     })();
   }
 
-  /** Cancela job pendente ou em execução. Job terminal não é cancelável. */
+  /**
+   * Cancela job pendente ou em execução. Job terminal não é cancelável.
+   * Sem `dono` de propósito: cancelar é ação do OPERADOR, não do dono do lease.
+   */
   cancelar(id: number): boolean {
     const r = this.db
       .prepare(
-        `UPDATE jobs SET status = 'canceled', lease_ate = NULL, terminado_em = ?
+        `UPDATE jobs SET status = 'canceled', lease_ate = NULL, lease_owner = NULL,
+                         terminado_em = ?
           WHERE id = ? AND status IN ('queued', 'running')`,
       )
       .run(this.agora(), id);
@@ -168,13 +208,14 @@ export class FilaSqlite {
    * Devolve o job à fila para nova checagem em `emSegundos` SEM gastar tentativa
    * — é o mecanismo de poll das fases com `espera` (spec §3.2).
    */
-  reagendar(id: number, emSegundos: number): boolean {
+  reagendar(id: number, emSegundos: number, dono: string): boolean {
     const r = this.db
       .prepare(
-        `UPDATE jobs SET status = 'queued', lease_ate = NULL, disponivel_em = ?
-          WHERE id = ? AND status = 'running'`,
+        `UPDATE jobs SET status = 'queued', lease_ate = NULL, lease_owner = NULL,
+                         disponivel_em = ?
+          WHERE id = ? AND status = 'running' AND lease_owner = ?`,
       )
-      .run(this.agora() + emSegundos, id);
+      .run(this.agora() + emSegundos, id, dono);
     return r.changes === 1;
   }
 

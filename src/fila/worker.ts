@@ -9,6 +9,13 @@ export type Tarefa = (job: Job) => Promise<string>;
 
 export interface WorkerOpts {
   fila: Fila;
+  /**
+   * Identifica ESTA instância do worker (a etapa 1 usará algo estável como
+   * `hostname:pid`). Todo ack carrega o dono porque só o `status = 'running'`
+   * não distingue "o job ainda é meu" de "outra instância reclamou o job depois
+   * que meu lease venceu" — sem isto, um worker zumbi sobrescreve trabalho vivo.
+   */
+  dono: string;
   concorrencia: number;
   leaseSegundos: number;
   tarefas: Record<string, Tarefa>;
@@ -25,6 +32,12 @@ export interface WorkerOpts {
 export class Worker {
   private drenando = false;
   private readonly ativos = new Map<number, Execucao | null>();
+  /**
+   * Ids já encerrados por `abortar()`. Sem isto, `abortar` e o catch de `passo`
+   * chamam `falhar` para o MESMO job e quem ganha é ordem de microtask — o
+   * abort perderia a corrida com uma mudança inocente no encadeamento de awaits.
+   */
+  private readonly abortados = new Set<number>();
 
   constructor(
     private readonly fila: FilaSqlite,
@@ -35,10 +48,21 @@ export class Worker {
     return this.ativos.size;
   }
 
-  /** Renova o lease de tudo que está em voo. Chamado pelo timer e no drain. */
+  /**
+   * Renova o lease de tudo que está em voo. Chamado pelo timer e no drain.
+   *
+   * `renovar` devolvendo false significa que o job NÃO é mais nosso (nosso lease
+   * venceu, a recuperação o devolveu à fila e outra instância o pegou). Nesse
+   * caso largamos o trabalho: cancela a execução, tira de `ativos` para nunca
+   * dar ack. Não chamamos `falhar` — o job agora pertence a outro worker.
+   */
   async bater(): Promise<void> {
-    for (const id of this.ativos.keys()) {
-      this.fila.renovar(id, this.opts.leaseSegundos);
+    const log = this.opts.log ?? (() => {});
+    for (const [id, exec] of [...this.ativos]) {
+      if (this.fila.renovar(id, this.opts.leaseSegundos, this.opts.dono)) continue;
+      log(`[job ${id}] LEASE PERDIDO (dono=${this.opts.dono}) — abandonando o trabalho em voo`);
+      this.ativos.delete(id);
+      await exec?.cancelar();
     }
   }
 
@@ -47,7 +71,7 @@ export class Worker {
     if (this.drenando) return false;
     if (this.ativos.size >= this.opts.concorrencia) return false;
 
-    const job = this.fila.pegar(this.opts.fila, this.opts.leaseSegundos);
+    const job = this.fila.pegar(this.opts.fila, this.opts.leaseSegundos, this.opts.dono);
     if (!job) return false;
 
     this.ativos.set(job.id, null);
@@ -59,15 +83,20 @@ export class Worker {
       const saida = job.kind === 'function'
         ? await this.rodarFuncao(job)
         : await this.rodarAgente(job);
-      if (!this.fila.concluir(job.id, saida)) {
-        log(`[job ${job.id}] terminou mas não estava running (cancelado?) — done rejeitado`);
+      if (!this.fila.concluir(job.id, saida, this.opts.dono)) {
+        log(`[job ${job.id}] terminou mas não era mais nosso (cancelado/roubado?) — done rejeitado`);
       }
     } catch (e) {
-      const erro = (e as Error).message.slice(0, 1_000);
-      const r = this.fila.falhar(job.id, erro, 30);
-      log(`[job ${job.id}] ${r}: ${erro}`);
+      // `abortar()` já fechou este job; falhar de novo aqui seria uma corrida
+      // decidida por ordem de microtask (ver `abortados`).
+      if (!this.abortados.has(job.id)) {
+        const erro = (e as Error).message.slice(0, 1_000);
+        const r = this.fila.falhar(job.id, erro, this.opts.dono, 30);
+        log(`[job ${job.id}] ${r}: ${erro}`);
+      }
     } finally {
       this.ativos.delete(job.id);
+      this.abortados.delete(job.id);
     }
     return true;
   }
@@ -106,9 +135,13 @@ export class Worker {
 
   /** Encerra à força o que estiver em voo (usado no timeout do drain). */
   async abortar(): Promise<void> {
-    for (const [id, exec] of this.ativos) {
+    // Snapshot antes do loop: `passo()` deleta de `ativos` no seu `finally`
+    // enquanto estamos em await, e mutar o Map durante a iteração faria um job
+    // que terminou no meio do abort ser pulado (visível com concorrência > 1).
+    for (const [id, exec] of [...this.ativos]) {
+      this.abortados.add(id);
       await exec?.cancelar();
-      this.fila.falhar(id, 'interrompido no encerramento do serviço', 30);
+      this.fila.falhar(id, 'interrompido no encerramento do serviço', this.opts.dono, 30);
     }
     this.ativos.clear();
   }

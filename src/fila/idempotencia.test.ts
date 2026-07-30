@@ -44,8 +44,8 @@ describe('enfileirarSeNovo', () => {
 
   it('não reenfileira o que já está done', () => {
     const p = fila.enfileirarSeNovo({ fila: 'io', kind: 'function', tarefa: 'x', input: '', idem_key: CHAVE });
-    fila.pegar('io', 60);
-    fila.concluir(p.job.id, 'ok');
+    fila.pegar('io', 60, 'w1');
+    fila.concluir(p.job.id, 'ok', 'w1');
     const r = fila.enfileirarSeNovo({ fila: 'io', kind: 'function', tarefa: 'x', input: '', idem_key: CHAVE });
     expect(r.novo).toBe(false);
     expect(r.job.status).toBe('done');
@@ -55,8 +55,8 @@ describe('enfileirarSeNovo', () => {
     const p = fila.enfileirarSeNovo({
       fila: 'io', kind: 'function', tarefa: 'x', input: '', idem_key: CHAVE, max_tentativas: 1,
     });
-    fila.pegar('io', 60);
-    fila.falhar(p.job.id, 'boom', 10);
+    fila.pegar('io', 60, 'w1');
+    fila.falhar(p.job.id, 'boom', 'w1', 10);
     const r = fila.enfileirarSeNovo({ fila: 'io', kind: 'function', tarefa: 'x', input: '', idem_key: CHAVE });
     expect(r.novo).toBe(true);
   });
@@ -72,8 +72,8 @@ describe('jaConcluido', () => {
   it('permite a tarefa ADOTAR o efeito de uma execução anterior', () => {
     // simula: worker criou o render, gravou o resultado, e MORREU antes do ack final
     const p = fila.enfileirarSeNovo({ fila: 'io', kind: 'function', tarefa: 'x', input: '', idem_key: CHAVE });
-    fila.pegar('io', 60);
-    fila.concluir(p.job.id, 'heygen:video-abc');
+    fila.pegar('io', 60, 'w1');
+    fila.concluir(p.job.id, 'heygen:video-abc', 'w1');
 
     expect(fila.jaConcluido(CHAVE)?.resultado).toBe('heygen:video-abc');
     expect(fila.jaConcluido('outra/chave')).toBeUndefined();

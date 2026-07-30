@@ -17,7 +17,7 @@ let t = 1_000;
 
 function novoWorker(over: Partial<ConstructorParameters<typeof Worker>[1]> = {}): Worker {
   return new Worker(fila, {
-    fila: 'io', concorrencia: 1, leaseSegundos: 60,
+    fila: 'io', dono: 'A', concorrencia: 1, leaseSegundos: 60,
     tarefas: { ok: async () => 'pronto', explode: async () => { throw new Error('boom'); } },
     runners: { fake: new FakeRunner({ respostas: ['saida do agente'] }) },
     promptDe: (job: Job) => ({

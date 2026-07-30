@@ -28,7 +28,7 @@ describe('pegar', () => {
   it('marca running, incrementa tentativas e define lease', () => {
     const fila = conectar();
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
-    const job = fila.pegar('io', 60);
+    const job = fila.pegar('io', 60, 'w1');
     expect(job?.status).toBe('running');
     expect(job?.tentativas).toBe(1);
     expect(job?.lease_ate).toBe(1_060);
@@ -38,8 +38,8 @@ describe('pegar', () => {
   it('respeita a fila pedida', () => {
     const fila = conectar();
     fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'a', input: '' });
-    expect(fila.pegar('io', 60)).toBeUndefined();
-    expect(fila.pegar('render', 60)?.tarefa).toBe('a');
+    expect(fila.pegar('io', 60, 'w1')).toBeUndefined();
+    expect(fila.pegar('render', 60, 'w1')?.tarefa).toBe('a');
   });
 
   it('ordena por prioridade DESC e depois por id ASC', () => {
@@ -47,28 +47,28 @@ describe('pegar', () => {
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'primeiro', input: '' });
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'furou', input: '', prioridade: 10 });
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'segundo', input: '' });
-    expect(fila.pegar('io', 60)?.tarefa).toBe('furou');
-    expect(fila.pegar('io', 60)?.tarefa).toBe('primeiro');
-    expect(fila.pegar('io', 60)?.tarefa).toBe('segundo');
+    expect(fila.pegar('io', 60, 'w1')?.tarefa).toBe('furou');
+    expect(fila.pegar('io', 60, 'w1')?.tarefa).toBe('primeiro');
+    expect(fila.pegar('io', 60, 'w1')?.tarefa).toBe('segundo');
   });
 
   it('não pega job agendado para o futuro', () => {
     const fila = conectar();
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'depois', input: '', disponivel_em: 2_000 });
-    expect(fila.pegar('io', 60)).toBeUndefined();
+    expect(fila.pegar('io', 60, 'w1')).toBeUndefined();
     t = 2_000;
-    expect(fila.pegar('io', 60)?.tarefa).toBe('depois');
+    expect(fila.pegar('io', 60, 'w1')?.tarefa).toBe('depois');
   });
 
   it('devolve undefined com a fila vazia', () => {
-    expect(conectar().pegar('io', 60)).toBeUndefined();
+    expect(conectar().pegar('io', 60, 'w1')).toBeUndefined();
   });
 
   it('duas conexões concorrentes: só uma pega o mesmo job', () => {
     const a = conectar();
     const b = conectar();
     a.enfileirar({ fila: 'io', kind: 'function', tarefa: 'unico', input: '' });
-    const pegos = [a.pegar('io', 60), b.pegar('io', 60)].filter(Boolean);
+    const pegos = [a.pegar('io', 60, 'A'), b.pegar('io', 60, 'B')].filter(Boolean);
     expect(pegos).toHaveLength(1);
   });
 });

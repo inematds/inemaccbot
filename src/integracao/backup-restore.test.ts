@@ -33,6 +33,6 @@ it('backup carrega os jobs e o arquivo restaurado é operacional', async () => {
   const restaurado = abrirDb(destino);
   const fila2 = new FilaSqlite(restaurado, () => t);
   expect(fila2.listar()).toHaveLength(1);
-  expect(fila2.pegar('render', 60)?.tarefa).toBe('explicativo');   // fila funciona no restaurado
+  expect(fila2.pegar('render', 60, 'w1')?.tarefa).toBe('explicativo');   // fila funciona no restaurado
   restaurado.close();
 });

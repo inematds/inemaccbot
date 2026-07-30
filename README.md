@@ -57,8 +57,12 @@ loader de configuração nesta etapa** (isso entra quando `src/index.ts` deixar 
 ## `Worker` é um stepper, não um serviço
 
 `src/fila/worker.ts` não tem `iniciar()` nem agenda a si mesmo. Ele expõe `passo()` (processa no
-máximo um job), `bater()` (renova o lease do que está em voo), `drenar()` (para de aceitar novos
+máximo um job), `bater()` (renova o lease do que está em voo — e LARGA o job cujo lease já não é
+mais nosso, sem dar ack), `drenar()` (para de aceitar novos
 jobs e espera o que está em voo, renovando o lease enquanto espera) e `abortar()` (cancela à força
 o que sobrou depois do timeout do drain). Quem chama `passo()` em loop, quem chama `bater()`
 periodicamente e quem liga `SIGTERM` a `drenar()` é `src/index.ts` — isso é trabalho da etapa 1,
-não desta classe.
+não desta classe. `WorkerOpts.dono` identifica a instância do worker (etapa 1: algo estável como
+`hostname:pid`): ele vai gravado em `jobs.lease_owner` no claim e é exigido em todo ack
+(`renovar`/`concluir`/`falhar`/`reagendar`), para que um worker estolado não sobrescreva um job que
+outra instância já reclamou. `cancelar()` é a exceção: é ação de operador, não do dono do lease.

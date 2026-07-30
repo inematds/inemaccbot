@@ -25,6 +25,8 @@ export interface Job {
   tentativas: number;
   max_tentativas: number;
   lease_ate: number | null;
+  /** Quem detém o lease agora; `NULL` quando o job não está em execução. */
+  lease_owner: string | null;
   disponivel_em: number;
   /** Chave de idempotência: identifica o EFEITO, não a tentativa. Ver spec §2.5. */
   idem_key: string | null;

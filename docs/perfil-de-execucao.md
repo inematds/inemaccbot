@@ -124,7 +124,7 @@ Checklist de um runner novo, tirado do que `ClaudeRunner` faz hoje:
 6. registrar a instância em `RUNNERS` no fim do arquivo (`RUNNERS.codex = new CodexRunner()`)
 
 A string com que `aguardar()` resolve não para por aí: `Worker.rodarAgente()` (`src/fila/worker.ts`)
-devolve esse valor como `saida` para `passo()`, que chama `this.fila.concluir(job.id, saida)` — é
+devolve esse valor como `saida` para `passo()`, que chama `this.fila.concluir(job.id, saida, dono)` — é
 assim que o retorno do runner vira o `resultado` do job na fila.
 
 ## O que trocar de motor NÃO resolve

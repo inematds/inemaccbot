@@ -50,6 +50,13 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_jobs_idem_key ON jobs (idem_key);
     `,
   },
+  {
+    version: 2,
+    nome: 'lease_owner',
+    sql: `
+      ALTER TABLE jobs ADD COLUMN lease_owner TEXT;
+    `,
+  },
 ];
 
 const SCHEMA_CONTROLE = `
