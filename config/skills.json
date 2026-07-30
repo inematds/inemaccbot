@@ -4,10 +4,16 @@
     "fila": "texto",
     "kind": "agent",
     "prompt": "prompts/transcrever.md",
-    "artefato_exts": ["txt", "srt"],
+    "artefato_exts": [
+      "txt",
+      "srt"
+    ],
     "max_tentativas": 2,
     "timeout_segundos": 3600,
-    "perfil": { "modelo": "sonnet", "esforco": "low" },
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
     "aceita_destino": false,
     "descricao": "baixa o áudio do link e devolve o TEXTO do que é falado (Whisper local, via inemavox)",
     "exemplo": "transcrever: https://vt.tiktok.com/XXXX"
@@ -17,12 +23,164 @@
     "fila": "texto",
     "kind": "agent",
     "prompt": "prompts/dublar.md",
-    "artefato_exts": ["mp4"],
+    "artefato_exts": [
+      "mp4"
+    ],
     "max_tentativas": 2,
     "timeout_segundos": 5400,
-    "perfil": { "modelo": "sonnet", "esforco": "low" },
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
     "aceita_destino": true,
     "descricao": "traduz e dubla o vídeo do link via inemavox (sai um .mp4 dublado)",
     "exemplo": "dublar: https://youtube.com/watch?v=XXXX | lives3"
+  },
+  {
+    "fila": "render",
+    "kind": "agent",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 2,
+    "timeout_segundos": 7200,
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
+    "aceita_destino": true,
+    "aguarda_artefato": true,
+    "command": "explicativo",
+    "prompt": "prompts/explicativo.md",
+    "campos": {
+      "vertical": {
+        "tipo": "bandeira",
+        "padrao": "não",
+        "descricao": "9:16 em vez do formato padrão da skill"
+      }
+    },
+    "descricao": "vídeo explicativo PT-BR sobre um assunto (skill video-explicativo)",
+    "exemplo": "explicativo: O que é RAG | vertical | lives3"
+  },
+  {
+    "fila": "render",
+    "kind": "agent",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 2,
+    "timeout_segundos": 7200,
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
+    "aceita_destino": true,
+    "aguarda_artefato": true,
+    "command": "curso",
+    "prompt": "prompts/curso.md",
+    "campos": {
+      "vertical": {
+        "tipo": "bandeira",
+        "padrao": "não",
+        "descricao": "9:16 em vez do formato padrão da skill"
+      },
+      "curso": {
+        "tipo": "texto",
+        "padrao": "",
+        "descricao": "rótulo do curso (sem espaço)"
+      },
+      "modulo": {
+        "tipo": "texto",
+        "padrao": "",
+        "descricao": "rótulo do módulo, ex.: t1m1"
+      }
+    },
+    "descricao": "vídeo de curso INEMA a partir do link (skill videos-cursos-inema)",
+    "exemplo": "curso: https://inematds.github.io/skillsx/ | curso skillsx | modulo t1m1"
+  },
+  {
+    "fila": "render",
+    "kind": "agent",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 2,
+    "timeout_segundos": 7200,
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
+    "aceita_destino": true,
+    "aguarda_artefato": true,
+    "command": "demo",
+    "prompt": "prompts/demo.md",
+    "campos": {
+      "vertical": {
+        "tipo": "bandeira",
+        "padrao": "não",
+        "descricao": "9:16 em vez do formato padrão da skill"
+      }
+    },
+    "descricao": "vídeo demonstrativo de um app/site (skill video-demonstrativo)",
+    "exemplo": "demo: https://app.exemplo.com | lives7"
+  },
+  {
+    "fila": "render",
+    "kind": "agent",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 2,
+    "timeout_segundos": 7200,
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
+    "aceita_destino": true,
+    "aguarda_artefato": true,
+    "command": "reel",
+    "prompt": "prompts/reel.md",
+    "campos": {
+      "visuais": {
+        "tipo": "bandeira",
+        "padrao": "não",
+        "descricao": "modo visuais em vez do explicador narrado"
+      },
+      "mover": {
+        "tipo": "bandeira",
+        "padrao": "não",
+        "descricao": "mover para o destino em vez de copiar",
+        "usa": "entrega"
+      }
+    },
+    "descricao": "reel 9:16 empilhado a partir do MP4 de um avatar HeyGen (skill reel-edita-inema)",
+    "exemplo": "reel: /home/user/avatar.mp4 | lives3"
+  },
+  {
+    "fila": "render",
+    "kind": "agent",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 2,
+    "timeout_segundos": 7200,
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
+    "aceita_destino": true,
+    "aguarda_artefato": true,
+    "command": "reelinematds",
+    "prompt": "prompts/reelinematds.md",
+    "campos": {
+      "mover": {
+        "tipo": "bandeira",
+        "padrao": "não",
+        "descricao": "mover para o destino em vez de copiar",
+        "usa": "entrega"
+      }
+    },
+    "descricao": "reel pessoal no estilo INEMATDS a partir de um bruto vertical (skill reel-edita-inematds)",
+    "exemplo": "reelinematds: /home/user/bruto.mp4 | lives3"
   }
 ]

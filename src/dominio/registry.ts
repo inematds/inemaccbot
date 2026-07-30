@@ -65,8 +65,22 @@ export interface CampoDef {
   tipo: 'bandeira' | 'texto';
   /** Usado quando o campo não vem no comando. Bandeira: `sim`/`não`. */
   padrao: string;
+  /**
+   * Quem consome o campo:
+   *   `prompt`  (default) — vira variável do template, e o teste do registry
+   *                         EXIGE que o prompt a use;
+   *   `entrega` — é decisão do gateway depois do job pronto (`mover`), e o
+   *               prompt NÃO deve conhecê-la: o agente não move arquivo.
+   *
+   * A distinção nasceu de um teste vermelho: sem ela, `mover` teria de aparecer
+   * no prompt do reel só para satisfazer a guarda, dando ao agente uma
+   * instrução que não é dele.
+   */
+  usa?: 'prompt' | 'entrega';
   descricao?: string;
 }
+
+const USOS_CAMPO = new Set(['prompt', 'entrega']);
 
 const TIPOS_CAMPO = new Set(['bandeira', 'texto']);
 const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
@@ -133,9 +147,12 @@ function validarCampos(v: unknown, i: number, command: string): Record<string, C
       erro(i, `campos.${nome}.padrao`, 'bandeira aceita só "sim" ou "não"');
     }
     if (/\s/.test(padrao)) erro(i, `campos.${nome}.padrao`, 'sem espaço (o valor vira nome de arquivo)');
+    const usa = c.usa === undefined ? 'prompt' : exigirTexto(c.usa, i, `campos.${nome}.usa`);
+    if (!USOS_CAMPO.has(usa)) erro(i, `campos.${nome}.usa`, `"${usa}" — use prompt ou entrega`);
     saida[nome] = {
       tipo: tipo as CampoDef['tipo'],
       padrao,
+      usa: usa as CampoDef['usa'],
       ...(typeof c.descricao === 'string' ? { descricao: c.descricao } : {}),
     };
   }

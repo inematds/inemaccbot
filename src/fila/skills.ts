@@ -89,7 +89,12 @@ export function caminhoArtefato(raiz: string, def: SkillDef, job: Job): string {
 
 function camposDeclarados(def: SkillDef, doJob: Record<string, string> | undefined): Record<string, string> {
   const saida: Record<string, string> = {};
-  for (const [nome, c] of Object.entries(def.campos)) saida[nome] = doJob?.[nome] ?? c.padrao;
+  for (const [nome, c] of Object.entries(def.campos)) {
+    // Campo de ENTREGA (ex.: `mover`) é decisão do gateway depois do job — dar
+    // isso ao agente seria pedir a ele que movesse arquivo.
+    if (c.usa === 'entrega') continue;
+    saida[nome] = doJob?.[nome] ?? c.padrao;
+  }
   return saida;
 }
 
