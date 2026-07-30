@@ -3,9 +3,9 @@
 // falha registrada, e drain que NÃO solta o lease do que está em voo (spec §1.3).
 import type { Execucao, ContextoExecucao, Runner } from './runner.js';
 import type { FilaSqlite } from './store.js';
-import type { Fila, Job } from './types.js';
+import type { Agora, ContextoTarefa, Fila, Job } from './types.js';
 
-export type Tarefa = (job: Job) => Promise<string>;
+export type Tarefa = (ctx: ContextoTarefa) => Promise<string>;
 
 export interface WorkerOpts {
   fila: Fila;
@@ -42,6 +42,7 @@ export class Worker {
   constructor(
     private readonly fila: FilaSqlite,
     private readonly opts: WorkerOpts,
+    private readonly agora: Agora,
   ) {}
 
   get emVoo(): number {
@@ -117,7 +118,12 @@ export class Worker {
   private async rodarFuncao(job: Job): Promise<string> {
     const tarefa = this.opts.tarefas[job.tarefa];
     if (!tarefa) throw new Error(`tarefa desconhecida: ${job.tarefa}`);
-    return tarefa(job);
+    return tarefa({
+      job,
+      fila: this.fila,
+      agora: this.agora,
+      log: this.opts.log ?? (() => {}),
+    });
   }
 
   private async rodarAgente(job: Job): Promise<string> {

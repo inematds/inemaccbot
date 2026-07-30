@@ -43,6 +43,19 @@ export interface Job {
   terminado_em: number | null;
 }
 
+/**
+ * O que uma tarefa `kind=function` recebe. Ela precisa do STORE, não só do job:
+ * é por aqui que a regra "procure antes de criar" do §2.5 fica alcançável —
+ * sem isto, uma tarefa não consegue consultar `jaConcluido` e a garantia de
+ * efeito único vira comentário.
+ */
+export interface ContextoTarefa {
+  job: Job;
+  fila: import('./store.js').FilaSqlite;
+  agora: Agora;
+  log: (m: string) => void;
+}
+
 export interface NovoJob {
   fila: Fila;
   kind: Kind;

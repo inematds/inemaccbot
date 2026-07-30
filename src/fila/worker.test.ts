@@ -26,7 +26,7 @@ function novoWorker(over: Partial<ConstructorParameters<typeof Worker>[1]> = {})
       vars: {},
     }),
     ...over,
-  });
+  }, () => t);
 }
 
 beforeEach(() => {
@@ -80,6 +80,39 @@ describe('passo', () => {
 
   it('devolve false quando não há nada na fila', async () => {
     expect(await novoWorker().passo()).toBe(false);
+  });
+
+  it('entrega à tarefa um contexto com job, fila e relógio', async () => {
+    let visto: { id: number; temFila: boolean; agora: number } | undefined;
+    const w = novoWorker({
+      tarefas: {
+        espia: async (ctx) => {
+          visto = { id: ctx.job.id, temFila: typeof ctx.fila.obter === 'function', agora: ctx.agora() };
+          return 'ok';
+        },
+      },
+    });
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'espia', input: '' });
+    await w.passo();
+    expect(visto).toEqual({ id: job.id, temFila: true, agora: 1_000 });
+  });
+
+  it('a tarefa consegue consultar jaConcluido pelo contexto (§2.5 alcançável)', async () => {
+    const CHAVE = 'P#1/alvo/fase';
+    const anterior = fila.enfileirarSeNovo({
+      fila: 'io', kind: 'function', tarefa: 'x', input: '', idem_key: CHAVE,
+    });
+    fila.pegar('io', 60, 'w0');
+    fila.concluir(anterior.job.id, 'artefato-antigo', 'w0');
+
+    const w = novoWorker({
+      tarefas: { adota: async (ctx) => ctx.fila.jaConcluido(ctx.job.idem_key!)?.resultado ?? 'novo' },
+    });
+    const job = fila.enfileirar({
+      fila: 'io', kind: 'function', tarefa: 'adota', input: '', idem_key: CHAVE,
+    });
+    await w.passo();
+    expect(fila.obter(job.id)!.resultado).toBe('artefato-antigo');
   });
 });
 

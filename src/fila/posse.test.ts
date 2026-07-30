@@ -86,7 +86,7 @@ describe('Worker.bater', () => {
         prompt: job.input, cwd: '/tmp',
         perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {},
       }),
-    });
+    }, () => t);
     const job = fila.enfileirar({
       fila: 'io', kind: 'agent', tarefa: 'x', input: '', max_tentativas: 3,
       perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
@@ -123,7 +123,7 @@ describe('Worker.bater', () => {
         perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {},
       }),
       log: (m) => logs.push(m),
-    });
+    }, () => t);
     const job = fila.enfileirar({
       fila: 'io', kind: 'agent', tarefa: 'x', input: '', max_tentativas: 3,
       perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
