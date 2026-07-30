@@ -86,6 +86,65 @@ export const MIGRATIONS: Migration[] = [
         WHERE status IN ('done', 'failed', 'canceled');
     `,
   },
+  {
+    version: 4,
+    nome: 'fluxos',
+    // Estado de fluxo no MESMO banco da fila (§3.3). É isso que torna "marcar a
+    // fase como feita + enfileirar a próxima" uma transação só — e elimina por
+    // construção o dispatch duplicado que o v1 tinha com o watcher.
+    //
+    // `fluxo_fases.alvo` usa '' (string vazia) como sentinela para fase de
+    // escopo `fluxo`: NULL não funciona em chave primária, e a revisão 1 da
+    // spec já registrou esse defeito de modelagem.
+    sql: `
+      CREATE TABLE fluxos (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo           TEXT    NOT NULL,
+        prefixo        TEXT    NOT NULL,
+        slug           TEXT    NOT NULL,
+        assunto        TEXT    NOT NULL,
+        versao         INTEGER NOT NULL DEFAULT 1,
+        chat_id        INTEGER,
+        status         TEXT    NOT NULL DEFAULT 'rodando',
+        definicao_json TEXT    NOT NULL,
+        definicao_hash TEXT    NOT NULL,
+        versao_def     INTEGER NOT NULL,
+        criado_em      INTEGER NOT NULL,
+        terminado_em   INTEGER
+      );
+      CREATE INDEX idx_fluxos_status ON fluxos (status);
+
+      CREATE TABLE fluxo_fases (
+        fluxo_id   INTEGER NOT NULL REFERENCES fluxos(id),
+        fase       TEXT    NOT NULL,
+        alvo       TEXT    NOT NULL,
+        escopo     TEXT    NOT NULL,
+        ordem      INTEGER NOT NULL,
+        estado     TEXT    NOT NULL DEFAULT 'pendente',
+        job_id     INTEGER,
+        tentativas INTEGER NOT NULL DEFAULT 0,
+        dados      TEXT,
+        erro       TEXT,
+        criado_em  INTEGER NOT NULL,
+        PRIMARY KEY (fluxo_id, fase, alvo)
+      );
+      CREATE INDEX idx_fases_estado ON fluxo_fases (estado, fluxo_id);
+      CREATE INDEX idx_fases_job ON fluxo_fases (job_id);
+
+      -- Histórico: \`fluxo_fases\` guarda o estado ATUAL; cada tentativa está nas
+      -- linhas de \`jobs\` com aquele flow_ref, que nunca são deletadas (§3.5).
+      -- A view junta os dois sem criar uma segunda escrita do mesmo fato.
+      CREATE VIEW fluxo_historico AS
+        SELECT f.fluxo_id, f.fase, f.alvo, f.estado,
+               j.id AS job_id, j.status AS job_status, j.tentativas,
+               j.iniciado_em, j.terminado_em, j.erro
+          FROM fluxo_fases f
+          LEFT JOIN jobs j ON j.flow_ref = (
+            SELECT fl.prefixo || '#' || fl.id || '/' || f.alvo || '/' || f.fase
+              FROM fluxos fl WHERE fl.id = f.fluxo_id
+          );
+    `,
+  },
 ];
 
 const SCHEMA_CONTROLE = `

@@ -4,6 +4,18 @@ import type Database from 'better-sqlite3';
 
 import type { Agora, Fila, Job, NovoJob, StatusJob } from './types.js';
 
+/**
+ * Gancho executado DENTRO da transação do ack. Existe por causa da fronteira do
+ * §4: `fila/` não pode importar `fluxos/`, mas o avanço de fluxo precisa ser
+ * atômico com o fechamento do job. Quem injeta é o `index.ts`, que conhece os
+ * dois lados; o store continua sem saber o que é um fluxo.
+ *
+ * Lançar aqui DESFAZ o ack inteiro. É deliberado: melhor o job voltar a
+ * `running` e ser retentado do que a fila dizer "pronto" e o fluxo não ter
+ * avançado.
+ */
+export type GanchoTransacional = (job: Job) => void;
+
 export class FilaSqlite {
   constructor(
     private readonly db: Database.Database,
@@ -166,16 +178,29 @@ export class FilaSqlite {
    * que perdeu o lease (estol + recuperação + reclaim por outra instância) não
    * pode sobrescrever o resultado de quem está rodando o job agora.
    */
-  concluir(id: number, resultado: string, dono: string): boolean {
+  concluir(id: number, resultado: string, dono: string, aoConcluir?: GanchoTransacional): boolean {
     const agora = this.agora();
-    const r = this.db
-      .prepare(
-        `UPDATE jobs SET status = 'done', resultado = ?, erro = NULL,
-                         lease_ate = NULL, lease_owner = NULL, terminado_em = ?
-          WHERE id = ? AND status = 'running' AND lease_owner = ?`,
-      )
-      .run(resultado, agora, id, dono);
-    return r.changes === 1;
+    return this.db.transaction(() => {
+      const r = this.db
+        .prepare(
+          `UPDATE jobs SET status = 'done', resultado = ?, erro = NULL,
+                           lease_ate = NULL, lease_owner = NULL, terminado_em = ?
+            WHERE id = ? AND status = 'running' AND lease_owner = ?`,
+        )
+        .run(resultado, agora, id, dono);
+      if (r.changes !== 1) return false;
+      // O gancho roda DENTRO desta transação: é o que torna "fechar o job" e
+      // "marcar a fase feita + enfileirar a próxima" um ato só. No v1 eram duas
+      // escritas separadas (o watcher via `done` e depois enfileirava), e é daí
+      // que vinha o dispatch duplicado. Se o gancho lançar, o ack inteiro é
+      // desfeito — o job volta a `running` com o lease vivo, e a retentativa é
+      // o caminho normal.
+      if (aoConcluir) {
+        const job = this.obter(id);
+        if (job) aoConcluir(job);
+      }
+      return true;
+    })();
   }
 
   /**
@@ -183,7 +208,9 @@ export class FilaSqlite {
    * (base * 2^(tentativas-1)); senão vira `failed`. Nunca reabre job cancelado
    * nem job que já pertence a outro dono.
    */
-  falhar(id: number, erro: string, dono: string, backoffBase = 30): 'requeued' | 'failed' {
+  falhar(
+    id: number, erro: string, dono: string, backoffBase = 30, aoFalhar?: GanchoTransacional,
+  ): 'requeued' | 'failed' {
     const agora = this.agora();
     return this.db.transaction(() => {
       const job = this.db
@@ -211,6 +238,13 @@ export class FilaSqlite {
             WHERE id = ?`,
         )
         .run(erro, agora, id);
+      // Só a falha DEFINITIVA avança o fluxo (para `falhou`): uma retentativa
+      // não é término, e marcar a fase como falhada nela faria o `/refazer`
+      // agir sobre um alvo que ainda ia tentar sozinho.
+      if (aoFalhar) {
+        const atualizado = this.obter(id);
+        if (atualizado) aoFalhar(atualizado);
+      }
       return 'failed';
     })();
   }
