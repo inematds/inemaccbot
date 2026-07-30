@@ -77,11 +77,13 @@ export interface ContextoTarefa {
    * Devolver isto não é falha: um render que ainda está processando no estúdio
    * é o caso NORMAL desta fase.
    */
-  aindaNao(motivo: string): never;
+  aindaNao(motivo: string, emSegundos?: number): never;
 }
 
 /** Lançada por `ContextoTarefa.aindaNao` — sinal, não erro. */
-export class AindaNao extends Error {}
+export class AindaNao extends Error {
+  constructor(motivo: string, readonly emSegundos?: number) { super(motivo); }
+}
 
 export interface NovoJob {
   fila: Fila;

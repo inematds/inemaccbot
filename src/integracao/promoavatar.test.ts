@@ -168,6 +168,42 @@ describe('do assunto ao reel, com o portão no meio', () => {
   });
 });
 
+describe('a janela de poll vem do flow.json, não de um default', () => {
+  it('o job de download carrega intervalo e timeout da fase', () => {
+    const id = criar();
+    ackar('A#1//texto', 'ok');
+    fluxos.aprovar(id);
+    const baixar = fila.listar().find((j) => j.tarefa === 'heygen.baixar')!;
+    const input = JSON.parse(baixar.input) as { espera: { intervalo: number; timeout: number } };
+    expect(input.espera).toEqual({ intervalo: 120, timeout: 5400 });
+  });
+
+  // Sem o prazo, um vídeo que a pessoa nunca gera é pollado PARA SEMPRE:
+  // `reagendar` não gasta tentativa, então a fase nunca falharia e o /status
+  // diria "rodando" indefinidamente.
+  it('estourado o timeout, a fase FALHA de verdade', async () => {
+    const { criarHeygenBaixar } = await import('../fila/tarefas/heygen.js');
+    const tarefa = criarHeygenBaixar({
+      porTitulo: async () => new Map(), urlDe: async () => null, baixar: async () => {},
+    });
+    const ctx = {
+      job: {
+        input: JSON.stringify({
+          titulo: 'A1-mulheres-v1', destino: '/tmp/x.mp4',
+          espera: { intervalo: 120, timeout: 60 },
+        }),
+        criado_em: 1_000,
+      } as never,
+      fila: {} as never,
+      agora: () => 1_000 + 61, // um segundo além do prazo
+      log: () => {},
+      sinal: new AbortController().signal,
+      aindaNao: (m: string) => { throw new Error(`ainda-nao: ${m}`); },
+    };
+    await expect(tarefa(ctx)).rejects.toThrow(/não apareceu no HeyGen/);
+  });
+});
+
 describe('o título é a chave de idempotência (§2.5)', () => {
   it('é determinístico por fluxo e alvo', () => {
     const fluxo = estado.obter(criar())!;

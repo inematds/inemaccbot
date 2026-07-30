@@ -52,6 +52,11 @@ export function montarInput(ctx: ContextoEntrada): string {
       ...base,
       titulo: tituloEstudio(fluxo, alvo),
       destino: caminhoAvatar(ctx.raizArtefatos, fluxo, alvo),
+      // A janela de poll vem da DEFINIÇÃO CONGELADA, não de um default do
+      // worker: sem o `timeout` viajando com o job, um vídeo que a pessoa nunca
+      // gera é pollado para sempre — `reagendar` não gasta tentativa, então a
+      // fase nunca falharia e o `/status` diria "rodando" indefinidamente.
+      ...(fase.espera ? { espera: fase.espera } : {}),
     });
   }
 

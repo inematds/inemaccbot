@@ -29,11 +29,24 @@ import type { Job, Perfil } from './types.js';
  */
 export const TAREFA_FLUXO_AGENTE = 'fluxo-agente';
 
+/**
+ * Fase de fluxo que dirige o NAVEGADOR. Igual à de agente, com uma diferença
+ * que não é opcional: o motor é `chrome` (`claude --chrome`), senão a extensão
+ * não é reconhecida e a fase falha sem tocar no estúdio.
+ *
+ * O motor vem daqui e não do perfil padrão de propósito: uma fase de navegador
+ * rodando sem `--chrome` é um erro de fiação silencioso — ela "roda" e não faz
+ * nada. Amarrar os dois no mesmo lugar tira essa possibilidade.
+ */
+export const TAREFA_FLUXO_NAVEGADOR = 'fluxo-navegador';
+
 /** O que o RUNTIME de fluxos grava no `input` de um job de fase. */
 export interface EntradaFase {
   entrada: string;
   /** Texto do prompt, congelado na criação do fluxo. */
   prompt_texto: string;
+  /** Título do artefato no serviço externo (o vídeo no estúdio). */
+  titulo?: string;
   fluxo: { ref: string; fase: string; alvo: string } & Record<string, string>;
 }
 
@@ -123,7 +136,7 @@ function camposDeclarados(def: SkillDef, doJob: Record<string, string> | undefin
 
 /** Variáveis que uma fase recebe: a entrada do fluxo, o alvo e o que o
  * `flow.json` declarou nele (canal, gatilho…), mais o caminho de saída. */
-function contextoDeFase(job: Job, opts: OpcoesSkills): ContextoExecucao {
+function contextoDeFase(job: Job, opts: OpcoesSkills, motorForcado?: string): ContextoExecucao {
   let e: EntradaFase;
   try {
     e = JSON.parse(job.input) as EntradaFase;
@@ -136,13 +149,19 @@ function contextoDeFase(job: Job, opts: OpcoesSkills): ContextoExecucao {
   mkdirSync(join(opts.raizArtefatos, 'fluxos'), { recursive: true });
 
   const vars: Record<string, string> = { input: e.entrada, saida };
+  // Campos do topo que o prompt pode citar. `titulo` é o caso que importa: a
+  // fase de avatar TEM que nomear o vídeo exatamente como a fase de download
+  // vai procurar — se divergirem, o download nunca acha (defeito que fez o v1
+  // encurtar o título).
+  if (e.titulo) vars.titulo = e.titulo;
   for (const [k, v] of Object.entries(e.fluxo ?? {})) {
     if (typeof v === 'string') vars[k] = v;
   }
 
-  const perfil = job.motor && job.modelo && job.esforco
+  const base = job.motor && job.modelo && job.esforco
     ? { motor: job.motor, modelo: job.modelo, esforco: job.esforco }
     : opts.perfilPadrao;
+  const perfil = motorForcado ? { ...base, motor: motorForcado } : base;
 
   return {
     // `renderizarPrompt` recusa variável que o template não usa, então uma fase
@@ -174,6 +193,7 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
     // fluxo foi criado. Ler o arquivo aqui reintroduziria exatamente o que o
     // §3.4 proíbe: editar um prompt mudaria um fluxo em voo.
     if (job.tarefa === TAREFA_FLUXO_AGENTE) return contextoDeFase(job, opts);
+    if (job.tarefa === TAREFA_FLUXO_NAVEGADOR) return contextoDeFase(job, opts, 'chrome');
 
     // Catálogo FECHADO (§9): um `tarefa` fora do registry falha aqui, antes de
     // qualquer processo nascer. É a mesma barreira que impede texto do usuário

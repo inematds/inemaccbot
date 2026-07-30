@@ -179,7 +179,8 @@ export class Worker {
       // fila com atraso e SEM gastar tentativa (§3.2). Sem este caminho, uma
       // fase de espera queimaria as tentativas em minutos.
       if (e instanceof AindaNao && !this.abortados.has(job.id)) {
-        const segundos = this.opts.intervaloPollSegundos ?? 60;
+        // O intervalo da PRÓPRIA fase manda; o do worker é só o default.
+        const segundos = e.emSegundos ?? this.opts.intervaloPollSegundos ?? 60;
         if (this.fila.reagendar(job.id, segundos, this.opts.dono)) {
           log(`[job ${job.id}] ainda não: ${e.message} — nova checagem em ${segundos}s`);
         }
@@ -250,7 +251,7 @@ export class Worker {
         agora: this.agora,
         log: this.opts.log ?? (() => {}),
         sinal: ctrl.signal,
-        aindaNao: (motivo: string) => { throw new AindaNao(motivo); },
+        aindaNao: (motivo: string, emSegundos?: number) => { throw new AindaNao(motivo, emSegundos); },
       });
     } finally {
       if (ativo) ativo.ctrl = null;

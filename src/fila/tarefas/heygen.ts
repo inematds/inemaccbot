@@ -35,6 +35,8 @@ export interface EntradaHeygen {
   titulo: string;
   /** Onde gravar o .mp4. */
   destino: string;
+  /** Janela de poll da fase (segundos), vinda do `flow.json` congelado. */
+  espera?: { intervalo: number; timeout: number };
 }
 
 /**
@@ -118,7 +120,7 @@ export function criarHeygenBaixar(cliente: ClienteHeygen): Tarefa {
         ? ctx.sinal.reason
         : new Error(`heygen.baixar: abortado (${String(ctx.sinal.reason)})`);
     }
-    const { titulo, destino } = JSON.parse(ctx.job.input || '{}') as Partial<EntradaHeygen>;
+    const { titulo, destino, espera } = JSON.parse(ctx.job.input || '{}') as Partial<EntradaHeygen>;
     if (!titulo || !destino) throw new Error('heygen.baixar: input precisa de { titulo, destino }');
 
     // Procure ANTES de criar (§2.5): o arquivo já baixado é a resposta. Sem
@@ -126,17 +128,26 @@ export function criarHeygenBaixar(cliente: ClienteHeygen): Tarefa {
     // reel seria enfileirado duas vezes.
     if (existsSync(destino) && statSync(destino).size > 0) return destino;
 
+    // Prazo da fase, contado do PRIMEIRO enfileiramento (`criado_em`), não de
+    // cada checagem — senão o relógio zeraria a cada poll e a espera seria
+    // eterna. Estourar aqui é falha de verdade: o vídeo não veio.
+    if (espera && ctx.agora() - ctx.job.criado_em > espera.timeout) {
+      throw new Error(
+        `heygen.baixar: "${titulo}" não apareceu no HeyGen em ${Math.round(espera.timeout / 60)} min`,
+      );
+    }
+
     const achados = await cliente.porTitulo([titulo], ctx.sinal);
     const v = achados.get(titulo);
     if (!v) {
       // O caso NORMAL enquanto a pessoa ainda não gerou o vídeo, ou o estúdio
       // ainda não o listou. Não é falha: é "ainda não".
-      ctx.aindaNao(`"${titulo}" ainda não aparece no HeyGen`);
+      ctx.aindaNao(`"${titulo}" ainda não aparece no HeyGen`, espera?.intervalo);
     }
-    if (v.status !== 'completed') ctx.aindaNao(`"${titulo}" está ${v.status}`);
+    if (v.status !== 'completed') ctx.aindaNao(`"${titulo}" está ${v.status}`, espera?.intervalo);
 
     const url = await cliente.urlDe(v.videoId, ctx.sinal);
-    if (!url) ctx.aindaNao(`"${titulo}" está completed mas ainda sem video_url`);
+    if (!url) ctx.aindaNao(`"${titulo}" está completed mas ainda sem video_url`, espera?.intervalo);
 
     await cliente.baixar(url, destino, ctx.sinal);
     if (!existsSync(destino) || statSync(destino).size === 0) {
