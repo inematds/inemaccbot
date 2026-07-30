@@ -116,12 +116,14 @@ export interface Transporte {
  * `bot.on('message:text')` e ao envio dos pedaços. */
 export function criarBot(
   cfg: Config,
-  deps: { aoComando: (chatId: number, texto: string) => Promise<string> },
+  deps: { aoComando: (chatId: number, texto: string) => Promise<string>; log?: (m: string) => void },
 ): { bot: Bot; transporte: Transporte } {
   const bot = new Bot(cfg.botToken);
 
   const permitido = (chatId: number): boolean => cfg.chatsPermitidos.includes(chatId);
-  const log = (m: string): void => { console.error(m); };
+  // Sem `log` injetado, fica em silêncio (no-op) em vez de vazar pro `console` —
+  // uma fiação esquecida assim é silenciosa nos testes, não barulhenta no sink errado.
+  const log = deps.log ?? ((): void => {});
 
   bot.on('message:text', async (ctx) => {
     const pedacos = await rotear(

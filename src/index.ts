@@ -382,7 +382,7 @@ function criarTransporteReal(
     aoFalhaFatal: (e: Error) => void;
   },
 ): TransporteServico {
-  const { bot, transporte } = criarBot(cfg, { aoComando: deps.aoComando });
+  const { bot, transporte } = criarBot(cfg, { aoComando: deps.aoComando, log: deps.log });
   const ciclo = ligarPolling(bot, deps);
   return { ...ciclo, transporte };
 }

@@ -172,4 +172,45 @@ describe('criarBot', () => {
     expect(bot).toBeDefined();
     expect(typeof transporte.responder).toBe('function');
   });
+
+  it('usa o logger injetado (nunca console) para logar a rejeição de chat fora da allowlist', async () => {
+    // `botInfo` pré-preenchido evita a chamada de rede getMe() que o grammy faria
+    // em bot.init(); `handleUpdate` despacha o update sintético direto pros
+    // handlers, sem polling nem rede — é a fronteira mais funda alcançável sem tocar Telegram.
+    const cfg: Config = {
+      botToken: '123456:AAAA-fake-token-nao-real-1234567890AB',
+      queueDb: ':memory:',
+      stateDir: '/tmp',
+      logFile: '/tmp/log',
+      chatsPermitidos: [123], // chat 999 abaixo fica de fora de propósito
+      motorPadrao: 'claude',
+      modeloPadrao: 'sonnet',
+      esforcoPadrao: 'low',
+    };
+
+    const linhas: string[] = [];
+    const log = (m: string): void => { linhas.push(m); };
+
+    const { bot } = criarBot(cfg, { aoComando: async () => 'nao deveria ser chamado', log });
+    bot.botInfo = {
+      id: 1, is_bot: true, first_name: 'teste', username: 'teste_bot',
+      can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false,
+      can_connect_to_business: false, has_main_web_app: false,
+      has_topics_enabled: false, allows_users_to_create_topics: false,
+      can_manage_bots: false, supports_join_request_queries: false,
+    };
+
+    await bot.handleUpdate({
+      update_id: 1,
+      message: {
+        message_id: 1,
+        date: Date.now() / 1000,
+        chat: { id: 999, type: 'private', first_name: 'x' },
+        from: { id: 999, is_bot: false, first_name: 'x' },
+        text: 'oi',
+      },
+    });
+
+    expect(linhas).toEqual(['gateway: mensagem rejeitada — chat 999 fora da allowlist']);
+  });
 });
