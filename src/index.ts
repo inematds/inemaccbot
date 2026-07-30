@@ -56,8 +56,20 @@ export interface DepsServico {
    */
   criarTransporte: (
     cfg: Config,
-    deps: { aoComando: (chatId: number, texto: string) => Promise<string> },
+    deps: {
+      aoComando: (chatId: number, texto: string) => Promise<string>;
+      /** Log do serviço — o transporte NUNCA escreve em `console`, senão o
+       * único rastro do gateway cai num sink diferente do resto (§8). */
+      log: (m: string) => void;
+      /** O transporte morreu DEPOIS do boot (laço de polling caiu). O serviço
+       * fica surdo: jobs rodam, nenhum comando entra, nenhuma notificação sai.
+       * Chamar isto derruba o serviço para o systemd reiniciar. */
+      aoFalhaFatal: (e: Error) => void;
+    },
   ) => TransporteServico;
+  /** Como o PROCESSO morre depois de `parar()` numa falha fatal. Só `main`
+   * passa (process.exit); nos testes o serviço só precisa ficar parado. */
+  aoFalhaFatal?: (e: Error) => void;
   log: (m: string) => void;
   /** Pausa do laço quando `passo()` devolve false (nada na fila). */
   intervaloOciosoMs: number;
@@ -159,6 +171,25 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   // no-op, não um segundo `db.close()`.
   const parar = (): Promise<void> => (parando ??= desligar());
 
+  /**
+   * Falha do gateway depois do boot. Ficar de pé sem transporte é o estado que
+   * a spec §8 proíbe (silêncio nunca é estado válido): nada chega, nada sai, e
+   * nada reinicia. Então: loga NO LOG DO SERVIÇO (nunca `console`), desliga
+   * ordenadamente (`parar()` é memoizado — SIGTERM e esta rota compartilham o
+   * mesmo desligamento) e só então avisa `main` para sair diferente de zero.
+   */
+  function falhaFatal(e: Error): void {
+    deps.log(`FATAL: transporte caiu depois do boot: ${e.message} — desligando`);
+    void parar().then(
+      () => deps.aoFalhaFatal?.(e),
+      (erro: unknown) => {
+        // Desligamento quebrado não pode engolir a saída não-zero.
+        deps.log(`FATAL: desligamento falhou: ${(erro as Error).message}`);
+        deps.aoFalhaFatal?.(e);
+      },
+    );
+  }
+
   async function iniciar(): Promise<void> {
     // 1. schema. Checksum divergente derruba o boot: subir sobre um schema que
     //    não reconhecemos é pior que não subir.
@@ -180,7 +211,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
 
     // 5. só então: workers e bot.
     const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia });
-    transp = deps.criarTransporte(cfg, { aoComando });
+    transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
     const notificar = criarNotificador(transp.transporte);
 
     workers = FILAS.map((f) => ({
@@ -307,23 +338,53 @@ export function lerEnv(texto: string): Record<string, string> {
 /** Transporte real. `bot.start()` NÃO é aguardado: no grammy ele só assenta
  * quando o bot PARA — esperar por ele travaria o boot antes do primeiro
  * `passo()`. `bot.init()` é o que falha rápido (token inválido). */
-function criarTransporteReal(
-  cfg: Config,
-  deps: { aoComando: (chatId: number, texto: string) => Promise<string> },
-): TransporteServico {
-  const { bot, transporte } = criarBot(cfg, deps);
+/** O mínimo do grammy de que o ciclo de vida depende — assim o teste do
+ * polling não precisa de grammy nem de rede. */
+export interface BotMinimo {
+  init(): Promise<void>;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/**
+ * Liga `init`/`start`/`stop` ao ciclo de vida do serviço. Extraído de
+ * `criarTransporteReal` para que a rota "o polling caiu" seja testável: antes
+ * ela vivia dentro de um closure que só existia com um bot grammy de verdade,
+ * e por isso o `console.error` original nunca foi coberto por teste.
+ */
+export function ligarPolling(
+  bot: BotMinimo,
+  deps: { log: (m: string) => void; aoFalhaFatal: (e: Error) => void },
+): { iniciar(): Promise<void>; parar(): Promise<void> } {
   return {
     async iniciar() {
       await bot.init();
       void bot.start().catch((e: unknown) => {
-        console.error(`bot: laço de polling caiu: ${(e as Error).message}`);
+        // Não é aviso: sem polling o serviço está surdo. Loga onde todo o
+        // resto loga e derruba o processo — `Restart=on-failure` é a
+        // recuperação; continuar de pé é apodrecer em silêncio.
+        const erro = e instanceof Error ? e : new Error(String(e));
+        deps.log(`bot: laço de polling caiu: ${erro.message}`);
+        deps.aoFalhaFatal(erro);
       });
     },
     async parar() {
       await bot.stop();
     },
-    transporte,
   };
+}
+
+function criarTransporteReal(
+  cfg: Config,
+  deps: {
+    aoComando: (chatId: number, texto: string) => Promise<string>;
+    log: (m: string) => void;
+    aoFalhaFatal: (e: Error) => void;
+  },
+): TransporteServico {
+  const { bot, transporte } = criarBot(cfg, { aoComando: deps.aoComando });
+  const ciclo = ligarPolling(bot, deps);
+  return { ...ciclo, transporte };
 }
 
 export async function main(): Promise<void> {
@@ -343,6 +404,11 @@ export async function main(): Promise<void> {
     }
   };
 
+  /** Uma falha fatal VENCE um SIGTERM concorrente: `parar()` é memoizado, então
+   * os dois esperam o mesmo desligamento, e sair 0 esconderia do systemd um
+   * serviço que morreu surdo. */
+  let fatal = false;
+
   const svc = criarServico(cfg, {
     agora: () => Math.floor(Date.now() / 1000),
     criarTransporte: criarTransporteReal,
@@ -352,13 +418,16 @@ export async function main(): Promise<void> {
     // O unit dá 120s no SIGTERM; saímos com folga antes do SIGKILL.
     timeoutDrenoMs: 110_000,
     leaseSegundos: LEASE_PADRAO_SEGUNDOS,
+    // O desligamento já aconteceu quando isto é chamado; aqui só o código de
+    // saída. Não-zero é o que faz o `Restart=on-failure` do unit agir.
+    aoFalhaFatal: () => { fatal = true; process.exit(1); },
   });
 
   for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(sinal, () => {
       log(`sinal ${sinal} recebido — desligando`);
       void svc.parar().then(
-        () => process.exit(0),
+        () => process.exit(fatal ? 1 : 0),
         (e: unknown) => {
           log(`desligamento falhou: ${(e as Error).message}`);
           process.exit(1);
@@ -374,7 +443,9 @@ export async function main(): Promise<void> {
 // Só quando EXECUTADO — nunca no import (os testes importam este módulo).
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   void main().catch((e: unknown) => {
-    console.error(`boot falhou: ${(e as Error).message}`);
+    // stderr cru de propósito: o que falhou aqui pode ser o próprio
+    // `carregarConfig`, e então não existe `cfg.logFile` para onde escrever.
+    process.stderr.write(`boot falhou: ${(e as Error).message}\n`);
     process.exit(1);
   });
 }

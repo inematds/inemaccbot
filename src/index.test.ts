@@ -16,7 +16,8 @@ import { FilaSqlite } from './fila/store.js';
 import type { Tarefa } from './fila/worker.js';
 import type { Config } from './config.js';
 import type { Transporte } from './gateway/telegram.js';
-import { criarServico } from './index.js';
+import { criarServico, ligarPolling } from './index.js';
+import type { BotMinimo } from './index.js';
 import type { DepsServico, Servico } from './index.js';
 
 let dir: string;
@@ -267,5 +268,66 @@ describe('notificação', () => {
     await svc.parar();
     expect(registro.mensagens[0]?.chatId).toBe(42);
     expect(registro.mensagens[0]?.texto).toMatch(/Job 1 conclu/);
+  });
+});
+
+describe('gateway caído depois do boot', () => {
+  // §8: silêncio nunca é estado válido. Antes desta correção, o laço de polling
+  // caía num `console.error` e o serviço seguia de pé, surdo, até alguém notar.
+  it('derruba o serviço e loga quando o polling cai depois do boot', async () => {
+    let derrubar: ((e: Error) => void) | undefined;
+    const linhas: string[] = [];
+    const fatais: Error[] = [];
+    const svc = criarServico(criarCfg(), {
+      agora,
+      criarTransporte: (_cfg, d) => {
+        derrubar = d.aoFalhaFatal;
+        return {
+          async iniciar() { /* boot OK; o polling só cai depois */ },
+          async parar() { /* nada */ },
+          transporte: { async responder() { /* nada */ } },
+        };
+      },
+      log: (m) => { linhas.push(m); },
+      intervaloOciosoMs: 2,
+      heartbeatMs: 5,
+      timeoutDrenoMs: 2_000,
+      leaseSegundos: 60,
+      criarTarefas: () => OK,
+      aoFalhaFatal: (e) => { fatais.push(e); },
+    });
+    await svc.iniciar();
+    expect(svc.timers()).toBeGreaterThan(0);
+
+    derrubar!(new Error('polling morreu'));
+    await ate(() => fatais.length > 0);
+
+    // Parado de verdade: sem timers vivos e sem DB aberto.
+    expect(svc.timers()).toBe(0);
+    expect(fatais[0]?.message).toBe('polling morreu');
+    expect(linhas.join('\n')).toMatch(/FATAL.*polling morreu/);
+    // `parar()` é memoizado: um SIGTERM depois disso não desliga de novo.
+    await svc.parar();
+  });
+
+  it('ligarPolling manda a queda do bot.start() para o log e para a falha fatal', async () => {
+    const linhas: string[] = [];
+    const fatais: Error[] = [];
+    let parou = 0;
+    const bot: BotMinimo = {
+      async init() { /* token OK */ },
+      async start() { throw new Error('getUpdates 401'); },
+      async stop() { parou += 1; },
+    };
+    const ciclo = ligarPolling(bot, {
+      log: (m) => { linhas.push(m); },
+      aoFalhaFatal: (e) => { fatais.push(e); },
+    });
+    await ciclo.iniciar();
+    await ate(() => fatais.length > 0);
+    expect(fatais[0]?.message).toMatch(/401/);
+    expect(linhas.join('\n')).toMatch(/polling caiu.*401/);
+    await ciclo.parar();
+    expect(parou).toBe(1);
   });
 });
