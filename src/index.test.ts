@@ -365,6 +365,45 @@ describe('notificação', () => {
   });
 });
 
+describe('isolamento entre filas (regressão do watcher.test.ts do v1)', () => {
+  // Caso original: "poll de uma fila falhar não impede a notificação da outra
+  // fila". Lá as filas eram dois serviços HTTP e a falha era de rede; aqui são
+  // dois workers no mesmo processo, e a falha é uma tarefa que explode. A
+  // propriedade herdada é a mesma: problema numa fila não cega a outra.
+  it('tarefa que explode numa fila não impede a outra de terminar e notificar', async () => {
+    const { svc, registro } = montar({
+      'io.explode': async () => { throw new Error('io quebrado'); },
+      'cpu.ok': async () => 'saiu o resultado',
+    });
+    await svc.iniciar();
+
+    svc.fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'io.explode', input: '{}', chat_id: 42 });
+    svc.fila.enfileirar({ fila: 'cpu', kind: 'function', tarefa: 'cpu.ok', input: '{}', chat_id: 42 });
+
+    await ate(() => svc.fila.obter(1)?.status === 'failed' && svc.fila.obter(2)?.status === 'done', 3_000);
+    await ate(() => registro.mensagens.length >= 2, 2_000);
+    await svc.parar();
+
+    const textos = registro.mensagens.map((m) => m.texto).join('\n');
+    expect(textos).toContain('saiu o resultado');
+    expect(textos).toMatch(/falhou/);
+  });
+
+  // O outro lado: um job que falha não pode deixar de avisar, e a entrega tem
+  // que ficar registrada (senão a varredura de reentrega mandaria de novo).
+  it('falha avisa o chat e marca a notificação como entregue', async () => {
+    const { svc, registro } = montar({ 'io.explode': async () => { throw new Error('quebrou'); } });
+    await svc.iniciar();
+    svc.fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'io.explode', input: '{}', chat_id: 42 });
+    await ate(() => svc.fila.obter(1)?.status === 'failed', 3_000);
+    await ate(() => registro.mensagens.length > 0, 2_000);
+    // Lido ANTES do `parar()`: o desligamento fecha a conexão do serviço, e é
+    // ela que o `svc.fila` usa.
+    expect(svc.fila.obter(1)!.notificado_em).not.toBeNull();
+    await svc.parar();
+  });
+});
+
 describe('gateway caído depois do boot', () => {
   // §8: silêncio nunca é estado válido. Antes desta correção, o laço de polling
   // caía num `console.error` e o serviço seguia de pé, surdo, até alguém notar.

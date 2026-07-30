@@ -44,14 +44,27 @@ export class FilaSqlite {
     return this.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as Job | undefined;
   }
 
-  listar(filtro: { fila?: Fila; status?: StatusJob } = {}): Job[] {
+  /**
+   * `limite` e `desde` existem porque `jobs` NUNCA é purgado — é o histórico
+   * (§3.5). Sem teto, cada `/fila` e cada `/status` varrem a tabela inteira, e
+   * o custo cresce para sempre com o uso. O teto pega os mais RECENTES (ordem
+   * decrescente na consulta, revertida na volta) — o histórico antigo continua
+   * lá para quem pedir um job pelo id.
+   */
+  listar(filtro: { fila?: Fila; status?: StatusJob; desde?: number; limite?: number } = {}): Job[] {
     const where: string[] = [];
     const args: unknown[] = [];
     if (filtro.fila) { where.push('fila = ?'); args.push(filtro.fila); }
     if (filtro.status) { where.push('status = ?'); args.push(filtro.status); }
-    const sql = `SELECT * FROM jobs${where.length ? ` WHERE ${where.join(' AND ')}` : ''}
-                 ORDER BY id`;
-    return this.db.prepare(sql).all(...args) as Job[];
+    if (filtro.desde !== undefined) { where.push('criado_em >= ?'); args.push(filtro.desde); }
+    const onde = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+    if (filtro.limite === undefined) {
+      return this.db.prepare(`SELECT * FROM jobs${onde} ORDER BY id`).all(...args) as Job[];
+    }
+    const linhas = this.db
+      .prepare(`SELECT * FROM jobs${onde} ORDER BY id DESC LIMIT ?`)
+      .all(...args, filtro.limite) as Job[];
+    return linhas.reverse();
   }
 
   /**
@@ -245,6 +258,38 @@ export class FilaSqlite {
           WHERE id = ? AND status = 'running' AND lease_owner = ?`,
       )
       .run(this.agora() + emSegundos, id, dono);
+    return r.changes === 1;
+  }
+
+  /**
+   * Jobs que TERMINARAM e cujo dono ainda não foi avisado. É a rede de segurança
+   * do §8: uma notificação que falhou (Telegram fora do ar, processo morto
+   * entre o ack e o envio) some para sempre se ninguém reprocurar.
+   *
+   * `canceled` fica de fora de propósito: o cancelamento já foi confirmado no
+   * chat pelo próprio comando que o disparou.
+   */
+  pendentesDeNotificacao(limite = 20): Job[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM jobs
+          WHERE status IN ('done', 'failed')
+            AND chat_id IS NOT NULL
+            AND notificado_em IS NULL
+          ORDER BY id LIMIT ?`,
+      )
+      .all(limite) as Job[];
+  }
+
+  /**
+   * Marca a notificação como entregue. Só DEPOIS do envio ter sucesso — marcar
+   * antes trocaria "avisa duas vezes" (chato) por "nunca avisa" (o modo de
+   * falha que a §8 proíbe).
+   */
+  marcarNotificado(id: number): boolean {
+    const r = this.db
+      .prepare('UPDATE jobs SET notificado_em = ? WHERE id = ? AND notificado_em IS NULL')
+      .run(this.agora(), id);
     return r.changes === 1;
   }
 

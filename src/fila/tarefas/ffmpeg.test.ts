@@ -109,6 +109,17 @@ describe('aborto', () => {
     return cond();
   }
 
+  /** PID já escrito por inteiro, ou 0 se o arquivo ainda não tem conteúdo válido. */
+  function lerPid(arquivo: string): number {
+    try {
+      const bruto = readFileSync(arquivo, 'utf8').trim();
+      const n = Number(bruto);
+      return Number.isInteger(n) && n > 0 ? n : 0;
+    } catch {
+      return 0;
+    }
+  }
+
   const vivo = (pid: number): boolean => {
     try { process.kill(pid, 0); return true; } catch { return false; }
   };
@@ -123,8 +134,12 @@ describe('aborto', () => {
       ctx(JSON.stringify({ entrada }), c.signal),
     );
     p.catch(() => {}); // rejeição já é esperada abaixo; evita unhandled no meio
-    await ate(() => existsSync(pidFile), 5_000);
-    const pid = Number(readFileSync(pidFile, 'utf8').trim());
+    // Espera o CONTEÚDO, não a existência: o `>` do shell cria o arquivo antes
+    // de escrever nele, e sob carga a leitura pegava string vazia — `Number('')`
+    // é 0, e o teste falhava de forma intermitente. (Pior: podia ler um PID
+    // truncado e passar verde pelo motivo errado.)
+    await ate(() => lerPid(pidFile) > 0, 5_000);
+    const pid = lerPid(pidFile);
     expect(pid).toBeGreaterThan(0);
     expect(vivo(pid)).toBe(true);
 

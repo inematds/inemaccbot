@@ -57,6 +57,35 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE jobs ADD COLUMN lease_owner TEXT;
     `,
   },
+  {
+    version: 3,
+    nome: 'notificado_em',
+    // Quando a notificação de término foi ENTREGUE. NULL num job terminal com
+    // `chat_id` significa "o dono ainda não sabe" — e é o que a varredura de
+    // reentrega procura.
+    //
+    // Isto fecha um buraco que o v1 não tinha: lá, se a notificação falhasse, o
+    // job continuava pendente e a próxima passagem do watcher reentregava
+    // exatamente uma vez (`watcher.test.ts` tinha caso dedicado). No v2 o
+    // `aoTerminar` que falhava só ia para o log, e a mensagem sumia para
+    // sempre — silêncio, que a §8 proíbe.
+    // O backfill não é detalhe: sem ele, TODO job terminal que já existe no
+    // banco entra na varredura de reentrega no primeiro tick depois do deploy.
+    // No banco de produção isso é imediato — os jobs de verificação foram
+    // enfileirados com `chat_id: 0`, que não é NULL e portanto passa no filtro,
+    // e cujo envio falha SEMPRE ("chat not found"). Seriam duas chamadas
+    // condenadas à API do Telegram a cada 20 segundos, para sempre. E num chat
+    // de verdade seria pior: uma enxurrada de "Job N concluído" de jobs velhos.
+    //
+    // A varredura existe para o que terminar DAQUI PARA FRENTE.
+    sql: `
+      ALTER TABLE jobs ADD COLUMN notificado_em INTEGER;
+      CREATE INDEX idx_jobs_pendente_notificacao
+        ON jobs (status, notificado_em, chat_id);
+      UPDATE jobs SET notificado_em = criado_em
+        WHERE status IN ('done', 'failed', 'canceled');
+    `,
+  },
 ];
 
 const SCHEMA_CONTROLE = `

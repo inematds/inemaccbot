@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { abrirDb } from './abrir.js';
-import { aplicarMigrations, type Migration } from './migrations.js';
+import { MIGRATIONS, aplicarMigrations, type Migration } from './migrations.js';
 
 const agora = () => 1_700_000_000;
 
@@ -94,6 +94,38 @@ describe('migrations', () => {
     // Verify no schema_migrations row for version 1
     const rows = db.prepare('SELECT version FROM schema_migrations WHERE version = 1').all();
     expect(rows).toHaveLength(0);
+    db.close();
+  });
+});
+
+describe('migration 3 (notificado_em)', () => {
+  let dir: string;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'inemaccbot-m3-')); });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  // Sem o backfill, todo job terminal que JÁ existe entra na varredura de
+  // reentrega no primeiro tick depois do deploy: num banco real isso é uma
+  // enxurrada de "Job N concluído" de jobs velhos, ou — pior — uma chamada
+  // condenada à API do Telegram a cada 20 segundos, para sempre.
+  it('marca como notificado tudo que já estava terminal', () => {
+    const db = abrirDb(join(dir, 'f.db'));
+    // Sobe só até a versão 2 e semeia como um banco de produção estaria.
+    aplicarMigrations(db, () => 100, MIGRATIONS.filter((m) => m.version <= 2));
+    db.prepare(
+      `INSERT INTO jobs (fila, kind, tarefa, input, status, chat_id, criado_em)
+       VALUES ('io','function','t','{}','done', 0, 50),
+              ('io','function','t','{}','failed', 0, 51),
+              ('io','function','t','{}','queued', 7, 52)`,
+    ).run();
+
+    aplicarMigrations(db, () => 100, MIGRATIONS);
+
+    const linhas = db.prepare('SELECT status, notificado_em FROM jobs ORDER BY id').all() as
+      { status: string; notificado_em: number | null }[];
+    expect(linhas[0]!.notificado_em).not.toBeNull();
+    expect(linhas[1]!.notificado_em).not.toBeNull();
+    // O que ainda vai terminar continua NULL: a varredura é para o futuro.
+    expect(linhas[2]!.notificado_em).toBeNull();
     db.close();
   });
 });

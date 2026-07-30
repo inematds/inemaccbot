@@ -196,6 +196,63 @@ describe('executar', () => {
     });
   });
 
+  describe('métricas do /fila', () => {
+    /** Fecha `n` jobs de uma tarefa, cada um com a duração dada. */
+    function historico(tarefa: string, duracoes: number[]): void {
+      for (const d of duracoes) {
+        const j = fila.enfileirar({ fila: 'render', kind: 'agent', tarefa, input: '{}' });
+        fila.pegar('render', 600, 'w1');
+        t += d;
+        fila.concluir(j.id, '/tmp/v.mp4', 'w1');
+      }
+    }
+
+    it('mostra a duração média por tarefa — é o que diz se vale mudar o perfil', () => {
+      historico('explicativo', [600, 900, 1_200]);
+      const r = executar(parseComando('/fila'), depsSkills());
+      expect(r).toContain('Duração média');
+      expect(r).toMatch(/explicativo: 15m \(3x\)/);
+    });
+
+    it('conta retentativas — job que rodou duas vezes custou o dobro em GPU', () => {
+      const j = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'x', input: '{}', max_tentativas: 2 });
+      fila.pegar('io', 60, 'w1');
+      fila.falhar(j.id, 'erro', 'w1', 1);
+      t += 60;
+      fila.pegar('io', 60, 'w1');
+      expect(executar(parseComando('/fila'), depsSkills())).toMatch(/io:.*retentados=1/);
+    });
+
+    // O alarme que importa com render de 2h: "rodando" sozinho não distingue
+    // trabalho legítimo de job preso.
+    it('acusa job preso comparando com o histórico da MESMA tarefa', () => {
+      historico('explicativo', [600, 600, 600]);
+      const preso = fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'explicativo', input: '{}' });
+      fila.pegar('render', 6_000, 'w1');
+      t += 6_000; // muito além do triplo da média
+      const r = executar(parseComando('/fila'), depsSkills());
+      expect(r).toContain('possivelmente preso');
+      expect(r).toContain(String(preso.id));
+    });
+
+    it('não acusa job dentro do normal da tarefa', () => {
+      historico('explicativo', [600, 600, 600]);
+      fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'explicativo', input: '{}' });
+      fila.pegar('render', 6_000, 'w1');
+      t += 300;
+      expect(executar(parseComando('/fila'), depsSkills())).not.toContain('possivelmente preso');
+    });
+
+    // Sem histórico, inventar um limite geraria alarme falso — e alarme falso
+    // ensina o operador a ignorar o painel.
+    it('sem histórico suficiente, não acusa nada', () => {
+      fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'novidade', input: '{}' });
+      fila.pegar('render', 6_000, 'w1');
+      t += 100_000;
+      expect(executar(parseComando('/fila'), depsSkills())).not.toContain('possivelmente preso');
+    });
+  });
+
   describe('/status sem id (a lista)', () => {
     it('mostra o ID, a tarefa e um pedaço do pedido de cada job', () => {
       executar(parseComando('transcrever: https://exemplo.com/video-longo', defsTeste), depsSkills());

@@ -69,3 +69,25 @@ describe('obter e listar', () => {
     expect(fila.listar({ status: 'done' })).toEqual([]);
   });
 });
+
+describe('listar com teto e janela (o histórico não é purgado)', () => {
+  it('sem limite, devolve tudo em ordem crescente', () => {
+    for (let i = 0; i < 5; i += 1) fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 't', input: '{}' });
+    expect(fila.listar().map((j) => j.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  // O teto pega os MAIS RECENTES: um painel que mostrasse os cinco primeiros
+  // jobs da vida do bot seria inútil.
+  it('com limite, devolve os últimos — ainda em ordem crescente', () => {
+    for (let i = 0; i < 5; i += 1) fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 't', input: '{}' });
+    expect(fila.listar({ limite: 2 }).map((j) => j.id)).toEqual([4, 5]);
+  });
+
+  it('desde corta pelo tempo de criação', () => {
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'velho', input: '{}' });
+    t += 1_000;
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'novo', input: '{}' });
+    const recentes = fila.listar({ desde: t });
+    expect(recentes.map((j) => j.tarefa)).toEqual(['novo']);
+  });
+});
