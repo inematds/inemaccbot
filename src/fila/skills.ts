@@ -26,6 +26,8 @@ export interface EntradaSkill {
   destino?: string;
   /** Override pontual do perfil (`| modelo=opus`) — precedência 1 do §1.5. */
   perfil?: { motor?: string; modelo?: string; esforco?: string };
+  /** Campos declarados pela skill (`| vertical`, `| curso skillsx`). */
+  campos?: Record<string, string>;
 }
 
 export function parseEntradaSkill(input: string): EntradaSkill {
@@ -44,6 +46,7 @@ export function parseEntradaSkill(input: string): EntradaSkill {
     entrada: o.entrada,
     destino: typeof o.destino === 'string' ? o.destino : undefined,
     perfil: (typeof o.perfil === 'object' && o.perfil !== null ? o.perfil : undefined) as EntradaSkill['perfil'],
+    campos: (typeof o.campos === 'object' && o.campos !== null ? o.campos : undefined) as EntradaSkill['campos'],
   };
 }
 
@@ -66,6 +69,12 @@ export interface OpcoesSkills {
  */
 export function caminhoArtefato(raiz: string, def: SkillDef, job: Job): string {
   return join(raiz, def.command, `${job.id}.${def.artefato_exts[0]}`);
+}
+
+function camposDeclarados(def: SkillDef, doJob: Record<string, string> | undefined): Record<string, string> {
+  const saida: Record<string, string> = {};
+  for (const [nome, c] of Object.entries(def.campos)) saida[nome] = doJob?.[nome] ?? c.padrao;
+  return saida;
 }
 
 export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<ContextoExecucao> {
@@ -114,7 +123,16 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
       }).perfil;
 
     return {
-      prompt: renderizarPrompt(template, { input: entrada.entrada, saida }),
+      // Os campos DECLARADOS entram sempre, com o default quando o comando os
+      // omitiu — quem monta isso é a gramática. Um campo que o job carrega mas
+      // a skill não declara mais (registry editado depois do enfileiramento) é
+      // descartado aqui, senão `renderizarPrompt` derrubaria o job por uma
+      // variável que o template não usa.
+      prompt: renderizarPrompt(template, {
+        input: entrada.entrada,
+        saida,
+        ...camposDeclarados(def, entrada.campos),
+      }),
       cwd: opts.cwd,
       perfil,
       vars: {},

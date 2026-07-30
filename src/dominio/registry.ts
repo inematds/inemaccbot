@@ -32,10 +32,43 @@ export interface SkillDef {
   perfil?: PerfilParcial;
   /** Aceita `| livesN` para copiar o artefato ao destino. */
   aceita_destino: boolean;
+  /**
+   * Campos que ESTA skill aceita no comando, além de destino e perfil.
+   *
+   * Existe para não repetir o erro do v1: lá o parser conhecia `vertical`,
+   * `pesquisa`, `narracao`, `visuais` e `mover` por nome, e cada skill nova
+   * exigia editá-lo. Aqui quem declara é a skill, e o parser só confere contra a
+   * declaração.
+   *
+   * Todo valor chega ao prompt como string (bandeira vira `sim`/`não`), e
+   * `renderizarPrompt` FALHA se o template não usar uma variável declarada —
+   * então campo declarado e esquecido no prompt é erro de teste, não silêncio.
+   */
+  campos: Record<string, CampoDef>;
+  /**
+   * A tarefa dispara trabalho DESTACADO e depois vigia o artefato aparecer, em
+   * vez de esperar o agente terminar (etapa 3, §1.3 do plano). Render precisa
+   * disso: um `systemctl restart` no meio de 40 minutos de vídeo mataria o job.
+   */
+  aguarda_artefato: boolean;
   descricao: string;
   exemplo: string;
 }
 
+/**
+ * `bandeira`: presente no comando = ligada (`| vertical`). Vira `sim`/`não`.
+ * `texto`: `| curso skillsx` ou `| curso=skillsx`. Sem espaço no valor — estes
+ * valores viram nome de arquivo na entrega, e espaço ali quebra tudo que
+ * re-splita argv (regra que o v1 já aplicava a `curso`/`modulo`).
+ */
+export interface CampoDef {
+  tipo: 'bandeira' | 'texto';
+  /** Usado quando o campo não vem no comando. Bandeira: `sim`/`não`. */
+  padrao: string;
+  descricao?: string;
+}
+
+const TIPOS_CAMPO = new Set(['bandeira', 'texto']);
 const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
 const KINDS_VALIDOS = new Set<Kind>(['agent', 'function']);
 /** Um comando é digitado no chat e casado por igualdade: sem espaço, sem `|`,
@@ -70,6 +103,43 @@ function validarPerfil(v: unknown, i: number): PerfilParcial | undefined {
   // O VALOR de modelo/esforço é validado por `resolverPerfil` (dominio/perfil.ts),
   // que é quem conhece o ranking — duplicar a lista aqui criaria duas fontes.
   return Object.keys(saida).length ? saida : undefined;
+}
+
+/** Nome de campo é digitado no chat e vira variável de prompt: as duas coisas
+ * exigem a mesma forma conservadora. */
+const NOME_CAMPO = /^[a-z][a-z0-9_]{0,20}$/;
+
+/** Nomes que a gramática já usa para outra coisa — declarar um deles faria o
+ * campo da skill ser comido silenciosamente pelo parser. */
+const RESERVADOS = new Set(['motor', 'modelo', 'esforco', 'input', 'saida']);
+
+function validarCampos(v: unknown, i: number, command: string): Record<string, CampoDef> {
+  if (v === undefined || v === null) return {};
+  if (typeof v !== 'object' || Array.isArray(v)) erro(i, 'campos', 'precisa ser objeto');
+  const saida: Record<string, CampoDef> = {};
+  for (const [nome, bruto] of Object.entries(v as Record<string, unknown>)) {
+    if (!NOME_CAMPO.test(nome)) erro(i, `campos.${nome}`, 'nome inválido (minúsculas, dígitos, "_")');
+    if (RESERVADOS.has(nome)) {
+      erro(i, `campos.${nome}`, `"${nome}" é reservado pela gramática — a skill "${command}" nunca receberia esse valor`);
+    }
+    if (typeof bruto !== 'object' || bruto === null || Array.isArray(bruto)) {
+      erro(i, `campos.${nome}`, 'precisa ser objeto { tipo, padrao }');
+    }
+    const c = bruto as Record<string, unknown>;
+    const tipo = exigirTexto(c.tipo, i, `campos.${nome}.tipo`);
+    if (!TIPOS_CAMPO.has(tipo)) erro(i, `campos.${nome}.tipo`, `"${tipo}" — use bandeira ou texto`);
+    const padrao = typeof c.padrao === 'string' ? c.padrao : '';
+    if (tipo === 'bandeira' && !['sim', 'não'].includes(padrao)) {
+      erro(i, `campos.${nome}.padrao`, 'bandeira aceita só "sim" ou "não"');
+    }
+    if (/\s/.test(padrao)) erro(i, `campos.${nome}.padrao`, 'sem espaço (o valor vira nome de arquivo)');
+    saida[nome] = {
+      tipo: tipo as CampoDef['tipo'],
+      padrao,
+      ...(typeof c.descricao === 'string' ? { descricao: c.descricao } : {}),
+    };
+  }
+  return saida;
 }
 
 /**
@@ -134,6 +204,8 @@ export function validarSkills(dados: unknown, raiz: string): SkillDef[] {
       timeout_segundos: exigirInteiroPositivo(d.timeout_segundos, i, 'timeout_segundos'),
       perfil: validarPerfil(d.perfil, i),
       aceita_destino: d.aceita_destino === true,
+      campos: validarCampos(d.campos, i, command),
+      aguarda_artefato: d.aguarda_artefato === true,
       descricao: exigirTexto(d.descricao, i, 'descricao'),
       exemplo: exigirTexto(d.exemplo, i, 'exemplo'),
     };

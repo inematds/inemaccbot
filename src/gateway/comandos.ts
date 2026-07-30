@@ -287,6 +287,7 @@ export function executar(cmd: Comando, deps: DepsComando): string {
           entrada: cmd.pedido.entrada,
           ...(cmd.pedido.destino ? { destino: cmd.pedido.destino } : {}),
           ...(cmd.pedido.perfil ? { perfil: cmd.pedido.perfil } : {}),
+          ...(cmd.pedido.campos ? { campos: cmd.pedido.campos } : {}),
         }),
         max_tentativas: def.max_tentativas,
         chat_id: deps.chatId,
