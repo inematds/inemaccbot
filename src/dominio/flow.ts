@@ -34,6 +34,15 @@ export interface FaseDef {
   espera?: { intervalo: number; timeout: number };
   /** Destino da entrega, com `{canal}` resolvido pelo alvo. */
   entrega?: string;
+  /**
+   * PORTÃO HUMANO: ao terminar esta fase, o fluxo PARA e espera `/aprovar`.
+   *
+   * Existe porque há trabalho que custa caro e não dá para desfazer — render de
+   * avatar, fila de reel. Aprovar o texto antes vale mais que retentar depois.
+   * Também é como se modela uma fase que é feita FORA do bot (a pessoa gera os
+   * avatares no estúdio): o fluxo espera, e o `/aprovar` é o "terminei".
+   */
+  pausa_apos?: boolean;
 }
 
 export interface AlvoDef {
@@ -52,7 +61,9 @@ export interface FlowDef {
 }
 
 const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
-const NOME_SIMPLES = /^[a-z][a-z0-9_-]{0,40}$/;
+// Começa com letra OU dígito: os públicos reais incluem `40mais` e `60mais`, e
+// quem define o vocabulário do domínio é o domínio — não o validador do bot.
+const NOME_SIMPLES = /^[a-z0-9][a-z0-9_-]{0,40}$/;
 
 function erro(campo: string, detalhe: string): never {
   throw new Error(`flow.json (${campo}): ${detalhe}`);
@@ -67,10 +78,17 @@ function texto(v: unknown, campo: string): string {
  * Valida a definição já parseada. `raiz` é o repo de DOMÍNIO — é lá que os
  * prompts das fases vivem, não neste repo.
  */
-/** Tarefas que uma FASE pode nomear. Catálogo fechado (§9), como o das skills. */
-export const TAREFAS_DE_FASE = new Set(['fluxo-agente']);
+/**
+ * Tarefas que uma FASE pode nomear, além das SKILLS do catálogo (`reel`,
+ * `explicativo`…). Catálogo fechado (§9): o `flow.json` não inventa comando.
+ *
+ * `skills` chega por parâmetro porque quem conhece o catálogo é o bot, não o
+ * repo de domínio — e um `flow.json` que referencie skill inexistente tem que
+ * ser recusado na CARGA, não no primeiro job.
+ */
+export const TAREFAS_DE_FASE = new Set(['fluxo-agente', 'fluxo-navegador', 'heygen.baixar']);
 
-export function validarFlow(dados: unknown, raiz: string): FlowDef {
+export function validarFlow(dados: unknown, raiz: string, skills: string[] = []): FlowDef {
   if (typeof dados !== 'object' || dados === null || Array.isArray(dados)) {
     throw new Error('flow.json: precisa ser um objeto');
   }
@@ -128,12 +146,20 @@ export function validarFlow(dados: unknown, raiz: string): FlowDef {
     // Catálogo fechado também aqui (§9): a fase nomeia a tarefa, e quem confere
     // se ela existe é o runtime, contra o registry de skills e o de funções.
     const tarefa = texto(f.tarefa, `fases[${i}].tarefa`);
-    if (!TAREFAS_DE_FASE.has(tarefa)) {
-      erro(`fases[${i}].tarefa`, `"${tarefa}" não existe — implementadas: ${[...TAREFAS_DE_FASE].join(', ')}`);
+    if (!TAREFAS_DE_FASE.has(tarefa) && !skills.includes(tarefa)) {
+      erro(
+        `fases[${i}].tarefa`,
+        `"${tarefa}" não existe — tarefas de fase: ${[...TAREFAS_DE_FASE].join(', ')}`
+        + `${skills.length ? ` · skills: ${skills.join(', ')}` : ''}`,
+      );
     }
 
     let prompt: string | undefined;
-    if (kind === 'agent') {
+    // Prompt próprio só nas fases que SÃO do domínio (`fluxo-agente`,
+    // `fluxo-navegador`). Quando a fase dispara uma SKILL do catálogo (a última
+    // do promoclub é a mesma `reel` que o usuário chama no chat), o prompt é da
+    // skill e mora no bot — exigi-lo aqui obrigaria o domínio a duplicá-lo.
+    if (kind === 'agent' && TAREFAS_DE_FASE.has(tarefa)) {
       prompt = texto(f.prompt, `fases[${i}].prompt`);
       if (isAbsolute(prompt) || prompt.includes('..')) {
         erro(`fases[${i}].prompt`, 'precisa ser relativo ao repo de domínio, sem ".."');
@@ -159,10 +185,7 @@ export function validarFlow(dados: unknown, raiz: string): FlowDef {
         erro(`fases[${i}].espera.timeout`, 'segundos, maior que o intervalo');
       }
       if (kind !== 'function') erro(`fases[${i}].espera`, 'só faz sentido em fase kind=function');
-      // Aceitar um campo que ninguém lê é pior que recusá-lo: o autor do
-      // flow.json acharia que configurou um poll. O reagendamento entra junto
-      // com a primeira fase que precisar dele (`heygen.baixar`, no promoclub).
-      erro(`fases[${i}].espera`, 'ainda não implementado — a fase rodaria uma vez só, sem poll');
+      espera = { intervalo, timeout };
     }
 
     return {
@@ -175,13 +198,14 @@ export function validarFlow(dados: unknown, raiz: string): FlowDef {
       max_tentativas,
       ...(espera ? { espera } : {}),
       ...(typeof f.entrega === 'string' ? { entrega: f.entrega } : {}),
+      ...(f.pausa_apos === true ? { pausa_apos: true } : {}),
     };
   });
 
   return { nome, prefixo, versao_def, alvos, fases };
 }
 
-export function carregarFlow(raiz: string): FlowDef {
+export function carregarFlow(raiz: string, skills: string[] = []): FlowDef {
   const caminho = join(raiz, 'flow.json');
   let bruto: string;
   try {
@@ -190,7 +214,7 @@ export function carregarFlow(raiz: string): FlowDef {
     throw new Error(`flow.json: não consegui ler ${caminho}`);
   }
   try {
-    return validarFlow(JSON.parse(bruto), raiz);
+    return validarFlow(JSON.parse(bruto), raiz, skills);
   } catch (e) {
     if ((e as Error).message.startsWith('flow.json')) throw e;
     throw new Error(`flow.json: JSON inválido em ${caminho}: ${(e as Error).message}`);

@@ -168,6 +168,7 @@ describe('criarBot', () => {
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low',
       projetosDir: '/tmp/projetos-inexistente',
+      heygenEnvPath: '/tmp/heygen-inexistente.env',
     };
     const { bot, transporte } = criarBot(cfg, { aoComando: async () => 'ok' });
     expect(bot).toBeDefined();
@@ -188,6 +189,7 @@ describe('criarBot', () => {
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low',
       projetosDir: '/tmp/projetos-inexistente',
+      heygenEnvPath: '/tmp/heygen-inexistente.env',
     };
 
     const linhas: string[] = [];

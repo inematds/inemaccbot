@@ -5,7 +5,14 @@ import type Database from 'better-sqlite3';
 import type { FlowDef } from '../dominio/flow.js';
 import type { Agora } from '../fila/types.js';
 
-export type EstadoFase = 'pendente' | 'rodando' | 'feito' | 'falhou' | 'pulado';
+export type EstadoFase =
+  | 'pendente'
+  | 'rodando'
+  | 'feito'
+  /** Terminou, e o fluxo está PARADO esperando `/aprovar` (portão humano). */
+  | 'aguardando-ok'
+  | 'falhou'
+  | 'pulado';
 export type StatusFluxo = 'rodando' | 'feito' | 'falhou' | 'cancelado';
 
 export interface Fluxo {
@@ -133,7 +140,11 @@ export class EstadoFluxos {
    */
   recalcularStatus(fluxoId: number): StatusFluxo {
     const fases = this.fases(fluxoId);
-    const aberto = fases.some((f) => f.estado === 'pendente' || f.estado === 'rodando');
+    // `aguardando-ok` conta como ABERTO: o fluxo não terminou, está esperando
+    // uma pessoa. Tratá-lo como terminal faria o bot anunciar "feito" no meio.
+    const aberto = fases.some(
+      (f) => f.estado === 'pendente' || f.estado === 'rodando' || f.estado === 'aguardando-ok',
+    );
     // A ordem importa: um fluxo cujos alvos foram todos cancelados um a um não
     // é um fluxo "feito" — ele não fez nada. Sem este caso, `/cancelar` alvo a
     // alvo terminaria anunciando sucesso.

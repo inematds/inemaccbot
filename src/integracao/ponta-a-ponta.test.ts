@@ -37,6 +37,7 @@ function criarCfg(): Config {
     modeloPadrao: 'sonnet',
     esforcoPadrao: 'low',
     projetosDir: '/tmp/projetos-inexistente',
+    heygenEnvPath: '/tmp/heygen-inexistente.env',
   };
 }
 
@@ -86,6 +87,7 @@ function montar(): {
     timeoutDrenoMs: 2_000,
     leaseSegundos: 60,
     criarTarefas: () => ({ 'http.get': criarHttpGet(fakeFetch()) }) as Record<string, Tarefa>,
+    carregarFluxos: () => [],
   });
 
   const chegar = async (chatId: number, texto: string): Promise<void> => {

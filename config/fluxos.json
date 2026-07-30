@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "command": "promoclub",
+    "repo": "inemaclubpromover",
+    "descricao": "12 públicos: textos → avatar HeyGen (bot) → download → reel no livesN",
+    "exemplo": "/promoclub Não comece aprendendo ferramentas"
+  },
+  {
+    "command": "promoavatar",
+    "repo": "promoavatar",
+    "descricao": "igual ao promoclub, mas PARA depois dos textos: você gera os avatares e dá /aprovar",
+    "exemplo": "/promoavatar Não comece aprendendo ferramentas"
+  }
+]

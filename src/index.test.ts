@@ -41,6 +41,7 @@ function criarCfg(): Config {
     modeloPadrao: 'sonnet',
     esforcoPadrao: 'low',
     projetosDir: '/tmp/projetos-inexistente',
+    heygenEnvPath: '/tmp/heygen-inexistente.env',
   };
 }
 
@@ -94,6 +95,10 @@ function montar(
     timeoutDrenoMs: 2_000,
     leaseSegundos: 60,
     criarTarefas: () => tarefas,
+    // Sem repo de domínio no ambiente de teste: o registry de fluxos REAL
+    // aponta para `~/projetos/...`, e validá-lo aqui testaria a máquina do
+    // desenvolvedor, não o serviço.
+    carregarFluxos: () => [],
     ...over,
   });
   return { svc, linhas, registro };
@@ -427,6 +432,7 @@ describe('gateway caído depois do boot', () => {
       timeoutDrenoMs: 2_000,
       leaseSegundos: 60,
       criarTarefas: () => OK,
+      carregarFluxos: () => [],
       aoFalhaFatal: (e) => { fatais.push(e); },
     });
     await svc.iniciar();

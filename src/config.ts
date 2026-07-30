@@ -12,6 +12,8 @@ export interface Config {
   /** Onde ficam os repos `yt-pub-livesN` — a raiz do registry de destinos. */
   projetosDir: string;
   chatsPermitidos: number[];
+  /** Arquivo com a HEYGEN_API_KEY (lida em runtime). */
+  heygenEnvPath: string;
   motorPadrao: string;
   modeloPadrao: string;
   esforcoPadrao: string;
@@ -43,6 +45,8 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     // um destino que não existe já é recusado com a lista dos que existem.
     projetosDir: env.PROJETOS_DIR?.trim() || join(env.HOME ?? homedir(), 'projetos'),
     chatsPermitidos,
+    heygenEnvPath: env.HEYGEN_ENV_PATH?.trim()
+      || join(env.HOME ?? homedir(), 'projetos', 'openpcbotv2', '.env'),
     motorPadrao: env.MOTOR_PADRAO?.trim() || 'claude',
     modeloPadrao: env.MODELO_PADRAO?.trim() || 'sonnet',
     esforcoPadrao: env.ESFORCO_PADRAO?.trim() || 'low',

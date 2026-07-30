@@ -69,6 +69,20 @@ export interface ContextoTarefa {
    * instância que reexecuta o mesmo trabalho.
    */
   sinal: AbortSignal;
+  /**
+   * A tarefa não achou (ainda) o que espera: devolve isto para ser chamada de
+   * novo daqui a `intervalo` segundos, SEM gastar tentativa. É o mecanismo de
+   * poll do §3.2 — quem o implementa é o worker, via `reagendar()`.
+   *
+   * Devolver isto não é falha: um render que ainda está processando no estúdio
+   * é o caso NORMAL desta fase.
+   */
+  aindaNao(motivo: string, emSegundos?: number): never;
+}
+
+/** Lançada por `ContextoTarefa.aindaNao` — sinal, não erro. */
+export class AindaNao extends Error {
+  constructor(motivo: string, readonly emSegundos?: number) { super(motivo); }
 }
 
 export interface NovoJob {
