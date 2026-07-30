@@ -56,6 +56,24 @@ describe('passo', () => {
     expect(fila.obter(job.id)!.resultado).toBe('saida do agente');
   });
 
+  // O erro gravado vai verbatim para o chat e para o log. Com `kind=agent` ele
+  // passa a ser stderr de um `claude -p` — prompt, caminhos, possivelmente
+  // segredos (risco 3 do handoff). O saneamento tem que acontecer ANTES da
+  // gravação; redigir só na notificação deixaria o segredo durável no banco.
+  it('grava o erro já redigido — o texto cru nunca chega ao banco', async () => {
+    const job = fila.enfileirar({
+      fila: 'io', kind: 'function', tarefa: 'vaza', input: '',
+    });
+    const w = novoWorker({
+      tarefas: { vaza: async () => { throw new Error('token=abcdef123456 no comando'); } },
+      redigir: (t2) => t2.replace(/token=\S+/, 'token=«redigido»'),
+    });
+    await w.passo();
+    const d = fila.obter(job.id)!;
+    expect(d.erro).not.toContain('abcdef123456');
+    expect(d.erro).toContain('«redigido»');
+  });
+
   it('falha o job quando a tarefa lança', async () => {
     const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'explode', input: '' });
     await novoWorker().passo();

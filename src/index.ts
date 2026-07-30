@@ -9,12 +9,13 @@
 // `main` só roda quando o módulo é EXECUTADO; nunca no import (os testes
 // importam este arquivo).
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { hostname } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { type Config, carregarConfig } from './config.js';
 import { abrirDb } from './db/abrir.js';
+import { redatorPadrao } from './dominio/redacao.js';
 import { aplicarMigrations } from './db/migrations.js';
 import { CONCORRENCIAS, FILAS } from './fila/filas.js';
 import { FilaSqlite } from './fila/store.js';
@@ -99,6 +100,11 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   /** Identidade DESTA instância — é contra isto que as guardas de posse
    * (`concluir`/`falhar`/`renovar`) comparam. Calculado uma vez. */
   const dono = `${hostname()}:${process.pid}`;
+
+  /** Ponto ÚNICO de saneamento do que sai do sistema (spec §9). O `BOT_TOKEN`
+   * entra como literal porque ele aparece nas URLs da API do Telegram, que é
+   * exatamente o que um erro de download de anexo carrega. */
+  const redigir = redatorPadrao({ segredos: [cfg.botToken], home: homedir() });
 
   let rodando = false;
   let parando: Promise<void> | null = null;
@@ -240,6 +246,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
           promptDe,
           log: deps.log,
           aoTerminar: notificar,
+          redigir,
         },
         deps.agora,
       ),

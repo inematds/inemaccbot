@@ -31,6 +31,17 @@ export interface WorkerOpts {
    * notificação é aceitável, perder a fila não é (ver `passo()`).
    */
   aoTerminar?: (job: Job) => Promise<void>;
+  /**
+   * Saneia a mensagem de erro ANTES de ela ser gravada no banco (de onde vai
+   * verbatim para o chat e para o log). Injetada, não importada: a política de
+   * redação é de `dominio/`, e o worker só precisa saber que existe um ponto
+   * único por onde todo erro passa. Default: identidade — nesta forma o teste
+   * que não se importa com redação não precisa montar uma.
+   *
+   * Isto vira crítico com `kind=agent`: o erro deixa de ser "HTTP 404" e passa a
+   * ser stderr de um `claude -p`, com prompt, caminhos e possivelmente segredos.
+   */
+  redigir?: (texto: string) => string;
 }
 
 /**
@@ -145,7 +156,8 @@ export class Worker {
       // `abortar()` já fechou este job; falhar de novo aqui seria uma corrida
       // decidida por ordem de microtask (ver `abortados`).
       if (!this.abortados.has(job.id)) {
-        const erro = (e as Error).message.slice(0, 1_000);
+        const redigir = this.opts.redigir ?? ((t: string) => t);
+        const erro = redigir((e as Error).message).slice(0, 1_000);
         const r = this.fila.falhar(job.id, erro, this.opts.dono, 30);
         log(`[job ${job.id}] ${r}: ${erro}`);
         // 'requeued' não é término — só 'failed' final justifica notificar (§8:
