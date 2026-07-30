@@ -100,11 +100,18 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
       throw new Error(`prompt da skill "${def.command}" não pôde ser lido: ${def.prompt}`);
     }
 
-    const { perfil } = resolverPerfil({
-      override: entrada.perfil,
-      registry: def.perfil,
-      padrao: opts.perfilPadrao,
-    });
+    // Perfil GRAVADO no job manda: ele foi resolvido no enfileiramento e é o
+    // que o `/status` e o log mostram. Resolver de novo aqui poderia divergir
+    // do que foi prometido ao usuário — bastaria alguém editar o registry entre
+    // o enfileiramento e a execução. Job sem perfil (enfileirado por outro
+    // caminho) cai na resolução normal.
+    const perfil = job.motor && job.modelo && job.esforco
+      ? { motor: job.motor, modelo: job.modelo, esforco: job.esforco }
+      : resolverPerfil({
+        override: entrada.perfil,
+        registry: def.perfil,
+        padrao: opts.perfilPadrao,
+      }).perfil;
 
     return {
       prompt: renderizarPrompt(template, { input: entrada.entrada, saida }),

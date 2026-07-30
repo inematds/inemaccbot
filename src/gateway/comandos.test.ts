@@ -145,6 +145,23 @@ describe('executar', () => {
       expect(JSON.parse(fila.obter(1)!.input)).toEqual({ entrada: 'http://x', perfil: { modelo: 'opus' } });
     });
 
+    // §1.5: sem isto as colunas ficavam nulas e o log mostrava `modelo=-` —
+    // justamente a pergunta que o perfil em config existe para responder
+    // ("com que modelo esse job rodou?"). Visto em produção no primeiro job real.
+    it('grava o perfil EFETIVO no job e mostra no /status', () => {
+      executar(parseComando('transcrever: http://x | modelo=opus', defsTeste), depsSkills());
+      const job = fila.obter(1)!;
+      expect({ motor: job.motor, modelo: job.modelo, esforco: job.esforco })
+        .toEqual({ motor: 'claude', modelo: 'opus', esforco: 'low' });
+      expect(executar(parseComando('/status 1'), depsSkills())).toContain('claude/opus/low');
+    });
+
+    it('perfil inválido é recusado no enfileiramento, sem queimar tentativa', () => {
+      const r = executar(parseComando('transcrever: http://x | modelo=inventado', defsTeste), depsSkills());
+      expect(r).toMatch(/modelo desconhecido/);
+      expect(fila.listar()).toHaveLength(0);
+    });
+
     it('/skills lista o catálogo', () => {
       expect(executar(parseComando('/skills'), depsSkills())).toContain('transcrever');
     });

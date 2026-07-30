@@ -48,7 +48,7 @@ export async function tratarMensagem(
   chatId: number, texto: string, deps: DepsMensagem,
 ): Promise<string> {
   const cmd = parseComando(texto, deps.defs, deps.projetosDir);
-  const depsCmd = { fila: deps.fila, chatId, agora: deps.agora, defs: deps.defs };
+  const depsCmd = { fila: deps.fila, chatId, agora: deps.agora, defs: deps.defs, perfilPadrao: deps.perfil };
 
   if (cmd.tipo !== 'livre') return executar(cmd, depsCmd);
 

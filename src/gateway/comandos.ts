@@ -1,10 +1,11 @@
 // Comandos do gateway, PUROS: nenhuma linha aqui conhece grammy ou a API do
 // Telegram (regra herdada do v1 — nenhum teste deste bot bate na API real).
 // `executar` só fala com o store; nunca imprime, nunca envia.
+import { resolverPerfil } from '../dominio/perfil.js';
 import type { SkillDef } from '../dominio/registry.js';
 import { FILAS } from '../fila/filas.js';
 import { analisar, textoSkills, type PedidoSkill } from './gramatica.js';
-import type { Agora, Fila, Job } from '../fila/types.js';
+import type { Agora, Fila, Job, Perfil } from '../fila/types.js';
 import type { FilaSqlite } from '../fila/store.js';
 
 export type Comando =
@@ -33,11 +34,17 @@ export interface DepsComando {
   /** Catálogo de skills. Vazio = só os comandos de serviço (é o que os testes
    * da etapa 1 usam). */
   defs?: SkillDef[];
+  /** Base da precedência do §1.5 (o default do `.env`). */
+  perfilPadrao?: Perfil;
 }
 
 // Prioridade "furada": bem acima de qualquer valor manual plausível, pra não
 // depender de descobrir o máximo atual (evita corrida entre leitura e escrita).
 const PRIORIDADE_FURO = 1_000_000;
+
+/** Só para quem não passa `perfilPadrao` (testes de comando de serviço). Em
+ * produção o valor vem do `.env`, via index.ts. */
+const PERFIL_PADRAO_FALLBACK: Perfil = { motor: 'claude', modelo: 'sonnet', esforco: 'low' };
 
 /** Só um inteiro estritamente numérico é um id deste bot. `V#5`/`T#7` (formato
  * do bot antigo) e lixo tipo "abc" caem fora daqui de propósito — spec §5.1:
@@ -148,6 +155,9 @@ function fmtStatus(job: Job): string {
     `tarefa: ${job.tarefa}`,
     `tentativas: ${job.tentativas}/${job.max_tentativas}`,
   ];
+  // §1.5: com que perfil este job rodou. Só aparece em job de agente — em
+  // `function` as colunas são nulas e uma linha "modelo: -" seria ruído.
+  if (job.modelo) linhas.push(`perfil: ${job.motor}/${job.modelo}/${job.esforco}`);
   if (job.resultado) linhas.push(`resultado: ${job.resultado}`);
   if (job.erro) linhas.push(`erro: ${job.erro}`);
   return linhas.join('\n');
@@ -253,6 +263,22 @@ export function executar(cmd: Comando, deps: DepsComando): string {
       // `skill` a partir do registry, mas `executar` é público e não pode
       // depender de quem o chamou ter feito a checagem.
       if (!def) return `skill "${cmd.pedido.command}" não está registrada. Veja /skills.`;
+      // §1.5: o perfil EFETIVO é gravado no job. Resolver isto só na hora de
+      // executar (dentro de `promptDe`) deixava as colunas `motor/modelo/esforco`
+      // nulas, e então o log e o `/status` mostravam `modelo=-` — justamente a
+      // pergunta que o perfil em config existe para responder ("com que modelo
+      // esse job rodou?"). Um perfil inválido também passa a ser recusado AQUI,
+      // com o usuário na frente, em vez de queimar uma tentativa depois.
+      let perfil;
+      try {
+        perfil = resolverPerfil({
+          override: cmd.pedido.perfil,
+          registry: def.perfil,
+          padrao: deps.perfilPadrao ?? PERFIL_PADRAO_FALLBACK,
+        }).perfil;
+      } catch (e) {
+        return (e as Error).message;
+      }
       const job = deps.fila.enfileirar({
         fila: def.fila,
         kind: def.kind,
@@ -264,6 +290,7 @@ export function executar(cmd: Comando, deps: DepsComando): string {
         }),
         max_tentativas: def.max_tentativas,
         chat_id: deps.chatId,
+        perfil,
       });
       const destino = cmd.pedido.destinoToken ? ` → ${cmd.pedido.destinoToken}` : '';
       return `enfileirado: job ${job.id} (${def.command})${destino}`;
