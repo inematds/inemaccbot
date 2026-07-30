@@ -179,6 +179,21 @@ describe('boot', () => {
     expect(registro.iniciados).toBe(0);
     expect(svc.timers()).toBe(0);
   });
+
+  it('transporte que falha ao iniciar desmonta o que já subiu', async () => {
+    // Caso comum em produção: BOT_TOKEN inválido derruba `bot.init()`. Os laços
+    // e o heartbeat já estão de pé nesse ponto; sem desmonte, um `iniciar()`
+    // tentado de novo poria um SEGUNDO conjunto de laços na mesma fila.
+    const { svc } = montar(OK, {
+      criarTransporte: () => ({
+        async iniciar() { throw new Error('token inválido'); },
+        async parar() { /* nada a parar */ },
+        transporte: { async responder() { /* nunca chamado */ } },
+      }),
+    });
+    await expect(svc.iniciar()).rejects.toThrow(/token inválido/);
+    expect(svc.timers()).toBe(0);
+  });
 });
 
 describe('desligamento', () => {

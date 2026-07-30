@@ -155,6 +155,10 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     }
   }
 
+  // SIGTERM e SIGINT podem chegar os dois: o segundo `parar()` tem que ser um
+  // no-op, não um segundo `db.close()`.
+  const parar = (): Promise<void> => (parando ??= desligar());
+
   async function iniciar(): Promise<void> {
     // 1. schema. Checksum divergente derruba o boot: subir sobre um schema que
     //    não reconhecemos é pior que não subir.
@@ -211,7 +215,18 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       });
     }, deps.heartbeatMs);
 
-    await transp.iniciar();
+    // Depois deste ponto os laços já estão girando e o heartbeat já está de pé.
+    // Se `transporte.iniciar()` rejeitar (o caso comum em produção: `bot.init()`
+    // com token inválido), quem chamou recebe o erro — mas ninguém chama
+    // `parar()` num boot que falhou. Sem este desmonte, um `iniciar()` tentado
+    // de novo poria um SEGUNDO conjunto de laços na mesma fila com o mesmo
+    // `dono`, e o heartbeat sobreviveria segurando o event loop.
+    try {
+      await transp.iniciar();
+    } catch (e) {
+      await parar();
+      throw e;
+    }
   }
 
   async function desligar(): Promise<void> {
@@ -264,9 +279,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
 
   return {
     iniciar,
-    // SIGTERM e SIGINT podem chegar os dois: o segundo `parar()` tem que ser um
-    // no-op, não um segundo `db.close()`.
-    parar: () => (parando ??= desligar()),
+    parar,
     fila,
     timers: () => timeouts.size + (heartbeat ? 1 : 0),
   };
