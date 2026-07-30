@@ -22,6 +22,15 @@ export interface WorkerOpts {
   runners: Record<string, Runner>;
   promptDe: (job: Job) => Promise<ContextoExecucao>;
   log?: (m: string) => void;
+  /**
+   * Chamado depois do ack (concluir/falhar), com o job RELIDO do banco — carrega
+   * o `status`, `resultado`/`erro` finais, não o snapshot pré-execução. O worker
+   * não sabe o que é feito aqui (spec: fila/ não importa gateway/); quem liga a
+   * notificação de verdade é `src/index.ts` passando `criarNotificador(...)`.
+   * Uma exceção aqui NUNCA pode derrubar o worker — o ack já aconteceu, perder a
+   * notificação é aceitável, perder a fila não é (ver `passo()`).
+   */
+  aoTerminar?: (job: Job) => Promise<void>;
 }
 
 /**
@@ -93,11 +102,14 @@ export class Worker {
     const ref = job.flow_ref ? ` ${job.flow_ref}` : '';
     log(`[job ${job.id}${ref}] ${job.fila}/${job.tarefa} motor=${job.motor ?? '-'} modelo=${job.modelo ?? '-'} esforco=${job.esforco ?? '-'}`);
 
+    let terminou = false;
     try {
       const saida = job.kind === 'function'
         ? await this.rodarFuncao(job)
         : await this.rodarAgente(job);
-      if (!this.fila.concluir(job.id, saida, this.opts.dono)) {
+      if (this.fila.concluir(job.id, saida, this.opts.dono)) {
+        terminou = true;
+      } else {
         log(`[job ${job.id}] terminou mas não era mais nosso (cancelado/roubado?) — done rejeitado`);
       }
     } catch (e) {
@@ -107,10 +119,21 @@ export class Worker {
         const erro = (e as Error).message.slice(0, 1_000);
         const r = this.fila.falhar(job.id, erro, this.opts.dono, 30);
         log(`[job ${job.id}] ${r}: ${erro}`);
+        // 'requeued' não é término — só 'failed' final justifica notificar (§8:
+        // uma retentativa não é conclusão, silenciosa de propósito aqui).
+        terminou = r === 'failed';
       }
     } finally {
       this.ativos.delete(job.id);
       this.abortados.delete(job.id);
+    }
+    if (terminou && this.opts.aoTerminar) {
+      try {
+        const relido = this.fila.obter(job.id);
+        if (relido) await this.opts.aoTerminar(relido);
+      } catch (e) {
+        log(`[job ${job.id}] aoTerminar falhou: ${(e as Error).message}`);
+      }
     }
     return true;
   }

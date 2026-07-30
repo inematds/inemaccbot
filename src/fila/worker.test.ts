@@ -265,3 +265,51 @@ describe('drain', () => {
     await emCurso;
   });
 });
+
+describe('aoTerminar', () => {
+  it('é chamado depois do ack com o job relido (status done + resultado)', async () => {
+    const vistos: Job[] = [];
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    await novoWorker({ aoTerminar: async (j) => { vistos.push(j); } }).passo();
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]!.id).toBe(job.id);
+    expect(vistos[0]!.status).toBe('done');
+    expect(vistos[0]!.resultado).toBe('pronto');
+  });
+
+  it('é chamado depois de uma falha final com status failed + erro', async () => {
+    const vistos: Job[] = [];
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'explode', input: '', max_tentativas: 1 });
+    await novoWorker({ aoTerminar: async (j) => { vistos.push(j); } }).passo();
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]!.status).toBe('failed');
+    expect(vistos[0]!.erro).toMatch(/boom/);
+  });
+
+  it('NÃO é chamado quando o job foi reenfileirado para nova tentativa', async () => {
+    const vistos: Job[] = [];
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'explode', input: '', max_tentativas: 2 });
+    await novoWorker({ aoTerminar: async (j) => { vistos.push(j); } }).passo();
+    expect(vistos).toHaveLength(0);
+  });
+
+  it('exceção dentro de aoTerminar não impede o próximo passo()', async () => {
+    const logs: string[] = [];
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    const job2 = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    const w = novoWorker({
+      aoTerminar: async () => { throw new Error('falha ao notificar'); },
+      log: (m: string) => logs.push(m),
+    });
+    expect(await w.passo()).toBe(true);
+    expect(await w.passo()).toBe(true);
+    expect(fila.obter(job2.id)!.status).toBe('done');
+    expect(logs.some((l) => l.includes('falha ao notificar'))).toBe(true);
+  });
+
+  it('worker sem aoTerminar continua funcionando normalmente', async () => {
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    expect(await novoWorker().passo()).toBe(true);
+    expect(fila.obter(job.id)!.status).toBe('done');
+  });
+});
