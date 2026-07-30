@@ -27,6 +27,7 @@ import { criarTarefas as criarTarefasPadrao } from './fila/tarefas/index.js';
 import type { Agora, Fila, Job } from './fila/types.js';
 import { Worker, type Tarefa } from './fila/worker.js';
 import { tratarMensagem } from './gateway/mensagem.js';
+import { criarBaixadorTelegram } from './gateway/midia.js';
 import { criarNotificador } from './gateway/notificar.js';
 import { type Transporte, criarBot } from './gateway/telegram.js';
 
@@ -463,7 +464,17 @@ function criarTransporteReal(
     aoFalhaFatal: (e: Error) => void;
   },
 ): TransporteServico {
-  const { bot, transporte } = criarBot(cfg, { aoComando: deps.aoComando, log: deps.log });
+  const { bot, transporte } = criarBot(cfg, {
+    aoComando: deps.aoComando,
+    log: deps.log,
+    // Anexo cai em `state/midia`, que é a raiz que o `ffmpeg.thumb` já exige —
+    // é o que torna aquele comando alcançável na prática.
+    baixarAnexo: criarBaixadorTelegram(
+      cfg.botToken,
+      join(cfg.stateDir, 'midia'),
+      () => Math.floor(Date.now() / 1000),
+    ),
+  });
   const ciclo = ligarPolling(bot, deps);
   return { ...ciclo, transporte };
 }

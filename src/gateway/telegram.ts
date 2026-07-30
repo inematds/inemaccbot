@@ -3,6 +3,7 @@
 // que é pura e testável sem grammy. `criarBot` é só a fiação.
 import { Bot, InputFile } from 'grammy';
 import type { Config } from '../config.js';
+import { comandoDeAnexo, type BaixarAnexo } from './midia.js';
 
 /** Telegram rejeita qualquer mensagem acima de 4096 chars (UTF-16 code units) com
  * "400: Bad Request: message is too long". `limit` fica um pouco abaixo disso de propósito —
@@ -115,11 +116,60 @@ export interface Transporte {
   enviarDocumento?(chatId: number, caminho: string): Promise<void>;
 }
 
+/**
+ * Anexo recebido: baixa e transforma a legenda em comando. Pura em relação ao
+ * Telegram (o download é injetado), então testável sem rede.
+ *
+ * Sem legenda, NÃO tenta adivinhar o que fazer com o arquivo: confirma o
+ * recebimento e devolve o caminho, que é o que torna `thumb <caminho>` (e
+ * qualquer skill que aceite caminho) alcançável.
+ */
+export async function rotearAnexo(
+  entrada: { chatId: number; fileId: string; nomeOriginal: string; legenda: string },
+  deps: {
+    permitido: (chatId: number) => boolean;
+    baixar: (fileId: string, nomeOriginal: string) => Promise<string>;
+    aoComando: (chatId: number, texto: string) => Promise<string>;
+    log: (m: string) => void;
+  },
+): Promise<string[]> {
+  if (!deps.permitido(entrada.chatId)) {
+    deps.log(`gateway: anexo rejeitado — chat ${entrada.chatId} fora da allowlist`);
+    return [];
+  }
+
+  let caminho: string;
+  try {
+    caminho = await deps.baixar(entrada.fileId, entrada.nomeOriginal);
+  } catch (erro) {
+    const detalhe = erro instanceof Error ? erro.message : String(erro);
+    deps.log(`gateway: falha ao baixar anexo do chat ${entrada.chatId}: ${detalhe}`);
+    // Genérica de propósito: a URL da API do Telegram carrega o token no path.
+    return ['não consegui baixar esse arquivo.'];
+  }
+
+  const comando = comandoDeAnexo(entrada.legenda, caminho);
+  if (!comando) return cortar(`recebi o arquivo: ${caminho}`);
+
+  try {
+    return cortar(await deps.aoComando(entrada.chatId, comando));
+  } catch (erro) {
+    const detalhe = erro instanceof Error ? erro.message : String(erro);
+    deps.log(`gateway: erro ao processar anexo do chat ${entrada.chatId}: ${detalhe}`);
+    return [MENSAGEM_ERRO_GENERICA];
+  }
+}
+
 /** Único ponto de fiação com grammy. Não tem política — só liga `rotear` ao
  * `bot.on('message:text')` e ao envio dos pedaços. */
 export function criarBot(
   cfg: Config,
-  deps: { aoComando: (chatId: number, texto: string) => Promise<string>; log?: (m: string) => void },
+  deps: {
+    aoComando: (chatId: number, texto: string) => Promise<string>;
+    log?: (m: string) => void;
+    /** Ausente: o bot ignora anexos (é o comportamento da etapa 1). */
+    baixarAnexo?: BaixarAnexo;
+  },
 ): { bot: Bot; transporte: Transporte } {
   const bot = new Bot(cfg.botToken);
 
@@ -135,6 +185,25 @@ export function criarBot(
     );
     await enviarPedacos(async (pedaco) => { await ctx.reply(pedaco); }, pedacos);
   });
+
+  // Documento, vídeo e áudio entram pelo MESMO caminho: o que interessa é o
+  // `file_id` e o nome, e o resto é decisão da skill.
+  if (deps.baixarAnexo) {
+    const baixar = deps.baixarAnexo;
+    bot.on(['message:document', 'message:video', 'message:audio', 'message:voice'], async (ctx) => {
+      const m = ctx.message;
+      const arquivo = m?.document ?? m?.video ?? m?.audio ?? m?.voice;
+      if (!arquivo) return;
+      const nome =
+        (m.document?.file_name ?? m.audio?.file_name)
+        ?? `anexo.${m.video ? 'mp4' : m.voice ? 'ogg' : 'bin'}`;
+      const pedacos = await rotearAnexo(
+        { chatId: ctx.chat.id, fileId: arquivo.file_id, nomeOriginal: nome, legenda: m.caption ?? '' },
+        { permitido, baixar, aoComando: deps.aoComando, log },
+      );
+      await enviarPedacos(async (pedaco) => { await ctx.reply(pedaco); }, pedacos);
+    });
+  }
 
   const transporte: Transporte = {
     async responder(chatId: number, texto: string): Promise<void> {
