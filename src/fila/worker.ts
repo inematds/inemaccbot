@@ -220,6 +220,18 @@ export class Worker {
    * deliberadamente abandonado — seu `passo()` pode continuar assentando em
    * segundo plano (ack bloqueado pela guarda de posse) — então `drenar()`
    * retornar NÃO garante que toda promise de `passo()` já se resolveu.
+   *
+   * ATENÇÃO — `drenar()` NÃO cobre a CAUDA DE NOTIFICAÇÃO. `passo()` remove o
+   * job de `ativos` no seu `finally`, ANTES de chamar `aoTerminar` (de
+   * propósito: enquanto a entrada existe, um `bater()` concorrente renovaria o
+   * lease de um job já ackado). Logo `ativos.size` chega a 0 — e este método
+   * retorna — com a mensagem do último job ainda em voo.
+   *
+   * Quem precisa da cauda (o desligamento precisa: sem ela o "✅ Job N
+   * concluído" some) tem que esperar TAMBÉM as promises de `laco()` que chamam
+   * `passo()`, porque é `passo()` que só assenta depois do `aoTerminar`. Ver
+   * `desligar()` em src/index.ts. Trocar aquele `Promise.all` por
+   * `workers.map(w => w.drenar())` sozinho quebra isto — há teste guardando.
    */
   async drenar(): Promise<void> {
     this.drenando = true;

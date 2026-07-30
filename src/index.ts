@@ -299,6 +299,14 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     //    é largado de propósito por `bater()`, e o `passo()` correspondente
     //    pode nunca assentar. Por isso os `lacos` entram na MESMA corrida com
     //    timeout — nunca num `await` que assume que todos terminam.
+    //
+    //    Os `lacos` estão aqui por uma SEGUNDA razão, independente da primeira:
+    //    `drenar()` não cobre a cauda de notificação (ver o docstring dele). O
+    //    job sai de `ativos` antes do `aoTerminar`, então `drenar()` pode
+    //    resolver com a última mensagem ainda em voo; só a promise de `passo()`
+    //    — que é o que `laco()` mantém — assenta depois do `aoTerminar`. Sem os
+    //    `lacos` nesta corrida, `parar()` cortaria o "✅ Job N concluído" do
+    //    último job. Não simplificar para `workers.map(w => w.drenar())`.
     const dreno = Promise.all([
       ...workers.map(({ w }) => w.drenar()),
       ...lacos,

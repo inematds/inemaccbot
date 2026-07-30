@@ -49,10 +49,17 @@ interface FakeTransporte {
   mensagens: { chatId: number; texto: string }[];
 }
 
-function fakeTransporte(): { registro: FakeTransporte; criar: DepsServico['criarTransporte'] } {
+/** `atrasoMs` existe para o teste da CAUDA de notificação: no Telegram real o
+ * envio é uma chamada de rede, e é justamente esse tempo que expõe quem espera
+ * só `drenar()` (que resolve com a mensagem ainda em voo). Com envio
+ * instantâneo a regressão passaria despercebida. */
+function fakeTransporte(atrasoMs = 0): { registro: FakeTransporte; criar: DepsServico['criarTransporte'] } {
   const registro: FakeTransporte = { iniciados: 0, parados: 0, mensagens: [] };
   const transporte: Transporte = {
-    async responder(chatId, texto) { registro.mensagens.push({ chatId, texto }); },
+    async responder(chatId, texto) {
+      if (atrasoMs > 0) await new Promise((r) => setTimeout(r, atrasoMs));
+      registro.mensagens.push({ chatId, texto });
+    },
   };
   return {
     registro,
@@ -70,9 +77,13 @@ interface Montagem {
   registro: FakeTransporte;
 }
 
-function montar(tarefas: Record<string, Tarefa>, over: Partial<DepsServico> = {}): Montagem {
+function montar(
+  tarefas: Record<string, Tarefa>,
+  over: Partial<DepsServico> = {},
+  atrasoEnvioMs = 0,
+): Montagem {
   const linhas: string[] = [];
-  const { registro, criar } = fakeTransporte();
+  const { registro, criar } = fakeTransporte(atrasoEnvioMs);
   const svc = criarServico(criarCfg(), {
     agora,
     criarTransporte: criar,
@@ -323,6 +334,34 @@ describe('notificação', () => {
     expect(registro.mensagens[0]?.texto).toMatch(/interrompido no encerramento/);
   });
 
+  // GUARDA DE REGRESSÃO (não simplificar o `Promise.all` de `desligar()`):
+  // `passo()` tira o job de `ativos` ANTES do `aoTerminar`, então `drenar()`
+  // sozinho pode resolver com a mensagem ainda em voo. Trocar aquela corrida
+  // por `workers.map(w => w.drenar())` faz ESTE teste ficar vermelho.
+  it('job que termina DURANTE o dreno tem a mensagem enviada antes de parar() resolver', async () => {
+    let comecou = false;
+    const tarefas: Record<string, Tarefa> = {
+      'fake.lenta': async () => {
+        comecou = true;
+        await new Promise((r) => setTimeout(r, 120));
+        return 'terminei';
+      },
+    };
+    // Envio com latência de rede (como o Telegram de verdade): é o que revela
+    // que `drenar()` sozinho resolve com a mensagem ainda em voo.
+    const { svc, registro } = montar(tarefas, {}, 150);
+    await svc.iniciar();
+    svc.fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'fake.lenta', input: 'x', chat_id: 42 });
+    await ate(() => comecou);
+    // O job ainda está rodando: nada foi notificado.
+    expect(registro.mensagens).toHaveLength(0);
+
+    await svc.parar();
+
+    // Sem esperar mais nada depois do `parar()` — é este o ponto.
+    expect(registro.mensagens).toHaveLength(1);
+    expect(registro.mensagens[0]?.texto).toMatch(/Job 1 conclu/);
+  });
 });
 
 describe('gateway caído depois do boot', () => {
