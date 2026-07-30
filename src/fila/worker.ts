@@ -216,6 +216,17 @@ export class Worker {
 
   private async rodarAgente(job: Job): Promise<string> {
     const ctx = await this.opts.promptDe(job);
+
+    // O trabalho já está em curso desde uma tentativa anterior (o serviço caiu
+    // e o processo destacado sobreviveu): não chama o agente de novo — só
+    // espera. Sem este caminho, um restart no meio de um render dispararia um
+    // SEGUNDO render sobre o primeiro.
+    if (ctx.alvoEmCurso && ctx.aguardarArtefato) {
+      const log = this.opts.log ?? ((): void => {});
+      log(`[job ${job.id}] trabalho já disparado — adotando ${ctx.alvoEmCurso}`);
+      return this.esperarArtefato(job, ctx.aguardarArtefato, ctx.alvoEmCurso);
+    }
+
     const runner = this.opts.runners[ctx.perfil.motor];
     if (!runner) throw new Error(`motor desconhecido: ${ctx.perfil.motor}`);
     const exec = runner.iniciar(ctx);
@@ -231,9 +242,36 @@ export class Worker {
       // chat. Uma exceção aqui é falha do job, e é o comportamento correto:
       // agente que não declarou onde gravou é indistinguível de agente que não
       // gravou nada.
-      return ctx.interpretarSaida ? ctx.interpretarSaida(bruto) : bruto;
+      const saida = ctx.interpretarSaida ? ctx.interpretarSaida(bruto) : bruto;
+      // Trabalho destacado: o agente só DISPAROU. Continuamos segurando o job
+      // (e o slot da fila) enquanto o artefato não aparece.
+      if (ctx.aguardarArtefato) return this.esperarArtefato(job, ctx.aguardarArtefato, saida);
+      return saida;
     } finally {
       await exec.limpar();
+    }
+  }
+
+  /**
+   * Espera o artefato de trabalho destacado, com um `AbortController` guardado
+   * no MESMO campo que as tarefas `function` usam — assim `bater()` (lease
+   * perdido) e `abortar()` (encerramento) já interrompem esta espera sem
+   * nenhuma fiação nova. O processo destacado segue vivo de propósito: a
+   * próxima tentativa o adota.
+   */
+  private async esperarArtefato(
+    job: Job,
+    aguardar: (alvo: string, sinal: AbortSignal) => Promise<string>,
+    alvo: string,
+  ): Promise<string> {
+    const ctrl = new AbortController();
+    const ativo = this.ativos.get(job.id);
+    if (ativo) ativo.ctrl = ctrl;
+    else ctrl.abort(new Error('job não é mais deste worker'));
+    try {
+      return await aguardar(alvo, ctrl.signal);
+    } finally {
+      if (ativo) ativo.ctrl = null;
     }
   }
 

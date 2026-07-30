@@ -11,10 +11,11 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { extrairArtefato } from '../dominio/artefato.js';
+import { extrairAlvo, extrairArtefato } from '../dominio/artefato.js';
 import { renderizarPrompt } from '../dominio/prompt.js';
 import { resolverPerfil } from '../dominio/perfil.js';
 import { acharSkill, type SkillDef } from '../dominio/registry.js';
+import { esperarArtefato, jaFoiDisparado, limparMarcadores, type OpcoesEspera } from './render.js';
 import type { ContextoExecucao } from './runner.js';
 import type { Job, Perfil } from './types.js';
 
@@ -59,7 +60,22 @@ export interface OpcoesSkills {
   /** `cwd` dos processos de agente. Validado: tem que existir. */
   cwd: string;
   perfilPadrao: Perfil;
+  log?: (m: string) => void;
+  /**
+   * Janelas da espera por artefato. A produção NÃO passa nada: valem os valores
+   * reais (poll de 5s, estabilidade de 12s). Só o teste troca — senão cada teste
+   * de render pagaria 12 segundos de relógio de parede, e a regra da §6.1 é
+   * relógio injetável, nunca `sleep`.
+   */
+  espera?: Pick<OpcoesEspera, 'estavelMs' | 'intervaloMs' | 'agoraMs' | 'dormir'>;
 }
+
+/**
+ * Teto do AGENTE numa skill que espera artefato. Ele só monta o material e
+ * dispara o passo destacado — 20 minutos é folga larga para isso. O prazo do
+ * render em si é o `timeout_segundos` do registry, e vale para a espera.
+ */
+const TIMEOUT_SETUP_SEGUNDOS = 20 * 60;
 
 /**
  * Caminho do artefato: determinístico por JOB, não por tentativa. Uma
@@ -97,6 +113,12 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
     const entrada = parseEntradaSkill(job.input);
     const saida = caminhoArtefato(opts.raizArtefatos, def, job);
     mkdirSync(join(opts.raizArtefatos, def.command), { recursive: true });
+
+    // Vamos DISPARAR trabalho novo (não há nada em curso): apaga os marcadores
+    // da tentativa anterior agora, e não na hora de vigiar — ver
+    // `limparMarcadores`.
+    const emCurso = def.aguarda_artefato && jaFoiDisparado(saida);
+    if (def.aguarda_artefato && !emCurso) limparMarcadores(saida);
 
     // Lido A CADA job de propósito: editar um prompt passa a valer para o
     // próximo job sem reiniciar o serviço. Skill não tem estado — "rodar de novo
@@ -136,8 +158,30 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
       cwd: opts.cwd,
       perfil,
       vars: {},
-      timeoutMs: def.timeout_segundos * 1_000,
-      interpretarSaida: (bruto) => extrairArtefato(bruto, def.artefato_exts),
+      // A skill que espera artefato dá ao AGENTE um prazo curto (ele só faz o
+      // setup e dispara), e à ESPERA o prazo longo. Um só teto para os dois
+      // faria o agente poder gastar as duas horas do render antes de disparar
+      // qualquer coisa.
+      timeoutMs: def.aguarda_artefato
+        ? Math.min(def.timeout_segundos, TIMEOUT_SETUP_SEGUNDOS) * 1_000
+        : def.timeout_segundos * 1_000,
+      ...(def.aguarda_artefato
+        ? {
+          interpretarSaida: (bruto: string) => extrairAlvo(bruto, def.artefato_exts),
+          aguardarArtefato: (alvo: string, sinal: AbortSignal) =>
+            esperarArtefato(alvo, {
+              timeoutMs: def.timeout_segundos * 1_000,
+              sinal,
+              log: opts.log,
+              ...opts.espera,
+            }),
+          // Adoção (§2.5 "procure antes de criar"): o `.log` ao lado do alvo
+          // prova que uma tentativa anterior já disparou o trabalho.
+          ...(emCurso ? { alvoEmCurso: saida } : {}),
+        }
+        : {
+          interpretarSaida: (bruto: string) => extrairArtefato(bruto, def.artefato_exts),
+        }),
     };
   };
 }

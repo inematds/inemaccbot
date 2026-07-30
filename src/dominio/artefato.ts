@@ -32,6 +32,29 @@ function ultimaLinhaCasando(texto: string, re: RegExp): string | null {
  * Lança `SemContrato` quando o agente declarou `ERRO:` ou quando não declarou
  * nada; quem chama transforma isso em falha do job.
  */
+/**
+ * Contrato do trabalho DESTACADO (etapa 3): o agente não terminou o trabalho —
+ * ele o disparou, e declara ONDE o artefato vai aparecer.
+ *
+ *   RENDER: /caminho/do/alvo.mp4
+ *
+ * Aceita `RESULT:` também, porque um agente que conseguiu terminar inline (um
+ * vídeo curto, um cache quente) não deve ser punido por ter sido rápido demais —
+ * quem espera pelo arquivo lida com os dois casos igual.
+ */
+export function extrairAlvo(bruto: string, exts: string[]): string {
+  const texto = String(bruto ?? '');
+  const alt = exts.map((e) => e.replace(/^\./, '')).join('|');
+  const alvo = ultimaLinhaCasando(texto, new RegExp(`^\\s*(?:RENDER|RESULT):\\s*(\\S+\\.(?:${alt}))\\s*$`, 'i'));
+  if (alvo) return alvo;
+
+  const motivo = ultimaLinhaCasando(texto, /^\s*ERRO:\s*(.+)$/i);
+  if (motivo) throw new SemContrato(`o agente reportou erro: ${motivo}`);
+  throw new SemContrato(
+    'o agente terminou sem declarar "RENDER: <caminho>" nem "ERRO: <motivo>" na última linha',
+  );
+}
+
 export function extrairArtefato(bruto: string, exts: string[]): string {
   const texto = String(bruto ?? '');
   const alt = exts.map((e) => e.replace(/^\./, '')).join('|');
