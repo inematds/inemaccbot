@@ -61,7 +61,9 @@ export interface FlowDef {
 }
 
 const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
-const NOME_SIMPLES = /^[a-z][a-z0-9_-]{0,40}$/;
+// Começa com letra OU dígito: os públicos reais incluem `40mais` e `60mais`, e
+// quem define o vocabulário do domínio é o domínio — não o validador do bot.
+const NOME_SIMPLES = /^[a-z0-9][a-z0-9_-]{0,40}$/;
 
 function erro(campo: string, detalhe: string): never {
   throw new Error(`flow.json (${campo}): ${detalhe}`);
@@ -153,7 +155,11 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
     }
 
     let prompt: string | undefined;
-    if (kind === 'agent') {
+    // Prompt próprio só nas fases que SÃO do domínio (`fluxo-agente`,
+    // `fluxo-navegador`). Quando a fase dispara uma SKILL do catálogo (a última
+    // do promoclub é a mesma `reel` que o usuário chama no chat), o prompt é da
+    // skill e mora no bot — exigi-lo aqui obrigaria o domínio a duplicá-lo.
+    if (kind === 'agent' && TAREFAS_DE_FASE.has(tarefa)) {
       prompt = texto(f.prompt, `fases[${i}].prompt`);
       if (isAbsolute(prompt) || prompt.includes('..')) {
         erro(`fases[${i}].prompt`, 'precisa ser relativo ao repo de domínio, sem ".."');

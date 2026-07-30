@@ -26,6 +26,7 @@ import { CONCORRENCIAS, FILAS } from './fila/filas.js';
 import { FilaSqlite } from './fila/store.js';
 import { RUNNERS } from './fila/runner.js';
 import './fila/runner-claude.js'; // efeito colateral: registra RUNNERS.claude
+import './fila/runner-chrome.js'; // idem: RUNNERS.chrome (fase de navegador)
 import { criarTarefas as criarTarefasPadrao } from './fila/tarefas/index.js';
 import type { Agora, Job } from './fila/types.js';
 import { Worker, type Tarefa } from './fila/worker.js';
@@ -323,6 +324,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     const estadoFluxos = new EstadoFluxos(db, deps.agora);
     fluxos = new Fluxos({
       fila, estado: estadoFluxos, agora: deps.agora, log: deps.log,
+      raizArtefatos, projetosDir: cfg.projetosDir,
       // O evento é SÓ empilhado aqui: `avancar` roda dentro da transação do
       // ack, e uma chamada de rede lá dentro seguraria a transação. O envio
       // acontece logo depois do commit, no `aoTerminar`.
@@ -355,7 +357,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     fluxos?.reenfileirarOrfas();
 
     // 5. só então: workers e bot.
-    const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia });
+    const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia, heygenEnvPath: cfg.heygenEnvPath });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
     const transporte = transp.transporte;
     /** Drena os avisos de fluxo. Chamado depois do ack, nunca dentro dele. */

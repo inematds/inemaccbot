@@ -9,11 +9,16 @@ import { flowRef, type FaseDef, type FlowDef } from '../dominio/flow.js';
 import type { FilaSqlite } from '../fila/store.js';
 import type { Agora, Job } from '../fila/types.js';
 import { EstadoFluxos, type Fase, type Fluxo } from './estado.js';
+import { montarInput } from './entrada-fase.js';
 
 export interface OpcoesRuntime {
   fila: FilaSqlite;
   estado: EstadoFluxos;
   agora: Agora;
+  /** Onde os artefatos de fluxo (avatares baixados) são gravados. */
+  raizArtefatos?: string;
+  /** Raiz dos repos `yt-pub-livesN` — o registry de destinos. */
+  projetosDir?: string;
   log?: (m: string) => void;
   /**
    * Avisos para o chat. SÍNCRONO e sem rede de propósito: `avancar` roda dentro
@@ -66,6 +71,8 @@ export class Fluxos {
   private readonly estado: EstadoFluxos;
   private readonly fila: FilaSqlite;
   private readonly agora: Agora;
+  private readonly raizArtefatos: string;
+  private readonly projetosDir: string;
   private readonly log: (m: string) => void;
   private readonly aoEvento: (evento: EventoFluxo) => void;
 
@@ -73,6 +80,8 @@ export class Fluxos {
     this.estado = opts.estado;
     this.fila = opts.fila;
     this.agora = opts.agora;
+    this.raizArtefatos = opts.raizArtefatos ?? '/tmp';
+    this.projetosDir = opts.projetosDir ?? '/tmp';
     this.log = opts.log ?? ((): void => {});
     this.aoEvento = opts.aoEvento ?? ((): void => {});
   }
@@ -148,18 +157,18 @@ export class Fluxos {
    */
   private enfileirarFase(fluxo: Fluxo, fase: FaseDef, alvo: string): Job {
     const def = this.estado.definicaoDe(fluxo);
-    const dadosAlvo = alvo ? def.alvos[alvo] ?? {} : {};
+    // O que a fase ANTERIOR daquele alvo produziu (normalmente um caminho de
+    // arquivo): é o que alimenta a próxima — o download consome o título, o
+    // reel consome o .mp4 baixado.
+    const anterior = this.dadosDaAnterior(fluxo, def, fase, alvo);
     const job = this.fila.enfileirar({
       fila: fase.fila,
       kind: fase.kind,
       tarefa: fase.tarefa,
-      input: JSON.stringify({
-        entrada: fluxo.assunto,
-        // O TEXTO congelado, não o caminho: o job tem que ser autossuficiente,
-        // senão executar depende do disco do repo de domínio no momento da
-        // execução — o oposto do §3.4.
-        ...(fase.prompt_texto ? { prompt_texto: fase.prompt_texto } : {}),
-        fluxo: { ref: `${fluxo.prefixo}#${fluxo.id}`, fase: fase.id, alvo, ...dadosAlvo },
+      input: montarInput({
+        fluxo, def, fase, alvo, anterior,
+        raizArtefatos: this.raizArtefatos,
+        projetosDir: this.projetosDir,
       }),
       max_tentativas: fase.max_tentativas,
       flow_ref: flowRef(fluxo.prefixo, fluxo.id, alvo, fase.id),
@@ -324,6 +333,14 @@ export class Fluxos {
     }
     this.estado.recalcularStatus(fluxoId);
     return { liberados, fase: esperando[0]!.fase };
+  }
+
+  private dadosDaAnterior(fluxo: Fluxo, def: FlowDef, fase: FaseDef, alvo: string): string | null {
+    const i = def.fases.findIndex((f) => f.id === fase.id);
+    if (i <= 0) return null;
+    const anterior = def.fases[i - 1]!;
+    const alvoAnterior = anterior.escopo === 'fluxo' ? '' : alvo;
+    return this.estado.fase(fluxo.id, anterior.id, alvoAnterior)?.dados ?? null;
   }
 
   private alvosDoFluxo(fluxo: Fluxo): string[] {

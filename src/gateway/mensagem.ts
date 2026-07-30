@@ -54,7 +54,10 @@ function tratarComandoDeFluxo(
 ): string | undefined {
   if (!deps.fluxos) return undefined;
   const registrados = deps.fluxosRegistrados ?? [];
-  const depsFluxo = { fluxos: deps.fluxos, registrados, chatId };
+  const depsFluxo = {
+    fluxos: deps.fluxos, registrados, chatId,
+    skills: deps.defs.map((d) => d.command),
+  };
 
   const t = texto.trim();
   const [bruto, ...resto] = t.split(/\s+/);

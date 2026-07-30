@@ -14,6 +14,10 @@ export interface DepsFluxo {
   fluxos: Fluxos;
   registrados: FluxoRegistrado[];
   chatId: number;
+  /** Comandos das skills do catálogo. Uma FASE pode disparar uma skill (a
+   * última do promoclub é a mesma `reel` do chat), e a validação do `flow.json`
+   * precisa conhecê-las para não recusar o que existe. */
+  skills?: string[];
 }
 
 const ICONE: Record<Fase['estado'], string> = {
@@ -68,7 +72,7 @@ export function criarFluxo(
   let definicao;
   let hash: string;
   try {
-    const doDisco = carregarFlow(registrado.repo);
+    const doDisco = carregarFlow(registrado.repo, deps.skills ?? []);
     hash = hashDefinicao(doDisco, registrado.repo);
     // Congela AQUI: daqui para frente o fluxo não depende mais do disco do repo
     // de domínio, nem para o texto dos prompts.

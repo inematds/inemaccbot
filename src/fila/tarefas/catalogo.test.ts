@@ -34,6 +34,10 @@ function inputDe(nome: string): string {
       writeFileSync(arq, 'nao-e-video-de-verdade');
       return JSON.stringify({ entrada: arq });
     }
+    case 'heygen.baixar':
+      // Endereço reservado pra documentação: mesmo se o sinal falhasse, não há
+      // para onde a conexão ir.
+      return JSON.stringify({ titulo: 'P1-teste-v1', destino: join(raizMidia, 'x.mp4') });
     default:
       return '{}';
   }
