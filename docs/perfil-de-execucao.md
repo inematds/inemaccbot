@@ -21,6 +21,9 @@ feito?" sem arqueologia de commit.
 
 No sistema anterior o perfil era **hardcoded em dois lugares**:
 
+Conforme registrado no documento de design da etapa (não verificável neste workspace, que não
+contém esses repos):
+
 | onde (v1) | valor | consequência |
 |---|---|---|
 | `mkivideos/src/cli-lib.ts:171` | `--model sonnet --effort low` | valia para TODA skill de render |
@@ -119,6 +122,10 @@ Checklist de um runner novo, tirado do que `ClaudeRunner` faz hoje:
 5. stdout acumulado é o resultado (`aguardar()` resolve com ele, aparado); stderr entra na
    mensagem de erro, truncado (`ClaudeRunner` corta em 500 caracteres)
 6. registrar a instância em `RUNNERS` no fim do arquivo (`RUNNERS.codex = new CodexRunner()`)
+
+A string com que `aguardar()` resolve não para por aí: `Worker.rodarAgente()` (`src/fila/worker.ts`)
+devolve esse valor como `saida` para `passo()`, que chama `this.fila.concluir(job.id, saida)` — é
+assim que o retorno do runner vira o `resultado` do job na fila.
 
 ## O que trocar de motor NÃO resolve
 

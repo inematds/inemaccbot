@@ -15,7 +15,7 @@ const PROIBIDO: Record<string, string[]> = {
   db: ['gateway', 'fila', 'fluxos', 'dominio'],
   fila: ['gateway', 'fluxos'],
   fluxos: ['gateway'],
-  dominio: ['gateway', 'fluxos'],
+  dominio: ['gateway', 'fila', 'fluxos'],
 };
 
 function arquivosTs(dir: string): string[] {
