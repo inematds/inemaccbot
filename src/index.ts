@@ -95,6 +95,16 @@ export interface Servico {
 
 const LEASE_PADRAO_SEGUNDOS = 60;
 
+/**
+ * Erros do Telegram que NÃO melhoram com retentativa. Retentar chat inexistente
+ * ou bot bloqueado é bater numa porta que não abre — a cada 20 segundos, para
+ * sempre.
+ */
+export function ehFalhaPermanenteDeEnvio(mensagem: string): boolean {
+  return /chat not found|bot was blocked|user is deactivated|chat_id is empty|message is too long|CHAT_WRITE_FORBIDDEN/i
+    .test(mensagem);
+}
+
 /** Raiz do repo: `config/` e `prompts/` vivem lá. Funciona igual rodando de
  * `src/` (teste) e de `dist/` (produção) — os dois estão um nível abaixo. */
 const RAIZ_REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -121,6 +131,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   let heartbeat: NodeJS.Timeout | null = null;
   let transp: TransporteServico | null = null;
   let workers: { w: Worker; n: number }[] = [];
+  let varrendo = false;
   /** Preenchido no `iniciar()`, junto do transporte — antes dele não há para
    * onde notificar. */
   let notificar: ((job: Job) => Promise<void>) | null = null;
@@ -219,6 +230,22 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
    */
   async function reentregarNotificacoes(): Promise<void> {
     if (!notificar) return;
+    // Uma varredura por vez. Ela roda a cada heartbeat e faz uma chamada de
+    // rede por job; se uma passagem demorar mais que o intervalo, a seguinte
+    // veria as MESMAS linhas ainda não marcadas e mandaria a mensagem duas
+    // vezes — quebrando exatamente o "exatamente uma vez" que ela existe para
+    // garantir.
+    if (varrendo) return;
+    varrendo = true;
+    try {
+      await varrerPendentes();
+    } finally {
+      varrendo = false;
+    }
+  }
+
+  async function varrerPendentes(): Promise<void> {
+    if (!notificar) return;
     let pendentes: Job[];
     try {
       pendentes = fila.pendentesDeNotificacao();
@@ -232,7 +259,17 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
         fila.marcarNotificado(job.id);
         deps.log(`[job ${job.id}] notificação reentregue`);
       } catch (e) {
-        deps.log(`[job ${job.id}] reentrega falhou: ${(e as Error).message}`);
+        const msg = (e as Error).message;
+        // Falha PERMANENTE (chat apagado, bot bloqueado, mensagem inválida):
+        // retentar isso a cada 20s é bater numa porta que não abre. Marca como
+        // notificado e registra — perder a mensagem é o fato, e o log é o
+        // rastro honesto disso.
+        if (ehFalhaPermanenteDeEnvio(msg)) {
+          fila.marcarNotificado(job.id);
+          deps.log(`[job ${job.id}] notificação impossível (${msg.slice(0, 120)}) — desistindo`);
+          continue;
+        }
+        deps.log(`[job ${job.id}] reentrega falhou (tentarei de novo): ${msg}`);
       }
     }
   }

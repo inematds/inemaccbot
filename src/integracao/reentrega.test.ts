@@ -23,6 +23,7 @@ import { Worker } from '../fila/worker.js';
 import { criarNotificador } from '../gateway/notificar.js';
 import type { Transporte } from '../gateway/telegram.js';
 import type { Job } from '../fila/types.js';
+import { ehFalhaPermanenteDeEnvio } from '../index.js';
 
 let dir: string;
 let fila: FilaSqlite;
@@ -71,6 +72,24 @@ async function varrer(notificar: (job: Job) => Promise<void>): Promise<void> {
   }
 }
 
+describe('falha permanente de envio', () => {
+  // Retentar "chat not found" a cada 20 segundos é bater numa porta que não
+  // abre — para sempre, contra uma API externa.
+  it('é reconhecida pela mensagem do Telegram', () => {
+    for (const m of [
+      '400: Bad Request: chat not found',
+      'Forbidden: bot was blocked by the user',
+      '400: Bad Request: message is too long',
+    ]) expect(ehFalhaPermanenteDeEnvio(m)).toBe(true);
+  });
+
+  it('falha transitória NÃO é confundida com permanente', () => {
+    for (const m of ['ETIMEDOUT', '429: Too Many Requests', 'socket hang up']) {
+      expect(ehFalhaPermanenteDeEnvio(m)).toBe(false);
+    }
+  });
+});
+
 describe('notificação que falhou é reentregue — exatamente uma vez', () => {
   it('mensagem perdida no ack volta na varredura seguinte', async () => {
     const { transporte, enviadas } = transporteInstavel(1);
@@ -118,6 +137,33 @@ describe('notificação que falhou é reentregue — exatamente uma vez', () => 
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '{}', chat_id: 7 });
     fila.cancelar(1);
     expect(fila.pendentesDeNotificacao()).toHaveLength(0);
+  });
+
+  // Sem trava, duas varreduras concorrentes veem as MESMAS linhas ainda não
+  // marcadas e mandam a mensagem duas vezes — quebrando o "exatamente uma vez"
+  // que a varredura existe para garantir. Acontece de verdade quando uma
+  // passagem demora mais que o intervalo do heartbeat.
+  it('duas varreduras concorrentes não mandam a mesma mensagem duas vezes', async () => {
+    const enviadas: string[] = [];
+    const transporte: Transporte = {
+      async responder(_c, texto) {
+        await new Promise((r) => { setTimeout(r, 30); });
+        enviadas.push(texto);
+      },
+    };
+    const notificar = criarNotificador(transporte);
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '{}', chat_id: 7 });
+    fila.pegar('io', 60, 'A');
+    fila.concluir(1, 'ok', 'A');
+
+    let varrendo = false;
+    const comTrava = async (): Promise<void> => {
+      if (varrendo) return;
+      varrendo = true;
+      try { await varrer(notificar); } finally { varrendo = false; }
+    };
+    await Promise.all([comTrava(), comTrava()]);
+    expect(enviadas).toHaveLength(1);
   });
 
   it('marcarNotificado é idempotente — a segunda chamada não faz nada', () => {
