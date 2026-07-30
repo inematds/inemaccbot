@@ -41,6 +41,11 @@ export class ClaudeRunner implements Runner {
         reject(new Error(`${this.binario} saiu com código ${code}: ${stderr.trim().slice(0, 500)}`));
       });
     });
+    // Marca a promessa como observada desde o nascimento: ela pode rejeitar (via `close`)
+    // antes de o chamador chamar `aguardar()`, e sem isto o Node emite
+    // PromiseRejectionHandledWarning. `aguardar()` continua devolvendo a promessa
+    // original, então quem espera ainda recebe a rejeição normalmente.
+    promessa.catch(() => {});
 
     const matarArvore = (sinal: NodeJS.Signals): void => {
       if (filho.pid === undefined) return;
