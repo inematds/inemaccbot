@@ -1,1 +1,367 @@
-// Scaffold entry point
+// Boot, laço e desligamento — o miolo do processo. Toda a durabilidade da etapa
+// 0 (lease, recuperação, drain, guarda de posse) fica INERTE até este arquivo
+// existir: ninguém chamava `recuperarLeasesVencidos()`, `passo()` nem ligava
+// SIGTERM a `drenar()`.
+//
+// Duas responsabilidades, separadas de propósito:
+//   `criarServico` — testável sem processo, sem rede, sem sinais;
+//   `main`         — lê o .env do disco, monta as deps reais, liga os sinais.
+// `main` só roda quando o módulo é EXECUTADO; nunca no import (os testes
+// importam este arquivo).
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { type Config, carregarConfig } from './config.js';
+import { abrirDb } from './db/abrir.js';
+import { aplicarMigrations } from './db/migrations.js';
+import { FilaSqlite } from './fila/store.js';
+import { RUNNERS } from './fila/runner.js';
+import './fila/runner-claude.js'; // efeito colateral: registra RUNNERS.claude
+import { criarTarefas as criarTarefasPadrao } from './fila/tarefas/index.js';
+import type { Agora, Fila, Job } from './fila/types.js';
+import { Worker, type Tarefa } from './fila/worker.js';
+import { executar, parseComando } from './gateway/comandos.js';
+import { criarNotificador } from './gateway/notificar.js';
+import { type Transporte, criarBot } from './gateway/telegram.js';
+
+/** spec §2.3. As três filas sem tarefa nesta etapa sobem ociosas de propósito:
+ * assim a etapa 2 acrescenta tarefas sem mexer no boot. */
+export const CONCORRENCIAS: Record<Fila, number> = {
+  render: 1,
+  navegador: 1,
+  texto: 2,
+  io: 10,
+  cpu: 1,
+};
+
+const FILAS = Object.keys(CONCORRENCIAS) as Fila[];
+
+/** O bot é um recurso de ciclo de vida (start/stop), não só um `Transporte` —
+ * por isso o serviço recebe as três coisas juntas. */
+export interface TransporteServico {
+  iniciar(): Promise<void>;
+  parar(): Promise<void>;
+  transporte: Transporte;
+}
+
+export interface DepsServico {
+  agora: Agora;
+  /**
+   * Recebe `aoComando` porque o handler de mensagem precisa da FILA, que só
+   * existe dentro de `criarServico` — sem este segundo argumento não há como
+   * ligar `/fila`, `/status`, `/cancelar` ao store sem o adaptador Telegram
+   * conhecer o store.
+   */
+  criarTransporte: (
+    cfg: Config,
+    deps: { aoComando: (chatId: number, texto: string) => Promise<string> },
+  ) => TransporteServico;
+  log: (m: string) => void;
+  /** Pausa do laço quando `passo()` devolve false (nada na fila). */
+  intervaloOciosoMs: number;
+  /** Periodicidade do `bater()` — na produção, bem abaixo de `leaseSegundos`. */
+  heartbeatMs: number;
+  /** Teto do dreno antes de `abortar()` o que sobrou. */
+  timeoutDrenoMs: number;
+  leaseSegundos?: number;
+  /** Só os testes trocam: o catálogo de tarefas é FECHADO na produção. */
+  criarTarefas?: (opts: { raizMidia: string }) => Record<string, Tarefa>;
+}
+
+export interface Servico {
+  iniciar(): Promise<void>;
+  parar(): Promise<void>;
+  /** Exposto para os testes inspecionarem o estado da fila sem abrir o DB. */
+  fila: FilaSqlite;
+  /** Timers VIVOS pertencentes ao serviço. Existe para o teste provar que
+   * `parar()` não deixa nada segurando o event loop. */
+  timers(): number;
+}
+
+const LEASE_PADRAO_SEGUNDOS = 60;
+
+export function criarServico(cfg: Config, deps: DepsServico): Servico {
+  // Numa instalação nova o diretório do QUEUE_DB pode não existir ainda, e o
+  // erro do SQLite nesse caso é opaco.
+  mkdirSync(dirname(cfg.queueDb), { recursive: true });
+  const db = abrirDb(cfg.queueDb);
+  const fila = new FilaSqlite(db, deps.agora);
+  const leaseSegundos = deps.leaseSegundos ?? LEASE_PADRAO_SEGUNDOS;
+
+  /** Identidade DESTA instância — é contra isto que as guardas de posse
+   * (`concluir`/`falhar`/`renovar`) comparam. Calculado uma vez. */
+  const dono = `${hostname()}:${process.pid}`;
+
+  let rodando = false;
+  let parando: Promise<void> | null = null;
+  let heartbeat: NodeJS.Timeout | null = null;
+  let transp: TransporteServico | null = null;
+  let workers: { w: Worker; n: number }[] = [];
+  let lacos: Promise<void>[] = [];
+
+  const timeouts = new Set<NodeJS.Timeout>();
+  /** Resolvedores das esperas ociosas, para acordá-las no desligamento em vez
+   * de deixar o `parar()` pagar o intervalo ocioso inteiro. */
+  const acordadores = new Set<() => void>();
+
+  function esperar(ms: number): Promise<void> {
+    return new Promise<void>((resolver) => {
+      let t: NodeJS.Timeout | undefined;
+      const fim = (): void => {
+        if (t) { clearTimeout(t); timeouts.delete(t); }
+        acordadores.delete(fim);
+        resolver();
+      };
+      t = setTimeout(fim, ms);
+      timeouts.add(t);
+      acordadores.add(fim);
+    });
+  }
+
+  function limparTimers(): void {
+    if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+    for (const t of timeouts) clearTimeout(t);
+    timeouts.clear();
+    acordadores.clear();
+  }
+
+  const aoComando = async (chatId: number, texto: string): Promise<string> =>
+    executar(parseComando(texto), { fila, chatId, agora: deps.agora });
+
+  /** Nenhum job `kind=agent` é enfileirado na etapa 1. Um stub silencioso seria
+   * pior que um erro: o job "rodaria" e devolveria lixo. */
+  const promptDe = async (job: Job): Promise<never> => {
+    throw new Error(`sem agentes na etapa 1: job ${job.id} (${job.tarefa}) é kind=agent`);
+  };
+
+  /** O `Worker` é um stepper puro por decisão da etapa 0 — quem agenda é aqui. */
+  async function laco(w: Worker): Promise<void> {
+    while (rodando) {
+      let pegou = false;
+      try {
+        pegou = await w.passo();
+      } catch (e) {
+        // Depois de `parar()` o DB pode já estar fechado sob um `passo()`
+        // abandonado (job roubado): isso é encerramento, não falha.
+        if (!rodando) return;
+        deps.log(`laço: erro em passo(): ${(e as Error).message}`);
+      }
+      // O `&& rodando` não é redundante: sem ele, um `passo()` que assenta
+      // DEPOIS de `limparTimers()` registraria um timeout novo num conjunto já
+      // limpo — um timer sobrevivendo ao `parar()`.
+      if (!pegou && rodando) await esperar(deps.intervaloOciosoMs);
+    }
+  }
+
+  async function iniciar(): Promise<void> {
+    // 1. schema. Checksum divergente derruba o boot: subir sobre um schema que
+    //    não reconhecemos é pior que não subir.
+    try {
+      aplicarMigrations(db, deps.agora);
+    } catch (e) {
+      db.close();
+      throw e;
+    }
+
+    // 2. raiz de mídia (derivada do STATE_DIR, sem variável nova).
+    const raizMidia = join(cfg.stateDir, 'midia');
+    mkdirSync(raizMidia, { recursive: true });
+
+    // 3. + 4. recuperação ANTES de qualquer `passo()`, e logada — é a única
+    //    evidência de que houve queda.
+    const r = fila.recuperarLeasesVencidos();
+    deps.log(`boot: recuperação de leases — requeued=${r.requeued} failed=${r.failed}`);
+
+    // 5. só então: workers e bot.
+    const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia });
+    transp = deps.criarTransporte(cfg, { aoComando });
+    const notificar = criarNotificador(transp.transporte);
+
+    workers = FILAS.map((f) => ({
+      n: CONCORRENCIAS[f],
+      w: new Worker(
+        fila,
+        {
+          fila: f,
+          dono,
+          concorrencia: CONCORRENCIAS[f],
+          leaseSegundos,
+          tarefas,
+          runners: RUNNERS,
+          promptDe,
+          log: deps.log,
+          aoTerminar: notificar,
+        },
+        deps.agora,
+      ),
+    }));
+
+    rodando = true;
+    // Um laço por unidade de concorrência: `passo()` processa UM job e o espera,
+    // então um laço só nunca usaria a concorrência 10 da fila `io`.
+    lacos = workers.flatMap(({ w, n }) =>
+      Array.from({ length: n }, () => laco(w)),
+    );
+
+    heartbeat = setInterval(() => {
+      void Promise.all(workers.map(({ w }) => w.bater())).catch((e: unknown) => {
+        deps.log(`heartbeat: ${(e as Error).message}`);
+      });
+    }, deps.heartbeatMs);
+
+    await transp.iniciar();
+  }
+
+  async function desligar(): Promise<void> {
+    // 1. o bot para de RECEBER antes de tudo: nenhum comando novo entra
+    //    enquanto drenamos.
+    if (transp) {
+      try {
+        await transp.parar();
+      } catch (e) {
+        deps.log(`desligamento: erro ao parar o transporte: ${(e as Error).message}`);
+      }
+    }
+
+    // 2. laços param de reclamar trabalho novo (e acordam já das esperas).
+    rodando = false;
+    for (const acordar of [...acordadores]) acordar();
+
+    // 3. dreno com teto.
+    //    `drenar()` espera só o trabalho que o worker ainda POSSUI: um job
+    //    roubado no meio do dreno (lease vencido + reclaim de outra instância)
+    //    é largado de propósito por `bater()`, e o `passo()` correspondente
+    //    pode nunca assentar. Por isso os `lacos` entram na MESMA corrida com
+    //    timeout — nunca num `await` que assume que todos terminam.
+    const dreno = Promise.all([
+      ...workers.map(({ w }) => w.drenar()),
+      ...lacos,
+    ]).then(() => true, () => true);
+    const drenou = await Promise.race([dreno, esperar(deps.timeoutDrenoMs).then(() => false)]);
+
+    // 4. o que sobrou vira falha explícita — nunca fica `running` com lease
+    //    vivo, que é o estado que nenhuma recuperação futura consegue distinguir
+    //    de trabalho em andamento antes do lease expirar.
+    if (!drenou) {
+      deps.log(`desligamento: dreno estourou ${deps.timeoutDrenoMs}ms — abortando o que sobrou`);
+      for (const { w } of workers) {
+        try {
+          await w.abortar();
+        } catch (e) {
+          deps.log(`desligamento: erro ao abortar: ${(e as Error).message}`);
+        }
+      }
+    }
+
+    // 5. timers e DB. Depois de `abortar()` o `drenar()` pendente sai no próximo
+    //    tick sem tocar no banco (a lista de ativos está vazia), então fechar
+    //    aqui é seguro.
+    limparTimers();
+    db.close();
+  }
+
+  return {
+    iniciar,
+    // SIGTERM e SIGINT podem chegar os dois: o segundo `parar()` tem que ser um
+    // no-op, não um segundo `db.close()`.
+    parar: () => (parando ??= desligar()),
+    fila,
+    timers: () => timeouts.size + (heartbeat ? 1 : 0),
+  };
+}
+
+/** Parser mínimo de .env: `CHAVE=valor`, `#` comenta a linha, aspas opcionais.
+ * Não é dotenv — é o suficiente para o boot e não acrescenta dependência. */
+export function lerEnv(texto: string): Record<string, string> {
+  const saida: Record<string, string> = {};
+  for (const linha of texto.split('\n')) {
+    const limpa = linha.trim();
+    if (!limpa || limpa.startsWith('#')) continue;
+    const i = limpa.indexOf('=');
+    if (i <= 0) continue;
+    const chave = limpa.slice(0, i).trim();
+    let valor = limpa.slice(i + 1).trim();
+    if (valor.length >= 2 && (valor.startsWith('"') || valor.startsWith("'")) && valor.at(-1) === valor[0]) {
+      valor = valor.slice(1, -1);
+    }
+    saida[chave] = valor;
+  }
+  return saida;
+}
+
+/** Transporte real. `bot.start()` NÃO é aguardado: no grammy ele só assenta
+ * quando o bot PARA — esperar por ele travaria o boot antes do primeiro
+ * `passo()`. `bot.init()` é o que falha rápido (token inválido). */
+function criarTransporteReal(
+  cfg: Config,
+  deps: { aoComando: (chatId: number, texto: string) => Promise<string> },
+): TransporteServico {
+  const { bot, transporte } = criarBot(cfg, deps);
+  return {
+    async iniciar() {
+      await bot.init();
+      void bot.start().catch((e: unknown) => {
+        console.error(`bot: laço de polling caiu: ${(e as Error).message}`);
+      });
+    },
+    async parar() {
+      await bot.stop();
+    },
+    transporte,
+  };
+}
+
+export async function main(): Promise<void> {
+  const arquivo = resolve(process.cwd(), '.env');
+  const doArquivo = existsSync(arquivo) ? lerEnv(readFileSync(arquivo, 'utf8')) : {};
+  // O ambiente do processo vence o arquivo (systemd/override manual).
+  const cfg = carregarConfig({ ...doArquivo, ...process.env });
+
+  mkdirSync(dirname(cfg.logFile), { recursive: true });
+  const log = (m: string): void => {
+    const linha = `${new Date().toISOString()} ${m}\n`;
+    process.stderr.write(linha);
+    try {
+      appendFileSync(cfg.logFile, linha);
+    } catch {
+      /* log em disco é best-effort; nunca derruba o serviço */
+    }
+  };
+
+  const svc = criarServico(cfg, {
+    agora: () => Math.floor(Date.now() / 1000),
+    criarTransporte: criarTransporteReal,
+    log,
+    intervaloOciosoMs: 1_000,
+    heartbeatMs: 20_000,
+    // O unit dá 120s no SIGTERM; saímos com folga antes do SIGKILL.
+    timeoutDrenoMs: 110_000,
+    leaseSegundos: LEASE_PADRAO_SEGUNDOS,
+  });
+
+  for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(sinal, () => {
+      log(`sinal ${sinal} recebido — desligando`);
+      void svc.parar().then(
+        () => process.exit(0),
+        (e: unknown) => {
+          log(`desligamento falhou: ${(e as Error).message}`);
+          process.exit(1);
+        },
+      );
+    });
+  }
+
+  await svc.iniciar();
+  log(`serviço no ar (filas: ${FILAS.join(', ')})`);
+}
+
+// Só quando EXECUTADO — nunca no import (os testes importam este módulo).
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  void main().catch((e: unknown) => {
+    console.error(`boot falhou: ${(e as Error).message}`);
+    process.exit(1);
+  });
+}
