@@ -24,8 +24,8 @@ Leia pelo menos §1 (camadas), §2.5 e §2.5.1 (efeito único e posse do lease),
 
 ## 2. Estado em 2026-07-30
 
-- `master` em `95ccd79`. **318 testes verdes**, typecheck limpo.
-- **Etapas 0, 1 e 2** mergeadas. Etapa 2 = fila `texto` com `kind=agent`, registry de
+- `master` em `2b4a525`+. **366 testes verdes**, typecheck limpo.
+- **Etapas 0, 1, 2 e 3** mergeadas. Etapa 2 = fila `texto` com `kind=agent`, registry de
   skills, gateway completo (skill digitada, texto livre, pergunta, anexo, entrega).
   Plano: `docs/superpowers/plans/2026-07-30-etapa-2-texto.md`.
 - O serviço **está no ar**: `systemctl --user status inemaccbot` (unidade de USUÁRIO, em
@@ -67,6 +67,40 @@ Leia pelo menos §1 (camadas), §2.5 e §2.5.1 (efeito único e posse do lease),
 Sem `render` (etapa 3), sem `fluxos/`, `/refazer`, `/status <fluxo>`, dashboard nem
 `/promoclub`. O `interpret` conhece skills, não fluxos.
 
+### Etapa 3 — render (2026-07-30)
+
+As cinco skills de vídeo voltaram: `explicativo`, `curso`, `demo`, `reel`, `reelinematds`,
+na fila `render` (concorrência 1). Plano em
+`docs/superpowers/plans/2026-07-30-etapa-3-render.md`.
+
+**A decisão que sustenta tudo:** render leva de 15 min a 2h, então o agente NÃO segura a
+sessão até o fim. Ele monta o material, dispara só o render final destacado
+(`nohup … || touch "<alvo>.err"`, gravando o `.pid`), declara `RENDER: <alvo>` e sai. Quem
+espera é a fila — **segurando o slot**. Soltar a vaga entre um poll e outro deixaria um
+segundo render ser reclamado, e os dois escreveriam na mesma GPU: é o mesmo invariante do
+§7.1, dentro do bot.
+
+Consequências que valem lembrar antes de mexer:
+
+- **Adoção**: `.log` presente e `.err` ausente = trabalho EM CURSO → a tentativa seguinte
+  adota em vez de disparar. `.err` presente = tentativa anterior encerrada → limpa e
+  dispara de novo. Errar essa distinção anula o `max_tentativas` justamente no caso para o
+  qual ele existe (achado na revisão, não em produção).
+- **`/cancelar` mata o render destacado** (pelo `.pid`); desligamento e perda de lease
+  deixam vivo DE PROPÓSITO — é disso que a adoção depende.
+- **Recuperação de lease roda periodicamente**, não só no boot: com job de 2h, um `kill -9`
+  seguido de restart dentro da janela do lease deixava o job preso para sempre.
+- **`max_tentativas: 4`** nas skills de render: cada deploy durante um render gasta uma
+  tentativa, e o requeue adota em vez de renderizar de novo.
+- **Campos são declarados pela SKILL** (`vertical`, `curso`, `modulo`, `visuais`, `mover`),
+  não conhecidos pelo parser — no v1 cada skill nova exigia editá-lo. Campo com
+  `usa: "entrega"` (o `mover`) não vai ao prompt: o agente não move arquivo.
+- **Teto de setup por skill** (`timeout_setup_segundos`): em reel o agente roda o pipeline
+  criativo inteiro inline, então 20 min matariam todo job antes do disparo.
+
+Da etapa 4 vieram, porque o v1 está desligado e faziam falta: duração no `/status` e na
+conclusão, e `/refazer <id>`.
+
 ### Decisões da etapa 2 que mudam o desenho das próximas
 
 - **Skill de agente roda SÍNCRONA.** O v1 disparava `nohup` e vigiava o arquivo porque a
@@ -86,7 +120,8 @@ O plano de cutover está em §7 do spec. Resumo:
 
 | etapa | entrega | desliga ao fim |
 |---|---|---|
-| ~~2~~ | ~~fila `texto`~~ — **feito**, mas o cutover ainda não | `mkitexto.service` (**pendente**, ver §9) |
+| ~~2~~ | ~~fila `texto`~~ | ~~`mkitexto`~~ — desligado |
+| ~~3~~ | ~~fila `render`~~ | ~~`mkivideos`~~ — já estava desligado |
 | 3 | fila `render`: `explicativo`, `curso`, `demo`, `reel`, `reelinematds` | `mkivideos.service` |
 | 4 | paridade operacional (help gerado, dashboard, regressões do `watcher.test.ts` do v1) | — |
 | 5 | `fluxos/` + fila `navegador` + `flow.json` no `inemaclubpromover` | `/promoclub` do v1 |
