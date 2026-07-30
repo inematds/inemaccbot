@@ -24,8 +24,8 @@ Leia pelo menos §1 (camadas), §2.5 e §2.5.1 (efeito único e posse do lease),
 
 ## 2. Estado em 2026-07-30
 
-- `master` em `2b4a525`+. **366 testes verdes**, typecheck limpo.
-- **Etapas 0, 1, 2 e 3** mergeadas. Etapa 2 = fila `texto` com `kind=agent`, registry de
+- `master` em `master`. **470 testes verdes**, typecheck limpo.
+- **Etapas 0 a 5 mergeadas, mais o promoclub/promoavatar.** Etapa 2 = fila `texto` com `kind=agent`, registry de
   skills, gateway completo (skill digitada, texto livre, pergunta, anexo, entrega).
   Plano: `docs/superpowers/plans/2026-07-30-etapa-2-texto.md`.
 - O serviço **está no ar**: `systemctl --user status inemaccbot` (unidade de USUÁRIO, em
@@ -100,6 +100,35 @@ Consequências que valem lembrar antes de mexer:
 
 Da etapa 4 vieram, porque o v1 está desligado e faziam falta: duração no `/status` e na
 conclusão, e `/refazer <id>`.
+
+### Etapas 4, 5 e o promoclub (2026-07-30)
+
+- **Etapa 4 — operação.** Reentrega de notificação (`notificado_em`: uma mensagem
+  perdida não some mais), métricas de verdade no `/fila` (média por tarefa,
+  retentativas, alarme de job preso comparado com o histórico da MESMA tarefa),
+  teto nas consultas do painel, e `docs/herdado-do-v1.md` — o mapa que a §6.5 exige.
+- **Etapa 5 — motor de fluxos.** Estado por fase/alvo no mesmo banco; "marcar fase
+  feita + enfileirar a próxima" é UMA transação (gancho injetado no store, porque
+  `fila/` não pode importar `fluxos/`); definição CONGELADA com o texto dos prompts
+  embutido; `/refazer` seletivo; export/import; modo sombra.
+- **promoclub e promoavatar** viraram repos de domínio (`flow.json` + `prompts/`).
+  Os 12 públicos saíram do código do v1. `promoclub`: texto → avatar (navegador) →
+  baixar → reel. `promoavatar`: texto → **PORTÃO** → baixar → reel, com a fase de
+  avatar feita à mão no estúdio e `/aprovar A#N` como o "terminei".
+
+**Título do estúdio é contrato:** `A1-mulheres-v1` (prefixo + id do fluxo + alvo +
+versão). É a chave de idempotência do download. Nome diferente = vídeo nunca
+encontrado, e a fase expira em 90 min.
+
+### ⚠️ Armadilha que já apareceu TRÊS vezes neste projeto
+
+Código **alcançável sem implementação atrás**: o `promptDe` da etapa 1, o
+`fluxo-agente` da etapa 5 e o `fluxo-navegador` do promoclub. Nos três casos o
+validador aceitava o nome, o job era enfileirado e morria com mensagem sem
+sentido — e nos três a suíte estava verde, porque os testes ackavam os jobs à mão
+sem passar pelo worker.
+
+**Antes de dizer que uma fase/tarefa existe, rode UM job dela pelo worker.**
 
 ### Decisões da etapa 2 que mudam o desenho das próximas
 
@@ -257,7 +286,17 @@ Os três arquivos não commitados do v1 (`src/config.ts`, `src/interpret.ts`,
 
 **Transcrever e dublar agora só existem no bot novo.**
 
-### Próximo: etapa 3 (`render`)
+### Pedido em aberto (perguntado, não respondido)
+
+Começar um fluxo numa fase mais adiante — "eu escrevo os textos, o bot continua
+da 2.5". Três caminhos foram apresentados; a recomendação é `| de=<fase>` no
+comando de criação (~30 linhas, marca as fases anteriores como `pulado`, serve
+para qualquer fluxo). O nó: o título do estúdio deriva do id do fluxo, que só
+existe depois de criar — então quem gera os avatares antes precisa renomear no
+estúdio. **Pergunta que trava a escolha:** onde ficam os textos escritos à mão?
+Se for em `textos/<slug>/<publico>.md`, `| de=avatar` sai de graça junto.
+
+### Antigo próximo: etapa 3 (`render`)
 
 `explicativo`, `curso`, `demo`, `reel`, `reelinematds`.
 
