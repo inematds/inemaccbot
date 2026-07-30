@@ -41,7 +41,9 @@ export interface DepsMensagem {
  * da resposta não pode crescer com o histórico. Escopado ao chat de propósito:
  * job de outro chat nunca entra na resposta. */
 function jobsDoChat(fila: FilaSqlite, chatId: number, limite = 15): Job[] {
-  return fila.listar().filter((j) => j.chat_id === chatId).reverse().slice(0, limite);
+  // Teto na CONSULTA, não só no slice: `jobs` nunca é purgado, e sem isto o
+  // custo de responder uma pergunta cresce com todo o histórico do bot.
+  return fila.listar({ limite: 200 }).filter((j) => j.chat_id === chatId).reverse().slice(0, limite);
 }
 
 export async function tratarMensagem(

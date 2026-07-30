@@ -197,6 +197,14 @@ function fmtStatus(job: Job): string {
 }
 
 const JANELA_ERRO_SEGUNDOS = 24 * 60 * 60;
+/**
+ * Janela e teto das consultas do painel. `jobs` nunca é purgado (é o
+ * histórico), então varrer a tabela inteira a cada `/fila` fica mais caro para
+ * sempre. 30 dias e 500 linhas cobrem qualquer pergunta operacional — e um job
+ * específico continua acessível por `/status <id>`, que busca por id.
+ */
+const JANELA_PAINEL_SEGUNDOS = 30 * 24 * 60 * 60;
+const TETO_PAINEL = 500;
 /** Quantos jobs já terminados aparecem na lista. O suficiente para achar o id
  * do que acabou de rodar, sem virar parede de texto no celular. */
 const TERMINADOS_NA_LISTA = 8;
@@ -274,7 +282,9 @@ function mediasPorTarefa(jobs: Job[]): string[] {
 }
 
 function resumoFila(fila: FilaSqlite, nome: Fila, agora: number): string {
-  const jobs = fila.listar({ fila: nome });
+  const jobs = fila.listar({
+    fila: nome, desde: agora - JANELA_PAINEL_SEGUNDOS, limite: TETO_PAINEL,
+  });
   const rodando = jobs.filter((j) => j.status === 'running').length;
   const pendentes = jobs.filter((j) => j.status === 'queued');
   const maisAntigo = pendentes.reduce<number | undefined>(
@@ -320,14 +330,16 @@ export function executar(cmd: Comando, deps: DepsComando): string {
     case 'fila': {
       const agora = deps.agora();
       const linhas = FILAS.map((f) => resumoFila(deps.fila, f, agora));
-      const medias = mediasPorTarefa(deps.fila.listar());
+      const medias = mediasPorTarefa(
+        deps.fila.listar({ desde: agora - JANELA_PAINEL_SEGUNDOS, limite: TETO_PAINEL }),
+      );
       if (medias.length) linhas.push('', 'Duração média:', ...medias.map((m) => `  ${m}`));
       return linhas.join('\n');
     }
 
     case 'lista': {
       const agora = deps.agora();
-      const todos = deps.fila.listar();
+      const todos = deps.fila.listar({ limite: TETO_PAINEL });
       const ativos = todos.filter((j) => j.status === 'running' || j.status === 'queued');
       const terminados = todos
         .filter((j) => j.status !== 'running' && j.status !== 'queued')
