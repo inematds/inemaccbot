@@ -167,6 +167,7 @@ describe('criarBot', () => {
       motorPadrao: 'claude',
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low',
+      projetosDir: '/tmp/projetos-inexistente',
     };
     const { bot, transporte } = criarBot(cfg, { aoComando: async () => 'ok' });
     expect(bot).toBeDefined();
@@ -186,6 +187,7 @@ describe('criarBot', () => {
       motorPadrao: 'claude',
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low',
+      projetosDir: '/tmp/projetos-inexistente',
     };
 
     const linhas: string[] = [];

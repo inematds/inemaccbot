@@ -40,6 +40,7 @@ function criarCfg(): Config {
     motorPadrao: 'claude',
     modeloPadrao: 'sonnet',
     esforcoPadrao: 'low',
+    projetosDir: '/tmp/projetos-inexistente',
   };
 }
 

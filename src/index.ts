@@ -147,8 +147,17 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     acordadores.clear();
   }
 
+  // Preenchido em `iniciar()` (o registry é lido lá, junto das migrations). O
+  // handler tem que existir ANTES disso porque `criarTransporte` o recebe.
+  let defs: SkillDef[] = [];
+
   const aoComando = async (chatId: number, texto: string): Promise<string> =>
-    executar(parseComando(texto), { fila, chatId, agora: deps.agora });
+    executar(parseComando(texto, defs, cfg.projetosDir), {
+      fila,
+      chatId,
+      agora: deps.agora,
+      defs,
+    });
 
   /** O `Worker` é um stepper puro por decisão da etapa 0 — quem agenda é aqui. */
   async function laco(w: Worker): Promise<void> {
@@ -213,7 +222,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     //     divergente. Subir com um catálogo que não entendemos é pior que não
     //     subir — e a alternativa (falhar no primeiro job) queima uma tentativa
     //     e responde ao usuário com um erro sem sentido.
-    const defs = (deps.carregarSkills ?? carregarSkillsPadrao)(
+    defs = (deps.carregarSkills ?? carregarSkillsPadrao)(
       join(RAIZ_REPO, 'config', 'skills.json'),
       RAIZ_REPO,
     );

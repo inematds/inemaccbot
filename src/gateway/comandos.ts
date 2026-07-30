@@ -1,7 +1,9 @@
 // Comandos do gateway, PUROS: nenhuma linha aqui conhece grammy ou a API do
 // Telegram (regra herdada do v1 — nenhum teste deste bot bate na API real).
 // `executar` só fala com o store; nunca imprime, nunca envia.
+import type { SkillDef } from '../dominio/registry.js';
 import { FILAS } from '../fila/filas.js';
+import { analisar, textoSkills, type PedidoSkill } from './gramatica.js';
 import type { Agora, Fila, Job } from '../fila/types.js';
 import type { FilaSqlite } from '../fila/store.js';
 
@@ -14,12 +16,23 @@ export type Comando =
   | { tipo: 'http'; url: string }
   | { tipo: 'thumb'; entrada: string }
   | { tipo: 'ajuda' }
+  | { tipo: 'skills' }
+  /** Um pedido de skill do catálogo (`transcrever: <link> | lives3`). */
+  | { tipo: 'skill'; pedido: PedidoSkill }
+  /** Texto que NÃO casou com nada — quem decide o que fazer com ele é o
+   * chamador (na etapa 2, o `interpret`); aqui ele só não vira comando. */
+  | { tipo: 'livre'; texto: string }
+  /** Erro de gramática, com mensagem NOSSA (não eco da entrada do usuário). */
+  | { tipo: 'erro'; mensagem: string }
   | { tipo: 'desconhecido'; texto: string };
 
 export interface DepsComando {
   fila: FilaSqlite;
   chatId: number;
   agora: Agora;
+  /** Catálogo de skills. Vazio = só os comandos de serviço (é o que os testes
+   * da etapa 1 usam). */
+  defs?: SkillDef[];
 }
 
 // Prioridade "furada": bem acima de qualquer valor manual plausível, pra não
@@ -35,7 +48,13 @@ function parseId(arg: string | undefined): number | undefined {
   return Number(arg);
 }
 
-export function parseComando(texto: string): Comando {
+/**
+ * `defs`/`projetosDir` habilitam a SEGUNDA porta (§1.1): sem eles, todo texto
+ * que não é comando de barra cai em `desconhecido`, que é o comportamento da
+ * etapa 1. Com eles, `transcrever: <link>` vira pedido de skill e o resto vira
+ * `livre` — o material do `interpret`.
+ */
+export function parseComando(texto: string, defs: SkillDef[] = [], projetosDir = ''): Comando {
   const t = texto.trim();
   const [bruto, ...resto] = t.split(/\s+/);
   const arg = resto.join(' ');
@@ -53,6 +72,8 @@ export function parseComando(texto: string): Comando {
     case '/ajuda':
     case '/help':
       return { tipo: 'ajuda' };
+    case '/skills':
+      return { tipo: 'skills' };
     case '/status': {
       const id = parseId(arg);
       return id === undefined ? { tipo: 'desconhecido', texto: t } : { tipo: 'status', id };
@@ -69,8 +90,19 @@ export function parseComando(texto: string): Comando {
       return arg === '' ? { tipo: 'desconhecido', texto: t } : { tipo: 'http', url: arg };
     case 'thumb':
       return arg === '' ? { tipo: 'desconhecido', texto: t } : { tipo: 'thumb', entrada: arg };
-    default:
-      return { tipo: 'desconhecido', texto: t };
+    default: {
+      // Comando de barra que não existe continua sendo `desconhecido`: um
+      // `/xyz` é claramente uma tentativa de comando, não conversa.
+      if (cmd.startsWith('/')) return { tipo: 'desconhecido', texto: t };
+      if (defs.length === 0) return { tipo: 'desconhecido', texto: t };
+      const a = analisar(t, defs, projetosDir);
+      if (a.tipo === 'skill') return { tipo: 'skill', pedido: a.pedido };
+      if (a.tipo === 'livre') return { tipo: 'livre', texto: a.texto };
+      // Erro de GRAMÁTICA é diferente de comando desconhecido: aqui o usuário
+      // acertou a skill e errou um campo, e a mensagem tem que dizer qual —
+      // ela é gerada por nós, não é eco da entrada dele.
+      return { tipo: 'erro', mensagem: a.mensagem };
+    }
   }
 }
 
@@ -82,11 +114,20 @@ const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
   { uso: '/furar <id>', descricao: 'põe um job pendente na frente da fila' },
   { uso: 'http <url>', descricao: 'enfileira um GET' },
   { uso: 'thumb <caminho>', descricao: 'enfileira uma thumbnail' },
+  { uso: '/skills', descricao: 'lista as skills do catálogo' },
   { uso: '/ajuda (ou /help)', descricao: 'esta lista' },
 ];
 
-function respostaAjuda(): string {
-  return ['Comandos:', ...AJUDA_LINHAS.map((l) => `${l.uso} — ${l.descricao}`)].join('\n');
+/** A ajuda mistura os comandos FIXOS (serviço) com as skills do REGISTRY — a
+ * lista de skills nunca é escrita à mão aqui, senão ela envelhece calada. */
+function respostaAjuda(defs: SkillDef[]): string {
+  const linhas = ['Comandos:', ...AJUDA_LINHAS.map((l) => `${l.uso} — ${l.descricao}`)];
+  if (defs.length) {
+    linhas.push('', 'Skills (formato `skill: entrada | campo`):');
+    for (const d of defs) linhas.push(`${d.command}: … — ${d.descricao}`);
+    linhas.push('', 'Campos: livesN (destino) · modelo=opus · esforco=high');
+  }
+  return linhas.join('\n');
 }
 
 // Job não encontrado neste banco: recusa honesta, nunca age. Cobre tanto id
@@ -147,7 +188,7 @@ export function executar(cmd: Comando, deps: DepsComando): string {
       return 'pong';
 
     case 'ajuda':
-      return respostaAjuda();
+      return respostaAjuda(deps.defs ?? []);
 
     case 'fila': {
       const agora = deps.agora();
@@ -202,6 +243,41 @@ export function executar(cmd: Comando, deps: DepsComando): string {
       });
       return `enfileirado: job ${job.id} (ffmpeg.thumb)`;
     }
+
+    case 'skills':
+      return deps.defs?.length ? textoSkills(deps.defs) : 'nenhuma skill registrada.';
+
+    case 'skill': {
+      const def = (deps.defs ?? []).find((d) => d.command === cmd.pedido.command);
+      // Catálogo fechado (§9) checado TAMBÉM aqui: `parseComando` só produz
+      // `skill` a partir do registry, mas `executar` é público e não pode
+      // depender de quem o chamou ter feito a checagem.
+      if (!def) return `skill "${cmd.pedido.command}" não está registrada. Veja /skills.`;
+      const job = deps.fila.enfileirar({
+        fila: def.fila,
+        kind: def.kind,
+        tarefa: def.command,
+        input: JSON.stringify({
+          entrada: cmd.pedido.entrada,
+          ...(cmd.pedido.destino ? { destino: cmd.pedido.destino } : {}),
+          ...(cmd.pedido.perfil ? { perfil: cmd.pedido.perfil } : {}),
+        }),
+        max_tentativas: def.max_tentativas,
+        chat_id: deps.chatId,
+      });
+      const destino = cmd.pedido.destinoToken ? ` → ${cmd.pedido.destinoToken}` : '';
+      return `enfileirado: job ${job.id} (${def.command})${destino}`;
+    }
+
+    case 'erro':
+      return cmd.mensagem;
+
+    case 'livre':
+      // Na etapa 2 quem trata texto livre é o `interpret`, chamado ANTES de
+      // `executar` (é assíncrono e este módulo é síncrono de propósito).
+      // Chegar aqui significa que ninguém tratou: responder algo honesto é
+      // melhor que silêncio.
+      return 'não entendi. Veja /ajuda ou /skills.';
 
     case 'desconhecido':
       // NUNCA ecoar cmd.texto de volta: é entrada do usuário, e a instrução é
