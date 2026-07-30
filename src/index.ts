@@ -26,7 +26,7 @@ import './fila/runner-claude.js'; // efeito colateral: registra RUNNERS.claude
 import { criarTarefas as criarTarefasPadrao } from './fila/tarefas/index.js';
 import type { Agora, Fila, Job } from './fila/types.js';
 import { Worker, type Tarefa } from './fila/worker.js';
-import { executar, parseComando } from './gateway/comandos.js';
+import { tratarMensagem } from './gateway/mensagem.js';
 import { criarNotificador } from './gateway/notificar.js';
 import { type Transporte, criarBot } from './gateway/telegram.js';
 
@@ -152,11 +152,17 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   let defs: SkillDef[] = [];
 
   const aoComando = async (chatId: number, texto: string): Promise<string> =>
-    executar(parseComando(texto, defs, cfg.projetosDir), {
+    tratarMensagem(chatId, texto, {
       fila,
-      chatId,
       agora: deps.agora,
       defs,
+      projetosDir: cfg.projetosDir,
+      // Mesmo motor da fila: um lugar só do sistema sabe falar com o Claude.
+      runner: RUNNERS[cfg.motorPadrao] ?? RUNNERS.claude,
+      perfil: { motor: cfg.motorPadrao, modelo: cfg.modeloPadrao, esforco: cfg.esforcoPadrao },
+      cwd: homedir(),
+      logFile: cfg.logFile,
+      log: deps.log,
     });
 
   /** O `Worker` é um stepper puro por decisão da etapa 0 — quem agenda é aqui. */
