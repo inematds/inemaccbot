@@ -21,6 +21,25 @@
 // serviço ou lease perdido).
 import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 
+/** Encerra o trabalho destacado a partir do `.pid` que o prompt gravou.
+ * Usado SÓ no `/cancelar`: no desligamento e na perda de lease o processo tem
+ * que continuar vivo de propósito, para a próxima tentativa adotá-lo. */
+export async function encerrarTrabalhoDestacado(alvo: string): Promise<boolean> {
+  let pid: number;
+  try {
+    pid = Number(readFileSync(`${alvo}.pid`, 'utf8').trim());
+  } catch {
+    return false;
+  }
+  if (!Number.isInteger(pid) || pid <= 1) return false;
+  // Mata o GRUPO: o render abre filhos (chrome, ffmpeg), e matar só o pai
+  // deixaria a GPU ocupada do mesmo jeito.
+  for (const sinal of ['SIGTERM', 'SIGKILL'] as const) {
+    try { process.kill(-pid, sinal); } catch { /* já morreu */ }
+  }
+  return true;
+}
+
 export interface OpcoesEspera {
   /** Teto absoluto. Estourou, o job falha — é o backstop do "vivo mas pendurado". */
   timeoutMs: number;
@@ -51,16 +70,25 @@ const INTERVALO_PADRAO_MS = 5_000;
  * qualquer marcador visto durante a vigília é verdadeiro.
  */
 export function limparMarcadores(alvo: string): void {
-  for (const f of [`${alvo}.err`, `${alvo}.log`]) {
+  for (const f of [`${alvo}.err`, `${alvo}.log`, `${alvo}.pid`]) {
     try { unlinkSync(f); } catch { /* não existia */ }
   }
 }
 
-/** `<alvo>.log` existindo significa: o trabalho JÁ foi disparado alguma vez. É o
- * que permite uma segunda tentativa (depois de um restart) adotar o render em
- * curso em vez de disparar um segundo na mesma GPU. */
-export function jaFoiDisparado(alvo: string): boolean {
-  return existsSync(`${alvo}.log`) || existsSync(alvo);
+/**
+ * O trabalho está EM CURSO (ou já terminou bem) — a tentativa seguinte deve
+ * adotá-lo em vez de disparar um segundo render na mesma GPU.
+ *
+ * Note o `!existsSync(err)`: "foi disparado alguma vez" NÃO é a pergunta certa.
+ * Se o passo destacado morreu, ele deixou `.log` E `.err`; adotar aí faria a
+ * retentativa ler o marcador velho e falhar na hora — ou seja, o
+ * `max_tentativas: 2` não compraria nada exatamente no caso para o qual existe
+ * (CUDA sem memória, yt-dlp instável). Marcador de erro presente significa
+ * tentativa anterior ENCERRADA: limpa e dispara de novo.
+ */
+export function trabalhoEmCurso(alvo: string): boolean {
+  if (existsSync(alvo)) return true; // pronto: adotar é o certo
+  return existsSync(`${alvo}.log`) && !existsSync(`${alvo}.err`);
 }
 
 /**

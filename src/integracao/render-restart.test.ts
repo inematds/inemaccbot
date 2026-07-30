@@ -131,8 +131,24 @@ describe('render sobrevive a restart', () => {
       };
     };
     await worker(runner).passo();
-    // 1ª de 2 tentativas: volta pra fila, mas o motivo já está gravado.
+    // 1ª tentativa: volta pra fila, com o motivo já gravado.
     expect(fila.obter(id)!.erro).toMatch(/CUDA out of memory/);
+    expect(fila.obter(id)!.status).toBe('queued');
+
+    // A 2ª tentativa TEM que disparar de novo. Enquanto a adoção olhava só o
+    // `.log`, ela adotava um trabalho morto, lia o `.err` velho e falhava na
+    // hora — o `max_tentativas` não comprava nada exatamente no caso para o
+    // qual existe (CUDA sem memória, yt-dlp instável).
+    t += 120;
+    const segundo = new FakeRunner({ respostas: [] });
+    const orig2 = segundo.iniciar.bind(segundo);
+    segundo.iniciar = (ctx) => {
+      writeFileSync(alvo, 'agora foi');
+      return { ...orig2(ctx), aguardar: async () => `RENDER: ${alvo}` };
+    };
+    await worker(segundo).passo();
+    expect(segundo.chamadas).toHaveLength(1);
+    expect(fila.obter(id)!.status).toBe('done');
   });
 });
 

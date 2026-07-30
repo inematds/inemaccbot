@@ -23,7 +23,12 @@ Assuma os defaults do usuário (PT-BR, dark premium âmbar, CTA INEMA.CLUB).
 
    ```
    nohup bash -c 'npx hyperframes render --quality high --output "{{saida}}" || touch "{{saida}}.err"' >"{{saida}}.log" 2>&1 &
+   echo $! > "{{saida}}.pid"
    ```
+
+   O `.pid` não é opcional: é por ele que um `/cancelar` consegue matar o render
+   de verdade. Sem ele, o cancelamento libera a vaga da fila e o render continua
+   ocupando a GPU — e o próximo job entra em cima dele.
 
 3. NÃO pule o `|| touch "{{saida}}.err"`. É esse marcador que faz o serviço
    falhar em segundos quando o render morre, em vez de esperar horas por um

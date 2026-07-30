@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { RenderFalhou, esperarArtefato, jaFoiDisparado, limparMarcadores } from './render.js';
+import { RenderFalhou, esperarArtefato, limparMarcadores, trabalhoEmCurso } from './render.js';
 
 let dir: string;
 let alvo: string;
@@ -111,7 +111,7 @@ describe('limparMarcadores', () => {
     writeFileSync(`${alvo}.err`, '');
     writeFileSync(`${alvo}.log`, 'velho');
     limparMarcadores(alvo);
-    expect(jaFoiDisparado(alvo)).toBe(false);
+    expect(trabalhoEmCurso(alvo)).toBe(false);
   });
 
   it('não reclama quando não há o que limpar', () => {
@@ -119,15 +119,24 @@ describe('limparMarcadores', () => {
   });
 });
 
-describe('jaFoiDisparado', () => {
+describe('trabalhoEmCurso', () => {
   it('reconhece o .log deixado pelo passo destacado', () => {
-    expect(jaFoiDisparado(alvo)).toBe(false);
+    expect(trabalhoEmCurso(alvo)).toBe(false);
     writeFileSync(`${alvo}.log`, '');
-    expect(jaFoiDisparado(alvo)).toBe(true);
+    expect(trabalhoEmCurso(alvo)).toBe(true);
   });
 
   it('o próprio artefato pronto também conta', () => {
     writeFileSync(alvo, 'pronto');
-    expect(jaFoiDisparado(alvo)).toBe(true);
+    expect(trabalhoEmCurso(alvo)).toBe(true);
+  });
+
+  // O ponto mais sutil desta etapa: com `.err`, a tentativa anterior ENCERROU.
+  // Adotar aí faria a retentativa ler o marcador velho e falhar na hora — o
+  // `max_tentativas` não compraria nada exatamente no caso para o qual existe.
+  it('com .err presente NÃO está em curso: a retentativa dispara de novo', () => {
+    writeFileSync(`${alvo}.log`, '');
+    writeFileSync(`${alvo}.err`, '');
+    expect(trabalhoEmCurso(alvo)).toBe(false);
   });
 });

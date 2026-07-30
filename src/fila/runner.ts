@@ -41,6 +41,15 @@ export interface ContextoExecucao {
    * dispararia um SEGUNDO render sobre o primeiro.
    */
   alvoEmCurso?: string;
+  /**
+   * Encerra o trabalho DESTACADO. Chamado só quando o operador cancelou o job:
+   * no desligamento e na perda de lease o processo destacado tem que sobreviver,
+   * porque é ele que a próxima tentativa adota.
+   *
+   * Devolve `true` se havia o que matar — a mensagem no chat depende disso: um
+   * render que continuou rodando não pode ser anunciado como cancelado (§3.7).
+   */
+  encerrarTrabalho?: () => Promise<boolean>;
 }
 
 /** Uma execução em curso. `cancelar` encerra a ÁRVORE de processos (spec §3.7). */

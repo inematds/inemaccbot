@@ -15,7 +15,10 @@ import { extrairAlvo, extrairArtefato } from '../dominio/artefato.js';
 import { renderizarPrompt } from '../dominio/prompt.js';
 import { resolverPerfil } from '../dominio/perfil.js';
 import { acharSkill, type SkillDef } from '../dominio/registry.js';
-import { esperarArtefato, jaFoiDisparado, limparMarcadores, type OpcoesEspera } from './render.js';
+import {
+  encerrarTrabalhoDestacado, esperarArtefato, limparMarcadores, trabalhoEmCurso,
+  type OpcoesEspera,
+} from './render.js';
 import type { ContextoExecucao } from './runner.js';
 import type { Job, Perfil } from './types.js';
 
@@ -123,7 +126,7 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
     // Vamos DISPARAR trabalho novo (não há nada em curso): apaga os marcadores
     // da tentativa anterior agora, e não na hora de vigiar — ver
     // `limparMarcadores`.
-    const emCurso = def.aguarda_artefato && jaFoiDisparado(saida);
+    const emCurso = def.aguarda_artefato && trabalhoEmCurso(saida);
     if (def.aguarda_artefato && !emCurso) limparMarcadores(saida);
 
     // Lido A CADA job de propósito: editar um prompt passa a valer para o
@@ -187,6 +190,9 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
           // Adoção (§2.5 "procure antes de criar"): o `.log` ao lado do alvo
           // prova que uma tentativa anterior já disparou o trabalho.
           ...(emCurso ? { alvoEmCurso: saida } : {}),
+          // Só o `/cancelar` mata o trabalho destacado. Desligamento e perda de
+          // lease deixam vivo de propósito — é o que a adoção depende.
+          encerrarTrabalho: () => encerrarTrabalhoDestacado(saida),
         }
         : {
           interpretarSaida: (bruto: string) => extrairArtefato(bruto, def.artefato_exts),

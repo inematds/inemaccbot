@@ -61,6 +61,8 @@ export interface WorkerOpts {
 interface Ativo {
   exec: Execucao | null;
   ctrl: AbortController | null;
+  /** Só em job que disparou trabalho FORA da árvore de processos (render). */
+  encerrar: (() => Promise<boolean>) | null;
 }
 
 export class Worker {
@@ -113,6 +115,18 @@ export class Worker {
       log(`[job ${id}] ${motivo} — abandonando o trabalho em voo`);
       this.abortados.add(id);
       this.ativos.delete(id);
+      // CANCELAR é diferente de perder o lease: o trabalho destacado (um render
+      // fora da árvore de processos) precisa morrer, senão ele segue ocupando a
+      // GPU enquanto o próximo job de render já reclamou o slot — dois renders
+      // na mesma GPU, que é o invariante que toda esta fila protege.
+      if (status === 'canceled' && ativo.encerrar) {
+        try {
+          const matou = await ativo.encerrar();
+          log(`[job ${id}] trabalho destacado ${matou ? 'encerrado' : 'não encontrado (pode seguir rodando)'}`);
+        } catch (e) {
+          log(`[job ${id}] não consegui encerrar o trabalho destacado: ${(e as Error).message}`);
+        }
+      }
       // Se `exec` ainda é null (job reclamado mas a Execução ainda não foi
       // atribuída em `ativos`), `exec?.cancelar()` é um no-op: se um processo
       // filho já tinha sido gerado, ele segue rodando sem supervisão até
@@ -137,7 +151,7 @@ export class Worker {
     const job = this.fila.pegar(this.opts.fila, this.opts.leaseSegundos, this.opts.dono);
     if (!job) return false;
 
-    this.ativos.set(job.id, { exec: null, ctrl: null });
+    this.ativos.set(job.id, { exec: null, ctrl: null, encerrar: null });
     const log = this.opts.log ?? (() => {});
     const ref = job.flow_ref ? ` ${job.flow_ref}` : '';
     log(`[job ${job.id}${ref}] ${job.fila}/${job.tarefa} motor=${job.motor ?? '-'} modelo=${job.modelo ?? '-'} esforco=${job.esforco ?? '-'}`);
@@ -221,6 +235,12 @@ export class Worker {
     // e o processo destacado sobreviveu): não chama o agente de novo — só
     // espera. Sem este caminho, um restart no meio de um render dispararia um
     // SEGUNDO render sobre o primeiro.
+    // O encerrador vale para as duas rotas (dispara agora ou adota o que já
+    // estava rodando): nos dois casos existe trabalho destacado a matar se o
+    // operador cancelar.
+    const ativoInicial = this.ativos.get(job.id);
+    if (ativoInicial && ctx.encerrarTrabalho) ativoInicial.encerrar = ctx.encerrarTrabalho;
+
     if (ctx.alvoEmCurso && ctx.aguardarArtefato) {
       const log = this.opts.log ?? ((): void => {});
       log(`[job ${job.id}] trabalho já disparado — adotando ${ctx.alvoEmCurso}`);

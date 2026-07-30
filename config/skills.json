@@ -42,7 +42,7 @@
     "artefato_exts": [
       "mp4"
     ],
-    "max_tentativas": 2,
+    "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
       "modelo": "sonnet",
@@ -68,7 +68,7 @@
     "artefato_exts": [
       "mp4"
     ],
-    "max_tentativas": 2,
+    "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
       "modelo": "sonnet",
@@ -104,7 +104,7 @@
     "artefato_exts": [
       "mp4"
     ],
-    "max_tentativas": 2,
+    "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
       "modelo": "sonnet",
@@ -130,7 +130,7 @@
     "artefato_exts": [
       "mp4"
     ],
-    "max_tentativas": 2,
+    "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
       "modelo": "sonnet",
@@ -163,7 +163,7 @@
     "artefato_exts": [
       "mp4"
     ],
-    "max_tentativas": 2,
+    "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
       "modelo": "sonnet",
