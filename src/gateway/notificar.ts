@@ -3,6 +3,7 @@
 // chama isto direto via `WorkerOpts.aoTerminar` — sem que `fila/` conheça
 // `gateway/` (o callback é injetado, ver src/index.ts).
 import type { Transporte } from './telegram.js';
+import { duracao } from './comandos.js';
 import { planejarEntrega, type OpcoesEntrega } from './entrega.js';
 import type { Job } from '../fila/types.js';
 
@@ -62,7 +63,11 @@ export function criarNotificador(
         log(`[job ${job.id}] entrega falhou: ${(e as Error).message}`);
         entrega = { mensagem: `✅ Job ${job.id} concluído, mas a entrega falhou: ${redigir((e as Error).message)}\n${bruto}` };
       }
-      await transporte.responder(job.chat_id, `✅ Job ${job.id} concluído.\n${entrega.mensagem}`);
+      const d = duracao(job.iniciado_em, job.terminado_em);
+      await transporte.responder(
+        job.chat_id,
+        `✅ Job ${job.id} concluído${d ? ` em ${d}` : ''}.\n${entrega.mensagem}`,
+      );
       if (entrega.anexo && transporte.enviarDocumento) {
         try {
           await transporte.enviarDocumento(job.chat_id, entrega.anexo);

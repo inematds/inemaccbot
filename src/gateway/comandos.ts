@@ -14,6 +14,7 @@ export type Comando =
   | { tipo: 'status'; id: number }
   | { tipo: 'cancelar'; id: number }
   | { tipo: 'furar'; id: number }
+  | { tipo: 'refazer'; id: number }
   | { tipo: 'http'; url: string }
   | { tipo: 'thumb'; entrada: string }
   | { tipo: 'ajuda' }
@@ -93,6 +94,10 @@ export function parseComando(texto: string, defs: SkillDef[] = [], projetosDir =
       const id = parseId(arg);
       return id === undefined ? { tipo: 'desconhecido', texto: t } : { tipo: 'furar', id };
     }
+    case '/refazer': {
+      const id = parseId(arg);
+      return id === undefined ? { tipo: 'desconhecido', texto: t } : { tipo: 'refazer', id };
+    }
     case 'http':
       return arg === '' ? { tipo: 'desconhecido', texto: t } : { tipo: 'http', url: arg };
     case 'thumb':
@@ -121,6 +126,7 @@ const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
   { uso: '/furar <id>', descricao: 'põe um job pendente na frente da fila' },
   { uso: 'http <url>', descricao: 'enfileira um GET' },
   { uso: 'thumb <caminho>', descricao: 'enfileira uma thumbnail' },
+  { uso: '/refazer <id>', descricao: 'enfileira de novo um job já terminado' },
   { uso: '/skills', descricao: 'lista as skills do catálogo' },
   { uso: '/ajuda (ou /help)', descricao: 'esta lista' },
 ];
@@ -147,6 +153,21 @@ function exigirJob(fila: FilaSqlite, id: number): Job | undefined {
   return fila.obter(id);
 }
 
+/**
+ * `45s` · `14m` · `1h2m`. `undefined` quando falta um dos carimbos — nunca
+ * inventa duração (regra portada do `formatDuration` do v1).
+ */
+export function duracao(inicio: number | null, fim: number | null): string | undefined {
+  if (inicio === null || fim === null) return undefined;
+  const s = fim - inicio;
+  if (!Number.isFinite(s) || s < 0) return undefined;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
 function fmtStatus(job: Job): string {
   const linhas = [
     `job ${job.id}`,
@@ -158,6 +179,10 @@ function fmtStatus(job: Job): string {
   // §1.5: com que perfil este job rodou. Só aparece em job de agente — em
   // `function` as colunas são nulas e uma linha "modelo: -" seria ruído.
   if (job.modelo) linhas.push(`perfil: ${job.motor}/${job.modelo}/${job.esforco}`);
+  // Com render de 15 min a 2h, "quanto tempo levou" deixa de ser curiosidade e
+  // vira a informação que diz se vale mudar o perfil da skill.
+  const d = duracao(job.iniciado_em, job.terminado_em);
+  if (d) linhas.push(`duração: ${d}`);
   if (job.resultado) linhas.push(`resultado: ${job.resultado}`);
   if (job.erro) linhas.push(`erro: ${job.erro}`);
   return linhas.join('\n');
@@ -295,6 +320,29 @@ export function executar(cmd: Comando, deps: DepsComando): string {
       });
       const destino = cmd.pedido.destinoToken ? ` → ${cmd.pedido.destinoToken}` : '';
       return `enfileirado: job ${job.id} (${def.command})${destino}`;
+    }
+
+    case 'refazer': {
+      const job = exigirJob(deps.fila, cmd.id);
+      if (!job) return MSG_ID_DESCONHECIDO;
+      // Job vivo não se refaz: reenfileirar agora deixaria dois jobs fazendo o
+      // mesmo trabalho — e, em render, dois processos na mesma GPU.
+      if (job.status === 'queued' || job.status === 'running') {
+        return `job ${cmd.id} ainda está ${job.status} — nada a refazer.`;
+      }
+      const novo = deps.fila.enfileirar({
+        fila: job.fila,
+        kind: job.kind,
+        tarefa: job.tarefa,
+        input: job.input,
+        max_tentativas: job.max_tentativas,
+        chat_id: deps.chatId,
+        ...(job.motor && job.modelo && job.esforco
+          ? { perfil: { motor: job.motor, modelo: job.modelo, esforco: job.esforco } }
+          : {}),
+      });
+      // O job velho continua no banco: `jobs` nunca é deletado, é o histórico.
+      return `enfileirado: job ${novo.id} (${job.tarefa}) — refaz o ${cmd.id}`;
     }
 
     case 'erro':
