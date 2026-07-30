@@ -1,5 +1,12 @@
 # Unit systemd do inemaccbot — task 11 (etapa 1).
 #
+# CORRIGIDO ao instalar de verdade (2026-07-31): esta e uma unidade de USUARIO
+# (~/.config/systemd/user), igual as do inemaccvbot/mkivideos. Por isso:
+#   - alvo e `default.target`, nao `multi-user.target` (que so existe no escopo
+#     de sistema — habilitar contra ele emite aviso e nao liga no boot da sessao);
+#   - nao existe `User=` (a unidade ja roda como o usuario da sessao);
+#   - caminhos usam %h em vez do home hardcoded, como o unit do v1 faz.
+#
 # Verificado contra o código antes de escrever este arquivo:
 #   - `ExecStart=/usr/bin/node dist/index.js`: `npm run build` (tsc, outDir=dist,
 #     rootDir=src em tsconfig.json) produz exatamente `dist/index.js` a partir de
@@ -21,9 +28,8 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=nmaldaner
-WorkingDirectory=/home/nmaldaner/projetos/inemaccbot
-EnvironmentFile=/home/nmaldaner/projetos/inemaccbot/.env
+WorkingDirectory=%h/projetos/inemaccbot
+EnvironmentFile=%h/projetos/inemaccbot/.env
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=5
@@ -31,4 +37,4 @@ KillSignal=SIGTERM
 TimeoutStopSec=120
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
