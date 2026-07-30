@@ -36,8 +36,13 @@ function parseId(arg: string | undefined): number | undefined {
 
 export function parseComando(texto: string): Comando {
   const t = texto.trim();
-  const [cmd, ...resto] = t.split(/\s+/);
+  const [bruto, ...resto] = t.split(/\s+/);
   const arg = resto.join(' ');
+  // Só o VERBO é normalizado. Teclado de celular capitaliza a primeira letra
+  // sozinho, e `/Ping` cair em "comando não reconhecido" é atrito puro. O
+  // argumento fica intocado de propósito: caminho de arquivo e URL diferenciam
+  // maiúscula de minúscula, e baixá-los quebraria `thumb`/`http`.
+  const cmd = (bruto ?? '').toLowerCase();
 
   switch (cmd) {
     case '/ping':
@@ -76,7 +81,7 @@ const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
   { uso: '/furar <id>', descricao: 'põe um job pendente na frente da fila' },
   { uso: 'http <url>', descricao: 'enfileira um GET' },
   { uso: 'thumb <caminho>', descricao: 'enfileira uma thumbnail' },
-  { uso: '/ajuda', descricao: 'esta lista' },
+  { uso: '/ajuda (ou /help)', descricao: 'esta lista' },
 ];
 
 function respostaAjuda(): string {

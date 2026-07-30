@@ -235,3 +235,25 @@ describe('executar', () => {
     });
   });
 });
+
+describe('verbo insensível a maiúsculas (teclado de celular capitaliza)', () => {
+  it('/HELP, /Ping e /FILA são reconhecidos', () => {
+    expect(parseComando('/HELP')).toEqual({ tipo: 'ajuda' });
+    expect(parseComando('/Ping')).toEqual({ tipo: 'ping' });
+    expect(parseComando('/FILA')).toEqual({ tipo: 'fila' });
+  });
+
+  it('o ARGUMENTO não é normalizado — caminho e URL diferenciam caixa', () => {
+    expect(parseComando('HTTP https://Exemplo.test/Caminho')).toEqual({
+      tipo: 'http', url: 'https://Exemplo.test/Caminho',
+    });
+    expect(parseComando('Thumb /home/Me/Video.MP4')).toEqual({
+      tipo: 'thumb', entrada: '/home/Me/Video.MP4',
+    });
+  });
+
+  it('/ajuda lista o alias /help', () => {
+    const r = executar(parseComando('/ajuda'), { fila, chatId: 42, agora: () => 1_000 });
+    expect(r).toContain('/help');
+  });
+});
