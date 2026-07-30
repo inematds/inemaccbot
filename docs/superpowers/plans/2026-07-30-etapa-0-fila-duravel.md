@@ -50,6 +50,16 @@ colocados ao lado do código (`src/**/*.test.ts`), padrão do `inemaccvbot`.
 | `src/fila/worker.ts` | loop `claim → executa → ack`, concorrência por fila, drain |
 | `src/dominio/perfil.ts` | resolução de motor/modelo/esforço por precedência |
 | `src/arquitetura.test.ts` | teste que verifica as fronteiras de import |
+| `src/integracao/` | testes que cruzam camadas de propósito, sem restrição de fronteira |
+
+> **Correção da revisão 2 do plano (decidida pelo dono em 2026-07-30):** o teste de fronteiras
+> encontrou uma violação real já no primeiro run — o teste da Task 12 (`src/db/backup.test.ts`)
+> importa `FilaSqlite` de `../fila/store.js`, e `db/` não pode importar de `fila/`. As regras valem
+> para **todo** `.ts`, testes incluídos, e a lista de exceções continua com **uma** entrada
+> (`dominio/` → `fila/types.js`, tipo e não implementação). Teste que precisa cruzar camadas muda de
+> lugar: o cenário de restore vive em `src/integracao/backup-restore.test.ts`. Assim "este teste
+> cruza camadas" é decisão explícita e visível, em vez de isenção geral para testes — e a etapa 1,
+> que terá testes de gateway + fila juntos, já tem o lugar certo definido.
 | `docs/perfil-de-execucao.md` | documentação da portabilidade de motor/modelo/esforço |
 
 ---
@@ -1871,9 +1881,17 @@ git commit -m "feat(fila): interface Runner + FakeRunner + ClaudeRunner com kill
 - Consumes: `FilaSqlite` (Tasks 4-8), `Runner`/`FakeRunner` (Task 10)
 - Produces:
   - `type Tarefa = (job: Job) => Promise<string>` (para `kind=function`)
-  - `interface WorkerOpts { fila: Fila; concorrencia: number; leaseSegundos: number; heartbeatSegundos: number; tarefas: Record<string, Tarefa>; runners: Record<string, Runner>; promptDe: (job: Job) => ContextoExecucao; log?: (m: string) => void }`
+  - `interface WorkerOpts { fila: Fila; concorrencia: number; leaseSegundos: number; tarefas: Record<string, Tarefa>; runners: Record<string, Runner>; promptDe: (job: Job) => ContextoExecucao; log?: (m: string) => void }`
   - `class Worker` com `passo(): Promise<boolean>` (processa no máximo um job; devolve se pegou),
-    `iniciar()`, `drenar(): Promise<void>`, `get emVoo(): number`
+    `bater(): Promise<void>`, `drenar(): Promise<void>`, `abortar(): Promise<void>`,
+    `get emVoo(): number`
+
+> **Correção da revisão 2 do plano (decidida pelo dono em 2026-07-30):** a versão anterior listava
+> `iniciar()` e um campo `heartbeatSegundos` que o código do Step 3 nunca usava — config morta. O
+> `Worker` fica um *stepper* puro, sem nenhum timer: quem agenda o laço de `passo()`, o `bater()`
+> periódico e o `SIGTERM` → `drenar()` é o `src/index.ts`, na etapa 1. Isso mantém a etapa 0 sem um
+> único teste dependente de tempo real, e é coerente com o que este plano já diz sobre
+> `recuperarLeasesVencidos()` e `drenar()`/`abortar()` serem ligados na etapa 1.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
