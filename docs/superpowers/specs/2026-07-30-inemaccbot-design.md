@@ -83,6 +83,34 @@ execução** — o oposto do que o drain existe para evitar. A ordem correta:
 4. no timeout, encerra a **árvore** de subprocessos (kill do process group);
 5. só então devolve o job à fila (`queued`) — ou deixa o lease expirar, se o processo já morreu.
 
+### 1.4 O motor de agente é plugável
+
+Nada fora do runner sabe que o agente é o Claude. `kind=agent` executa através de uma interface:
+
+```ts
+interface AgentRunner { start(prompt, cwd, vars): Handle; heartbeat(); cancel(); cleanup() }
+```
+
+A costura sai de graça: o `Runner` fake já é requisito da suíte (§6.1), então o sistema nasce com
+duas implementações. Um `CodexRunner` (ou outro) seria a terceira, ~100L.
+
+**O motor é escolhido por tarefa, não globalmente** — campo `motor` no registry
+(`{"command": "explicativo", "kind": "agent", "motor": "claude"}`). Isso permite avaliar um motor
+novo numa skill só, na mesma fila, comparando custo e qualidade, em vez de uma troca tudo-ou-nada.
+Default `claude` quando o campo é omitido.
+
+Onde o lock-in **de fato** mora, e que trocar de motor não resolve:
+
+| item | portável? |
+|---|---|
+| fila, fluxos, gateway, DB (~2.500L) | sim — não conhecem o motor |
+| `prompts/*.md` dos repos de domínio | sim — markdown agnóstico |
+| as ~118 skills em `~/.claude/skills/` | **não** — formato Claude Code (SKILL.md, progressive disclosure); outro motor exige adaptar cada uma |
+| `claude --chrome -p` (fase de navegador) | **não** — depende da extensão pareada com o Chromium logado; substituto seria Playwright/`agent-browser`, frágil justamente onde a tarefa é frágil (layout do estúdio HeyGen) |
+
+Conclusão: portar o `inemaccbot` é barato; portar o *catálogo de skills* é o trabalho real. A
+interface existe para manter essa porta aberta, não porque a troca esteja planejada.
+
 **Escape hatch documentado:** como `fluxos/` só fala com `fila/` por interface, mover os workers
 para um segundo processo depois é trocar chamada de função por IPC — sem tocar fluxo, skill ou
 domínio. Gatilho para reconsiderar: restart do gateway doer com frequência, ou segunda máquina.
@@ -647,6 +675,7 @@ Por isso o nome é decidido no dia 1, e **nenhuma variável de ambiente carrega 
 | tabela `fluxo_execucoes` separada | `jobs` deixar de bastar como histórico (ex.: purga por tamanho) |
 | teto global de processos Claude | as concorrências por fila deixarem de bastar |
 | multiusuário / multi-tenant | outra pessoa usando o bot |
+| adaptador de motor não-Claude (Codex etc.) | querer avaliar custo/qualidade de outro motor — a interface do §1.4 já está pronta; o custo real é adaptar as skills, não escrever o runner |
 | migração de fluxo em voo entre versões de definição | precisar mudar as regras de um `P#N` já rodando |
 
 ## 12. Especs de detalhe previstos (follow-ups)
