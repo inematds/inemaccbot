@@ -20,7 +20,7 @@ export interface WorkerOpts {
   leaseSegundos: number;
   tarefas: Record<string, Tarefa>;
   runners: Record<string, Runner>;
-  promptDe: (job: Job) => ContextoExecucao;
+  promptDe: (job: Job) => Promise<ContextoExecucao>;
   log?: (m: string) => void;
 }
 
@@ -127,7 +127,7 @@ export class Worker {
   }
 
   private async rodarAgente(job: Job): Promise<string> {
-    const ctx = this.opts.promptDe(job);
+    const ctx = await this.opts.promptDe(job);
     const runner = this.opts.runners[ctx.perfil.motor];
     if (!runner) throw new Error(`motor desconhecido: ${ctx.perfil.motor}`);
     const exec = runner.iniciar(ctx);

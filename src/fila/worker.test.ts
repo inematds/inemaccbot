@@ -20,7 +20,7 @@ function novoWorker(over: Partial<ConstructorParameters<typeof Worker>[1]> = {})
     fila: 'io', dono: 'A', concorrencia: 1, leaseSegundos: 60,
     tarefas: { ok: async () => 'pronto', explode: async () => { throw new Error('boom'); } },
     runners: { fake: new FakeRunner({ respostas: ['saida do agente'] }) },
-    promptDe: (job: Job) => ({
+    promptDe: async (job: Job) => ({
       prompt: job.input, cwd: '/tmp',
       perfil: { motor: job.motor ?? 'fake', modelo: job.modelo ?? 'sonnet', esforco: job.esforco ?? 'low' },
       vars: {},
@@ -116,6 +116,21 @@ describe('passo', () => {
     });
     await w.passo();
     expect(fila.obter(job.id)!.resultado).toBe('artefato-antigo');
+  });
+
+  it('aguarda um promptDe assíncrono antes de chamar o runner', async () => {
+    let ordem: string[] = [];
+    const w = novoWorker({
+      promptDe: async (job: Job) => {
+        await new Promise((r) => setTimeout(r, 5));
+        ordem.push('prompt');
+        return { prompt: job.input, cwd: '/tmp', perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {} };
+      },
+      runners: { fake: new FakeRunner({ respostas: ['saida'] }) },
+    });
+    fila.enfileirar({ fila: 'io', kind: 'agent', tarefa: 'x', input: 'p', perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' } });
+    await w.passo();
+    expect(ordem).toEqual(['prompt']);
   });
 });
 

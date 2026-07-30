@@ -71,7 +71,7 @@ function novoWorker(dono: string, tarefa: Tarefa): Worker {
     fila: 'io', dono, concorrencia: 1, leaseSegundos: 60,
     tarefas: { efeito: tarefa },
     runners: {},
-    promptDe: () => { throw new Error('sem agente neste teste'); },
+    promptDe: async () => { throw new Error('sem agente neste teste'); },
   }, () => t);
 }
 

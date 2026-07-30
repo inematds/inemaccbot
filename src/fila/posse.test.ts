@@ -82,7 +82,7 @@ describe('Worker.bater', () => {
     const w = new Worker(fila, {
       fila: 'io', dono: 'A', concorrencia: 1, leaseSegundos: 60,
       tarefas: {}, runners: { fake: runner },
-      promptDe: (job: Job) => ({
+      promptDe: async (job: Job) => ({
         prompt: job.input, cwd: '/tmp',
         perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {},
       }),
@@ -118,7 +118,7 @@ describe('Worker.bater', () => {
     const w = new Worker(fila, {
       fila: 'io', dono: 'A', concorrencia: 1, leaseSegundos: 60,
       tarefas: {}, runners: { fake: runner },
-      promptDe: (job: Job) => ({
+      promptDe: async (job: Job) => ({
         prompt: job.input, cwd: '/tmp',
         perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {},
       }),
