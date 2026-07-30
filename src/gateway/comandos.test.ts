@@ -88,8 +88,15 @@ describe('parseComando', () => {
     expect(parseComando('/help')).toEqual({ tipo: 'ajuda' });
   });
 
+  // Defeito real, achado no primeiro uso pelo chat: `/status` sozinho é a
+  // pergunta mais comum que existe ("o que está rolando?"), e caía em
+  // "comando não reconhecido".
+  it('/status sem id lista os jobs; /jobs é alias', () => {
+    expect(parseComando('/status')).toEqual({ tipo: 'lista' });
+    expect(parseComando('/jobs')).toEqual({ tipo: 'lista' });
+  });
+
   it('argumentos malformados caem em desconhecido', () => {
-    expect(parseComando('/status')).toEqual({ tipo: 'desconhecido', texto: '/status' });
     expect(parseComando('/status abc')).toEqual({ tipo: 'desconhecido', texto: '/status abc' });
     expect(parseComando('http')).toEqual({ tipo: 'desconhecido', texto: 'http' });
     expect(parseComando('thumb')).toEqual({ tipo: 'desconhecido', texto: 'thumb' });
@@ -186,6 +193,38 @@ describe('executar', () => {
       expect(c.tipo).toBe('livre');
       executar(c, depsSkills());
       expect(fila.listar()).toHaveLength(0);
+    });
+  });
+
+  describe('/status sem id (a lista)', () => {
+    it('mostra o ID, a tarefa e um pedaço do pedido de cada job', () => {
+      executar(parseComando('transcrever: https://exemplo.com/video-longo', defsTeste), depsSkills());
+      const r = executar(parseComando('/status'), depsSkills());
+      // O id é o que faltava: sem ele não dá para usar /status, /cancelar,
+      // /furar nem /refazer — era um beco sem saída no chat.
+      expect(r).toMatch(/\b1\b/);
+      expect(r).toContain('transcrever');
+      expect(r).toContain('exemplo.com');
+    });
+
+    it('separa o que está na fila do que já terminou', () => {
+      executar(parseComando('transcrever: http://a', defsTeste), depsSkills());
+      executar(parseComando('transcrever: http://b', defsTeste), depsSkills());
+      fila.pegar('texto', 60, 'w1');
+      fila.concluir(1, '/tmp/a.txt', 'w1');
+
+      const r = executar(parseComando('/status'), depsSkills());
+      expect(r).toContain('Na fila agora');
+      expect(r).toContain('Últimos');
+    });
+
+    it('fila vazia responde algo honesto, não uma lista em branco', () => {
+      expect(executar(parseComando('/status'), depsSkills())).toContain('Nada na fila');
+    });
+
+    it('job com input fora do formato do gateway não quebra a lista', () => {
+      fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'http.get', input: 'não-json' });
+      expect(() => executar(parseComando('/status'), depsSkills())).not.toThrow();
     });
   });
 

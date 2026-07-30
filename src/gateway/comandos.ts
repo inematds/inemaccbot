@@ -12,6 +12,8 @@ export type Comando =
   | { tipo: 'ping' }
   | { tipo: 'fila' }
   | { tipo: 'status'; id: number }
+  /** `/status` sem id: a lista do que está na fila e do que terminou. */
+  | { tipo: 'lista' }
   | { tipo: 'cancelar'; id: number }
   | { tipo: 'furar'; id: number }
   | { tipo: 'refazer'; id: number }
@@ -82,7 +84,12 @@ export function parseComando(texto: string, defs: SkillDef[] = [], projetosDir =
       return { tipo: 'ajuda' };
     case '/skills':
       return { tipo: 'skills' };
-    case '/status': {
+    case '/status':
+    case '/jobs': {
+      // Sem argumento NÃO é erro: é a pergunta mais comum que existe ("o que
+      // está rolando?"). Mandar isso para "comando não reconhecido" foi um
+      // defeito real, achado no primeiro uso pelo chat.
+      if (arg === '') return { tipo: 'lista' };
       const id = parseId(arg);
       return id === undefined ? { tipo: 'desconhecido', texto: t } : { tipo: 'status', id };
     }
@@ -121,7 +128,8 @@ export function parseComando(texto: string, defs: SkillDef[] = [], projetosDir =
 const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
   { uso: '/ping', descricao: 'verifica se o bot está vivo' },
   { uso: '/fila', descricao: 'resumo de cada fila (rodando, pendente, idade, erro 24h)' },
-  { uso: '/status <id>', descricao: 'status de um job' },
+  { uso: '/status', descricao: 'lista os jobs (ativos e os últimos terminados)' },
+  { uso: '/status <id>', descricao: 'detalhe de um job' },
   { uso: '/cancelar <id>', descricao: 'cancela um job pendente ou em execução' },
   { uso: '/furar <id>', descricao: 'põe um job pendente na frente da fila' },
   { uso: 'http <url>', descricao: 'enfileira um GET' },
@@ -189,6 +197,35 @@ function fmtStatus(job: Job): string {
 }
 
 const JANELA_ERRO_SEGUNDOS = 24 * 60 * 60;
+/** Quantos jobs já terminados aparecem na lista. O suficiente para achar o id
+ * do que acabou de rodar, sem virar parede de texto no celular. */
+const TERMINADOS_NA_LISTA = 8;
+
+function linhaLista(job: Job, agora: number): string {
+  const icone = job.status === 'running' ? '▶️'
+    : job.status === 'queued' ? '⏳'
+      : job.status === 'done' ? '✅'
+        : job.status === 'failed' ? '❌' : '🚫';
+  const quando = job.status === 'running' || job.status === 'queued'
+    ? duracao(job.iniciado_em ?? job.criado_em, agora)
+    : duracao(job.iniciado_em, job.terminado_em);
+  const entrada = resumoEntrada(job.input);
+  return `${icone} ${job.id} ${job.tarefa}${entrada ? ` — ${entrada}` : ''}${quando ? ` (${quando})` : ''}`;
+}
+
+/** Um pedaço curto do que foi pedido, para reconhecer o job na lista. O input é
+ * JSON do gateway; job criado por outro caminho não quebra a lista. */
+function resumoEntrada(input: string): string {
+  let entrada = '';
+  try {
+    const o = JSON.parse(input || '{}') as { entrada?: string; url?: string };
+    entrada = o.entrada ?? o.url ?? '';
+  } catch {
+    entrada = '';
+  }
+  const limpa = entrada.replace(/\s+/g, ' ').trim();
+  return limpa.length > 40 ? `${limpa.slice(0, 40)}…` : limpa;
+}
 
 function resumoFila(fila: FilaSqlite, nome: Fila, agora: number): string {
   const jobs = fila.listar({ fila: nome });
@@ -228,6 +265,26 @@ export function executar(cmd: Comando, deps: DepsComando): string {
     case 'fila': {
       const agora = deps.agora();
       return FILAS.map((f) => resumoFila(deps.fila, f, agora)).join('\n');
+    }
+
+    case 'lista': {
+      const agora = deps.agora();
+      const todos = deps.fila.listar();
+      const ativos = todos.filter((j) => j.status === 'running' || j.status === 'queued');
+      const terminados = todos
+        .filter((j) => j.status !== 'running' && j.status !== 'queued')
+        .slice(-TERMINADOS_NA_LISTA)
+        .reverse();
+
+      const linhas: string[] = [];
+      linhas.push(ativos.length ? 'Na fila agora:' : 'Nada na fila agora.');
+      for (const j of ativos) linhas.push(linhaLista(j, agora));
+      if (terminados.length) {
+        linhas.push('', `Últimos ${terminados.length}:`);
+        for (const j of terminados) linhas.push(linhaLista(j, agora));
+      }
+      linhas.push('', 'Detalhe: /status <id>');
+      return linhas.join('\n');
     }
 
     case 'status': {
