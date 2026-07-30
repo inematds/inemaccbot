@@ -227,6 +227,52 @@ function resumoEntrada(input: string): string {
   return limpa.length > 40 ? `${limpa.slice(0, 40)}…` : limpa;
 }
 
+/**
+ * Um job `running` há muito mais tempo que o normal daquela tarefa. É O alarme
+ * desta fila: com render de até 2h, "rodando" não diz nada sozinho — o que
+ * distingue trabalho legítimo de job preso é a comparação com o histórico da
+ * MESMA tarefa (um `explicativo` de 3h é suspeito; um de 20 min não).
+ *
+ * Sem histórico suficiente, não acusa: inventar um limite seria alarme falso, e
+ * alarme falso ensina o operador a ignorar o painel.
+ */
+const FATOR_PRESO = 3;
+const MINIMO_AMOSTRAS = 3;
+
+function jobsPresos(jobs: Job[], agora: number): Job[] {
+  const duracoes = new Map<string, number[]>();
+  for (const j of jobs) {
+    if (j.status !== 'done' || j.iniciado_em === null || j.terminado_em === null) continue;
+    const lista = duracoes.get(j.tarefa) ?? [];
+    lista.push(j.terminado_em - j.iniciado_em);
+    duracoes.set(j.tarefa, lista);
+  }
+  return jobs.filter((j) => {
+    if (j.status !== 'running' || j.iniciado_em === null) return false;
+    const amostras = duracoes.get(j.tarefa);
+    if (!amostras || amostras.length < MINIMO_AMOSTRAS) return false;
+    const media = amostras.reduce((a, b) => a + b, 0) / amostras.length;
+    return agora - j.iniciado_em > Math.max(media * FATOR_PRESO, 60);
+  });
+}
+
+/** Média de duração por tarefa, só das que terminaram bem. */
+function mediasPorTarefa(jobs: Job[]): string[] {
+  const por = new Map<string, number[]>();
+  for (const j of jobs) {
+    if (j.status !== 'done' || j.iniciado_em === null || j.terminado_em === null) continue;
+    const lista = por.get(j.tarefa) ?? [];
+    lista.push(j.terminado_em - j.iniciado_em);
+    por.set(j.tarefa, lista);
+  }
+  return [...por.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([tarefa, ds]) => {
+      const media = Math.round(ds.reduce((a, b) => a + b, 0) / ds.length);
+      return `${tarefa}: ${duracao(0, media) ?? `${media}s`} (${ds.length}x)`;
+    });
+}
+
 function resumoFila(fila: FilaSqlite, nome: Fila, agora: number): string {
   const jobs = fila.listar({ fila: nome });
   const rodando = jobs.filter((j) => j.status === 'running').length;
@@ -247,11 +293,20 @@ function resumoFila(fila: FilaSqlite, nome: Fila, agora: number): string {
   const taxaErro =
     terminados24h.length === 0 ? '—' : `${Math.round((falhas24h / terminados24h.length) * 100)}%`;
 
-  return (
+  // Retentativas: um job que rodou mais de uma vez custou o dobro em GPU e
+  // token, e isso não aparece em nenhum outro número do painel.
+  const retentados = jobs.filter((j) => j.tentativas > 1).length;
+  const presos = jobsPresos(jobs, agora);
+
+  const linhas = [
     `${nome}: rodando=${rodando} pendentes=${pendentes.length} ` +
     `mais_antigo=${idadeMaisAntigo === undefined ? '—' : `${idadeMaisAntigo}s`} ` +
-    `erro_24h=${taxaErro}`
-  );
+    `erro_24h=${taxaErro} retentados=${retentados}`,
+  ];
+  if (presos.length) {
+    linhas.push(`  ⚠️ possivelmente preso: ${presos.map((j) => `${j.id} (${duracao(j.iniciado_em, agora)})`).join(', ')}`);
+  }
+  return linhas.join('\n');
 }
 
 export function executar(cmd: Comando, deps: DepsComando): string {
@@ -264,7 +319,10 @@ export function executar(cmd: Comando, deps: DepsComando): string {
 
     case 'fila': {
       const agora = deps.agora();
-      return FILAS.map((f) => resumoFila(deps.fila, f, agora)).join('\n');
+      const linhas = FILAS.map((f) => resumoFila(deps.fila, f, agora));
+      const medias = mediasPorTarefa(deps.fila.listar());
+      if (medias.length) linhas.push('', 'Duração média:', ...medias.map((m) => `  ${m}`));
+      return linhas.join('\n');
     }
 
     case 'lista': {
