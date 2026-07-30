@@ -51,6 +51,18 @@ export interface SkillDef {
    * disso: um `systemctl restart` no meio de 40 minutos de vídeo mataria o job.
    */
   aguarda_artefato: boolean;
+  /**
+   * Teto do AGENTE quando a skill espera artefato — o prazo dele para montar o
+   * material e DISPARAR o passo destacado (o prazo do trabalho em si é o
+   * `timeout_segundos`).
+   *
+   * Precisa ser por skill, não uma constante: em `explicativo` o agente monta o
+   * HTML e sai em minutos, mas em `reel` ele roda o pipeline criativo inteiro
+   * INLINE (corte, B-roll, composição, revisor) e só o render final vai
+   * destacado — um teto de 20 min mataria todo job de reel antes de ele
+   * disparar qualquer coisa.
+   */
+  timeout_setup_segundos?: number;
   descricao: string;
   exemplo: string;
 }
@@ -223,6 +235,9 @@ export function validarSkills(dados: unknown, raiz: string): SkillDef[] {
       aceita_destino: d.aceita_destino === true,
       campos: validarCampos(d.campos, i, command),
       aguarda_artefato: d.aguarda_artefato === true,
+      ...(d.timeout_setup_segundos === undefined
+        ? {}
+        : { timeout_setup_segundos: exigirInteiroPositivo(d.timeout_setup_segundos, i, 'timeout_setup_segundos') }),
       descricao: exigirTexto(d.descricao, i, 'descricao'),
       exemplo: exigirTexto(d.exemplo, i, 'exemplo'),
     };

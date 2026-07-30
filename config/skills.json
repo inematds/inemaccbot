@@ -154,7 +154,8 @@
       }
     },
     "descricao": "reel 9:16 empilhado a partir do MP4 de um avatar HeyGen (skill reel-edita-inema)",
-    "exemplo": "reel: /home/user/avatar.mp4 | lives3"
+    "exemplo": "reel: /home/user/avatar.mp4 | lives3",
+    "timeout_setup_segundos": 5400
   },
   {
     "fila": "render",
@@ -181,6 +182,7 @@
       }
     },
     "descricao": "reel pessoal no estilo INEMATDS a partir de um bruto vertical (skill reel-edita-inematds)",
-    "exemplo": "reelinematds: /home/user/bruto.mp4 | lives3"
+    "exemplo": "reelinematds: /home/user/bruto.mp4 | lives3",
+    "timeout_setup_segundos": 5400
   }
 ]

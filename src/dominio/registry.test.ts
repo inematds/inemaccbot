@@ -136,6 +136,17 @@ describe('o registry REAL do repo', () => {
     }
   });
 
+  // Um teto de setup curto demais mata a skill antes de ela disparar qualquer
+  // coisa. Em reel o agente roda o pipeline criativo INLINE — só o render final
+  // é destacado —, então ele precisa de folga bem maior que o default.
+  it('as skills que trabalham inline declaram teto de setup próprio', () => {
+    for (const nome of ['reel', 'reelinematds']) {
+      const d = acharSkill(defs, nome)!;
+      expect(d.timeout_setup_segundos, nome).toBeGreaterThan(30 * 60);
+      expect(d.timeout_setup_segundos!, nome).toBeLessThanOrEqual(d.timeout_segundos);
+    }
+  });
+
   // O contrato prometido no plano: declarar um campo e esquecê-lo no prompt é
   // erro de teste, não comportamento silencioso. Vale nos dois sentidos.
   for (const d of defs) {

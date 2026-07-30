@@ -71,11 +71,12 @@ export interface OpcoesSkills {
 }
 
 /**
- * Teto do AGENTE numa skill que espera artefato. Ele só monta o material e
- * dispara o passo destacado — 20 minutos é folga larga para isso. O prazo do
- * render em si é o `timeout_segundos` do registry, e vale para a espera.
+ * Teto do AGENTE numa skill que espera artefato, quando o registry não diz
+ * outro. Serve para quem só monta material e dispara (`explicativo`, `curso`,
+ * `demo`); as skills de reel declaram o próprio, porque nelas o agente roda o
+ * pipeline criativo inteiro inline.
  */
-const TIMEOUT_SETUP_SEGUNDOS = 20 * 60;
+const TIMEOUT_SETUP_PADRAO_SEGUNDOS = 20 * 60;
 
 /**
  * Caminho do artefato: determinístico por JOB, não por tentativa. Uma
@@ -168,7 +169,10 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
       // faria o agente poder gastar as duas horas do render antes de disparar
       // qualquer coisa.
       timeoutMs: def.aguarda_artefato
-        ? Math.min(def.timeout_segundos, TIMEOUT_SETUP_SEGUNDOS) * 1_000
+        ? Math.min(
+          def.timeout_segundos,
+          def.timeout_setup_segundos ?? TIMEOUT_SETUP_PADRAO_SEGUNDOS,
+        ) * 1_000
         : def.timeout_segundos * 1_000,
       ...(def.aguarda_artefato
         ? {

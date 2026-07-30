@@ -246,6 +246,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       raizRepo: RAIZ_REPO,
       raizArtefatos,
       cwd: homedir(),
+      log: deps.log,
       perfilPadrao: {
         motor: cfg.motorPadrao,
         modelo: cfg.modeloPadrao,
