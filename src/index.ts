@@ -28,6 +28,7 @@ import type { Agora } from './fila/types.js';
 import { Worker, type Tarefa } from './fila/worker.js';
 import { tratarMensagem } from './gateway/mensagem.js';
 import { criarBaixadorTelegram } from './gateway/midia.js';
+import { nomeDeEntrega } from './gateway/entrega.js';
 import { criarNotificador } from './gateway/notificar.js';
 import { type Transporte, criarBot } from './gateway/telegram.js';
 
@@ -267,11 +268,21 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // `ffmpeg.thumb` já responde o caminho — tratá-los como artefato faria a
       // entrega tentar ler um corpo HTTP como se fosse arquivo.
       temArtefato: (job) => defs.some((d) => d.command === job.tarefa),
-      destinoDe: (job) => {
+      entregaDe: (job) => {
+        const def = defs.find((d) => d.command === job.tarefa);
+        if (!def) return {};
         try {
-          return parseEntradaSkill(job.input).destino;
+          const e = parseEntradaSkill(job.input);
+          return {
+            destinoDir: e.destino,
+            nome: nomeDeEntrega({
+              command: def.command, id: job.id,
+              ext: def.artefato_exts[0], campos: e.campos,
+            }),
+            mover: e.campos?.mover === 'sim',
+          };
         } catch {
-          return undefined;
+          return {};
         }
       },
     });

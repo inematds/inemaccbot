@@ -14,7 +14,7 @@
 //
 // Portado do `deliver.ts`/`media.ts` do v1 no que importa: sanitização de nome e
 // garantia de que a cópia NUNCA escreve fora do diretório de destino.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { basename, extname, resolve, sep } from 'node:path';
 
 import { LIMITE_MENSAGEM } from './telegram.js';
@@ -63,11 +63,11 @@ export function nomeSeguro(nome: string): string {
  * deixaria `/data/midia-secreta` passar contra a raiz `/data/midia` (o mesmo
  * defeito já corrigido no `ffmpeg.thumb` na etapa 1).
  */
-export function copiarParaDestino(origem: string, destinoDir: string): string {
+export function copiarParaDestino(origem: string, destinoDir: string, nomePedido?: string): string {
   const raiz = resolve(destinoDir);
   mkdirSync(raiz, { recursive: true });
 
-  const nome = nomeSeguro(basename(origem));
+  const nome = nomeSeguro(nomePedido || basename(origem));
   const ext = extname(nome);
   const caule = ext ? nome.slice(0, -ext.length) : nome;
 
@@ -88,6 +88,26 @@ export function copiarParaDestino(origem: string, destinoDir: string): string {
   }
 }
 
+/**
+ * Nome com que o artefato chega ao destino — o padrão ordenável que o v1 usava
+ * (`buildOutputName`): `<curso>-<modulo>-<16|9>.mp4`, caindo para
+ * `<skill>-<id>-<fmt>` quando não há rótulo.
+ *
+ * É só o nome de ENTREGA. O arquivo de trabalho continua sendo `<id>.<ext>`,
+ * porque ele precisa ser único por job: dois jobs do mesmo módulo com o mesmo
+ * nome fariam o segundo "adotar" o vídeo do primeiro achando que era
+ * retentativa (é assim que a adoção do render funciona).
+ */
+export function nomeDeEntrega(
+  opts: { command: string; id: number; ext: string; campos?: Record<string, string> },
+): string {
+  const campos = opts.campos ?? {};
+  const fmt = campos.vertical === 'sim' ? '9' : '16';
+  const partes = [campos.curso, campos.modulo].filter((p): p is string => !!p && p.trim() !== '');
+  const base = partes.length ? partes.join('-') : `${opts.command}-${opts.id}`;
+  return nomeSeguro(`${base}-${fmt}.${opts.ext.replace(/^\./, '')}`);
+}
+
 export interface Entrega {
   /** Texto a mandar no chat. */
   mensagem: string;
@@ -99,7 +119,19 @@ export interface Entrega {
  * Decide (sem enviar nada) o que fazer com o artefato. Separado do envio para
  * ser testável sem Telegram — nenhum teste deste bot toca a API real.
  */
-export function planejarEntrega(caminho: string, destinoDir?: string): Entrega {
+export interface OpcoesEntrega {
+  destinoDir?: string;
+  /** Nome com que o arquivo chega ao destino (ver `nomeDeEntrega`). */
+  nome?: string;
+  /**
+   * Mover em vez de copiar. Default é COPIAR: as skills de reel gravam na
+   * convenção delas (`~/projetos/output/reels/<slug>/`) e o original tem que
+   * ficar lá — o v1 nunca passava `--pasta` nessas skills por isso mesmo.
+   */
+  mover?: boolean;
+}
+
+export function planejarEntrega(caminho: string, opts: OpcoesEntrega = {}): Entrega {
   if (!caminho) return { mensagem: 'o job terminou sem artefato.' };
   if (!existsSync(caminho)) {
     // Acontece de verdade: o agente declarou `RESULT:` e o arquivo sumiu (ou
@@ -108,8 +140,18 @@ export function planejarEntrega(caminho: string, destinoDir?: string): Entrega {
   }
 
   const tamanho = statSync(caminho).size;
-  if (destinoDir) {
-    const final = copiarParaDestino(caminho, destinoDir);
+  if (opts.destinoDir) {
+    const final = copiarParaDestino(caminho, opts.destinoDir, opts.nome);
+    if (opts.mover) {
+      // Falhar em apagar o original NÃO é falha da entrega: o arquivo já está
+      // no destino. Dizer "movi" seria mentira, então o texto muda.
+      try {
+        unlinkSync(caminho);
+        return { mensagem: `pronto (movido): ${final}` };
+      } catch {
+        return { mensagem: `pronto: ${final}\n(o original ficou em ${caminho} — não consegui apagar)` };
+      }
+    }
     return { mensagem: `pronto: ${final}` };
   }
 

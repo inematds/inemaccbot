@@ -54,7 +54,9 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 function worker(runner: FakeRunner): Worker {
   const notificar = criarNotificador(transporte, {
     temArtefato: (job) => defs.some((d) => d.command === job.tarefa),
-    destinoDe: (job) => { try { return parseEntradaSkill(job.input).destino; } catch { return undefined; } },
+    entregaDe: (job) => {
+      try { return { destinoDir: parseEntradaSkill(job.input).destino }; } catch { return {}; }
+    },
   });
   return new Worker(fila, {
     fila: 'texto', dono: 'A', concorrencia: 1, leaseSegundos: 60,
