@@ -22,6 +22,21 @@ import {
 import type { ContextoExecucao } from './runner.js';
 import type { Job, Perfil } from './types.js';
 
+/**
+ * Nome da tarefa de fase de fluxo com agente. Uma fase não é uma skill do
+ * catálogo: o prompt dela vem CONGELADO no próprio job (§3.4), e não de um
+ * arquivo lido na hora.
+ */
+export const TAREFA_FLUXO_AGENTE = 'fluxo-agente';
+
+/** O que o RUNTIME de fluxos grava no `input` de um job de fase. */
+export interface EntradaFase {
+  entrada: string;
+  /** Texto do prompt, congelado na criação do fluxo. */
+  prompt_texto: string;
+  fluxo: { ref: string; fase: string; alvo: string } & Record<string, string>;
+}
+
 /** O que o gateway grava em `job.input` para uma skill. */
 export interface EntradaSkill {
   /** O que o usuário pediu: link, assunto ou caminho. */
@@ -81,6 +96,10 @@ export interface OpcoesSkills {
  */
 const TIMEOUT_SETUP_PADRAO_SEGUNDOS = 20 * 60;
 
+/** Teto de uma fase de fluxo com agente. Generoso: uma fase de texto do
+ * promoclub gera 12 peças numa sessão só. */
+const TIMEOUT_FASE_SEGUNDOS = 60 * 60;
+
 /**
  * Caminho do artefato: determinístico por JOB, não por tentativa. Uma
  * retentativa (mesmo `job.id`) reescreve o mesmo arquivo em vez de espalhar
@@ -102,12 +121,60 @@ function camposDeclarados(def: SkillDef, doJob: Record<string, string> | undefin
   return saida;
 }
 
+/** Variáveis que uma fase recebe: a entrada do fluxo, o alvo e o que o
+ * `flow.json` declarou nele (canal, gatilho…), mais o caminho de saída. */
+function contextoDeFase(job: Job, opts: OpcoesSkills): ContextoExecucao {
+  let e: EntradaFase;
+  try {
+    e = JSON.parse(job.input) as EntradaFase;
+  } catch {
+    throw new Error('input da fase não é JSON');
+  }
+  if (!e.prompt_texto) throw new Error('fase sem prompt congelado — fluxo criado por versão antiga?');
+
+  const saida = join(opts.raizArtefatos, 'fluxos', `${job.id}.txt`);
+  mkdirSync(join(opts.raizArtefatos, 'fluxos'), { recursive: true });
+
+  const vars: Record<string, string> = { input: e.entrada, saida };
+  for (const [k, v] of Object.entries(e.fluxo ?? {})) {
+    if (typeof v === 'string') vars[k] = v;
+  }
+
+  const perfil = job.motor && job.modelo && job.esforco
+    ? { motor: job.motor, modelo: job.modelo, esforco: job.esforco }
+    : opts.perfilPadrao;
+
+  return {
+    // `renderizarPrompt` recusa variável que o template não usa, então uma fase
+    // só recebe o que o prompt dela realmente pede.
+    prompt: renderizarPrompt(e.prompt_texto, filtrarUsadas(e.prompt_texto, vars)),
+    cwd: opts.cwd,
+    perfil,
+    vars: {},
+    timeoutMs: TIMEOUT_FASE_SEGUNDOS * 1_000,
+    interpretarSaida: (bruto: string) => bruto.trim(),
+  };
+}
+
+/** Só as variáveis que o template cita — o resto seria erro em `renderizarPrompt`. */
+function filtrarUsadas(template: string, vars: Record<string, string>): Record<string, string> {
+  const usadas = new Set(
+    [...template.matchAll(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi)].map((m) => m[1]),
+  );
+  return Object.fromEntries(Object.entries(vars).filter(([k]) => usadas.has(k)));
+}
+
 export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<ContextoExecucao> {
   if (!existsSync(opts.cwd)) {
     throw new Error(`skills: cwd de agente não existe: ${opts.cwd}`);
   }
 
   return async (job: Job): Promise<ContextoExecucao> => {
+    // Fase de fluxo: o prompt não vem do disco, vem do job — congelado quando o
+    // fluxo foi criado. Ler o arquivo aqui reintroduziria exatamente o que o
+    // §3.4 proíbe: editar um prompt mudaria um fluxo em voo.
+    if (job.tarefa === TAREFA_FLUXO_AGENTE) return contextoDeFase(job, opts);
+
     // Catálogo FECHADO (§9): um `tarefa` fora do registry falha aqui, antes de
     // qualquer processo nascer. É a mesma barreira que impede texto do usuário
     // de virar nome de comando.

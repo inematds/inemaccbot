@@ -2,7 +2,7 @@
 // claim → executa → ack. A disciplina que faltava no v1: lease com heartbeat,
 // falha registrada, e drain que NÃO solta o lease do que está em voo (spec §1.3).
 import type { Execucao, ContextoExecucao, Runner } from './runner.js';
-import type { FilaSqlite } from './store.js';
+import type { FilaSqlite, GanchoTransacional } from './store.js';
 import type { Agora, ContextoTarefa, Fila, Job } from './types.js';
 
 export type Tarefa = (ctx: ContextoTarefa) => Promise<string>;
@@ -42,6 +42,12 @@ export interface WorkerOpts {
    * ser stderr de um `claude -p`, com prompt, caminhos e possivelmente segredos.
    */
   redigir?: (texto: string) => string;
+  /**
+   * Roda DENTRO da transação do ack (ver `GanchoTransacional` no store). É por
+   * aqui que o avanço de fluxo acontece de forma atômica com o fechamento do
+   * job — sem que `fila/` conheça `fluxos/`.
+   */
+  aoAckar?: GanchoTransacional;
 }
 
 /**
@@ -161,7 +167,7 @@ export class Worker {
       const saida = job.kind === 'function'
         ? await this.rodarFuncao(job)
         : await this.rodarAgente(job);
-      if (this.fila.concluir(job.id, saida, this.opts.dono)) {
+      if (this.fila.concluir(job.id, saida, this.opts.dono, this.opts.aoAckar)) {
         terminou = true;
       } else {
         log(`[job ${job.id}] terminou mas não era mais nosso (cancelado/roubado?) — done rejeitado`);
@@ -172,7 +178,7 @@ export class Worker {
       if (!this.abortados.has(job.id)) {
         const redigir = this.opts.redigir ?? ((t: string) => t);
         const erro = redigir((e as Error).message).slice(0, 1_000);
-        const r = this.fila.falhar(job.id, erro, this.opts.dono, 30);
+        const r = this.fila.falhar(job.id, erro, this.opts.dono, 30, this.opts.aoAckar);
         log(`[job ${job.id}] ${r}: ${erro}`);
         // 'requeued' não é término — só 'failed' final justifica notificar (§8:
         // uma retentativa não é conclusão, silenciosa de propósito aqui).
@@ -346,7 +352,7 @@ export class Worker {
       // processo e escreve a saída de um job marcado como `failed`.
       ativo.ctrl?.abort(new Error('serviço encerrando'));
       await ativo.exec?.cancelar();
-      const r = this.fila.falhar(id, 'interrompido no encerramento do serviço', this.opts.dono, 30);
+      const r = this.fila.falhar(id, 'interrompido no encerramento do serviço', this.opts.dono, 30, this.opts.aoAckar);
       // §8: esta é uma transição terminal FORA de `passo()` — e o catch de
       // `passo()` a pula de propósito (o id está em `abortados`). Sem este
       // await o job morreria em silêncio. `await` e não fire-and-forget porque
