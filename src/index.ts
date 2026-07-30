@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { type Config, carregarConfig } from './config.js';
 import { abrirDb } from './db/abrir.js';
 import { aplicarMigrations } from './db/migrations.js';
+import { CONCORRENCIAS, FILAS } from './fila/filas.js';
 import { FilaSqlite } from './fila/store.js';
 import { RUNNERS } from './fila/runner.js';
 import './fila/runner-claude.js'; // efeito colateral: registra RUNNERS.claude
@@ -26,17 +27,10 @@ import { executar, parseComando } from './gateway/comandos.js';
 import { criarNotificador } from './gateway/notificar.js';
 import { type Transporte, criarBot } from './gateway/telegram.js';
 
-/** spec §2.3. As três filas sem tarefa nesta etapa sobem ociosas de propósito:
- * assim a etapa 2 acrescenta tarefas sem mexer no boot. */
-export const CONCORRENCIAS: Record<Fila, number> = {
-  render: 1,
-  navegador: 1,
-  texto: 2,
-  io: 10,
-  cpu: 1,
-};
-
-const FILAS = Object.keys(CONCORRENCIAS) as Fila[];
+// A lista de filas e suas concorrências vivem em `fila/filas.ts` — o gateway
+// precisa da MESMA lista para o `/fila`, e ele não pode importar daqui.
+// Reexportado porque os testes da etapa 1 e o deploy já apontavam para cá.
+export { CONCORRENCIAS, FILAS };
 
 /** O bot é um recurso de ciclo de vida (start/stop), não só um `Transporte` —
  * por isso o serviço recebe as três coisas juntas. */

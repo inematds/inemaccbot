@@ -1,6 +1,7 @@
 // Comandos do gateway, PUROS: nenhuma linha aqui conhece grammy ou a API do
 // Telegram (regra herdada do v1 — nenhum teste deste bot bate na API real).
 // `executar` só fala com o store; nunca imprime, nunca envia.
+import { FILAS } from '../fila/filas.js';
 import type { Agora, Fila, Job } from '../fila/types.js';
 import type { FilaSqlite } from '../fila/store.js';
 
@@ -111,7 +112,6 @@ function fmtStatus(job: Job): string {
   return linhas.join('\n');
 }
 
-const FILAS: Fila[] = ['render', 'navegador', 'texto', 'io', 'cpu'];
 const JANELA_ERRO_SEGUNDOS = 24 * 60 * 60;
 
 function resumoFila(fila: FilaSqlite, nome: Fila, agora: number): string {

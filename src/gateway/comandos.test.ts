@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { abrirDb } from '../db/abrir.js';
 import { MIGRATIONS, aplicarMigrations } from '../db/migrations.js';
+import { CONCORRENCIAS, FILAS } from '../fila/filas.js';
 import { FilaSqlite } from '../fila/store.js';
 import { executar, parseComando, type DepsComando } from './comandos.js';
 
@@ -93,6 +94,16 @@ describe('executar', () => {
     expect(r).toMatch(/furar/);
     expect(r).toMatch(/http/);
     expect(r).toMatch(/thumb/);
+  });
+
+  // Guarda do risco 5 do handoff: o `/fila` tinha a PRÓPRIA lista de filas,
+  // separada das concorrências do boot. Acrescentar uma fila deixava-a invisível
+  // nas métricas. Agora as duas leem `fila/filas.ts`, e este teste falha se
+  // alguém reintroduzir uma lista local aqui.
+  it('/fila cobre exatamente as filas declaradas em fila/filas.ts', () => {
+    const linhas = executar(parseComando('/fila'), deps()).split('\n');
+    expect(linhas.map((l) => l.split(':')[0])).toEqual(FILAS);
+    expect(FILAS).toEqual(Object.keys(CONCORRENCIAS));
   });
 
   it('desconhecido aponta para /ajuda e não ecoa o texto cru', () => {
