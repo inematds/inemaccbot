@@ -30,9 +30,14 @@ Leia pelo menos §1 (camadas), §2.5 e §2.5.1 (efeito único e posse do lease),
   Plano: `docs/superpowers/plans/2026-07-30-etapa-2-texto.md`.
 - O serviço **está no ar**: `systemctl --user status inemaccbot` (unidade de USUÁRIO, em
   `~/.config/systemd/user/`). Log em `~/projetos/inemaccbot/inemaccbot.log`.
-- Os três serviços do v1 (`inemaccvbot`, `mkivideos`, `mkitexto`) estão **`active` mas `disabled`**:
-  seguem de pé até o próximo reboot, e não voltam sozinhos. Foi decisão explícita do dono
-  (2026-07-30) — ele ainda depende deles, porque o novo não cobre as skills nem o promoclub.
+- Serviços em 2026-07-30, ao fim da etapa 2:
+
+  | serviço | active | enabled | |
+  |---|---|---|---|
+  | `inemaccbot` | sim | **sim** | o novo |
+  | `inemaccvbot` | sim | não | v1: segue por causa de render e `/promoclub` |
+  | `mkivideos` | sim | não | fila de render do v1 (etapa 3 desliga) |
+  | `mkitexto` | **não** | não | **desligado no cutover da etapa 2** |
 
 ### O que o bot novo faz hoje
 
@@ -193,14 +198,29 @@ comparar. A validação virou "o novo funciona de ponta a ponta", e foi feita:
 
 O primeiro job real é que revelou o defeito do perfil não gravado — corrigido em `2b4a525`+.
 
-### O que falta
+### Cutover: FEITO em 2026-07-30
 
-Só desligar o `mkitexto.service`, quando o dono disser. Ele pediu explicitamente para
-manter de pé até bater o martelo, mesmo sem usar. Quando for:
+1. `systemctl --user disable --now mkitexto` — parado e desabilitado;
+2. `transcrever`/`dublar` saíram do `config/skills.json` do v1 (commit `5e8d1cc` no
+   `inemaccvbot`, empurrado), com o teste do registro passando a guardar que não sobrou
+   skill de fila `texto`. O v1 foi rebuildado e reiniciado para carregar o registro novo —
+   sem isso ele continuaria oferecendo as duas no `/help` e aceitando pedido para uma fila
+   morta.
 
-1. `systemctl --user disable --now mkitexto`;
-2. tirar `transcrever`/`dublar` do `config/skills.json` do **v1** — senão o bot velho
-   segue aceitando pedidos que ninguém mais executa.
+Os três arquivos não commitados do v1 (`src/config.ts`, `src/interpret.ts`,
+`src/promoclub.ts`) e os dois docs novos **continuam fora do commit**, como previsto.
 
-Atenção ao commit do passo 2: o repo do v1 tem alterações não commitadas em `src/config.ts`,
-`src/interpret.ts` e `src/promoclub.ts`. Não varra isso para dentro do commit de cutover.
+**Transcrever e dublar agora só existem no bot novo.**
+
+### Próximo: etapa 3 (`render`)
+
+`explicativo`, `curso`, `demo`, `reel`, `reelinematds` — ao fim desligam o
+`mkivideos.service`. A regra de ouro do §7.1 vale inteira ali, e com dente: **dois renders
+simultâneos disputam a mesma GPU sem saber um do outro**. A etapa 2 não teve esse risco
+(`texto` não briga por GPU do mesmo jeito); a etapa 3 tem.
+
+Uma decisão da etapa 2 precisa ser reexaminada antes: a execução SÍNCRONA. Para transcrição
+(minutos) o preço de perder o job num restart é aceitável. Para um render de 15 min a 2h,
+não é óbvio — ou o `timeout_segundos` do registry sobe bastante e o deploy passa a esperar,
+ou volta alguma forma de trabalho destacado com poll. Decida isso no início da etapa 3, não
+no meio.
