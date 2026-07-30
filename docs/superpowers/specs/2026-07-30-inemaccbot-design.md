@@ -159,6 +159,7 @@ status          TEXT     -- queued | running | done | failed | canceled
 tentativas      INTEGER
 max_tentativas  INTEGER
 lease_ate       INTEGER  -- timestamp; renovado por heartbeat; vencido → volta para queued
+lease_owner     TEXT     -- quem detém o lease agora; NULL fora de execução (§2.5.1)
 disponivel_em   INTEGER  -- claim só pega quando <= now (poll, backoff, agendamento)
 idem_key        TEXT     -- chave de idempotência (§2.5); NULL em job sem efeito externo
 flow_ref        TEXT     -- "P#16/mulheres/render" ou NULL (job solto)
@@ -231,7 +232,31 @@ A fase de render consulta o estúdio por esse nome antes de criar. Mesma ideia p
 (arquivo já existe → adota) e para `reel` (job com mesmo `idem_key` já `done` → não reenfileira).
 
 `UNIQUE(idem_key, status)` não serve (vários `failed` legítimos). A regra é aplicada na tarefa, e
-testada (§6.2).
+testada (§6.2) — o contrato executável vive em `src/integracao/idempotencia-efeito.test.ts`, que
+mata o worker **depois** do efeito externo e **antes** do ack e exige que a segunda execução adote o
+artefato em vez de criar outro. Note que nesse caminho não existe linha `done`, logo `jaConcluido`
+não basta: a tarefa precisa procurar no serviço externo pelo nome determinístico derivado da chave.
+
+### 2.5.1 Posse do lease (implementado na etapa 0)
+
+Lease sozinho garante claim único, não **ack** único. Sem dono registrado, uma instância que travou
+além do lease consegue dar `concluir()` num job que outra já reclamou — sobrescrevendo o resultado de
+trabalho vivo. Pior: como o runner do agente usa `detached: true`, um `kill -9` no serviço deixa o
+processo filho vivo, e o boot requeue roda um segundo agente enquanto o primeiro ainda escreve.
+
+Por isso `jobs.lease_owner`: gravado por `pegar()` no mesmo UPDATE atômico do claim, exigido por
+`renovar`, `concluir`, `falhar` e `reagendar` (`AND lease_owner = ?`), e limpo por toda transição que
+sai de `running`. `cancelar()` é a exceção deliberada — cancelar é ação do operador, não do dono.
+
+Duas consequências no worker: `bater()` passa a ler o retorno de `renovar()` — `false` significa que
+o job foi roubado, então ele cancela a execução em voo e abandona o job **sem** acká-lo nem logá-lo
+como falha; e `drenar()` espera apenas o trabalho que este worker ainda possui, de modo que seu
+retorno não implica que toda promessa de `passo()` assentou.
+
+**Teto de tentativas na recuperação.** `max_tentativas` só era consultado dentro de `falhar()` — o
+caminho exato que um crash pula. `recuperarLeasesVencidos()` passa a decidir entre devolver à fila
+(`tentativas < max_tentativas`) e marcar `failed` com `erro = 'lease vencido sem ack (worker morreu)'`,
+senão um job que derruba o worker retentaria para sempre.
 
 ## 3. Fluxos
 
