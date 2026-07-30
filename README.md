@@ -1,30 +1,46 @@
 # inemaccbot
 
-Gateway Telegram + fila durável + runtime de fluxos. Sucessor do `inemaccvbot`.
+Gateway Telegram + fila durável. Sucessor do `inemaccvbot`.
 
-**Estado:** etapa 0 — núcleo da fila (`src/db/`, `src/fila/`, `src/dominio/perfil.ts`). Ainda sem
-código de Telegram, sem `interpret`, sem registries (`config/*.json`) e sem runtime de fluxos —
-isso é etapa 1+. `src/index.ts` hoje é um placeholder vazio; é onde a etapa 1 vai ligar o loop de
-`Worker.passo()`, o timer de `bater()` e o `SIGTERM` a `drenar()`.
+**Estado: etapa 1 concluída.** A etapa 0 entregou o núcleo da fila (SQLite + WAL, lease,
+recuperação, drain); a etapa 1 transformou isso num serviço vivo: `src/config.ts` lê o `.env`,
+`src/gateway/` fala com o Telegram, duas tarefas `function` (`http.get`, `ffmpeg.thumb`) rodam de
+verdade, e `src/index.ts` liga tudo — boot, laço, `SIGTERM` — num processo que sobrevive a queda e
+desliga sem perder trabalho em voo.
+
+O que a etapa 1 **não** entrega, de propósito (fica para a etapa 2+): nenhum job `kind=agent` roda
+em produção (`promptDe` em `src/index.ts` lança erro se algum aparecer), `interpret` com `claude -p`
+não existe, não há registries (`skills.json`/`fluxos.json`/`destinos.json`), não há runtime de
+fluxos, não há dashboard nem entrega de arquivo/anexo, e os serviços antigos (`mkitexto`,
+`mkivideos`) continuam de pé — o cutover das filas `texto` e `render` é etapa 2 e 3.
 
 ## Documentos
 
 - Arquitetura: `docs/superpowers/specs/2026-07-30-inemaccbot-design.md`
 - Perfil de execução (motor/modelo/esforço): `docs/perfil-de-execucao.md`
-- Plano da etapa 0: `docs/superpowers/plans/2026-07-30-etapa-0-fila-duravel.md`
+- Planos: `docs/superpowers/plans/2026-07-30-etapa-0-fila-duravel.md`,
+  `docs/superpowers/plans/2026-07-30-etapa-1-gateway-io-cpu.md`
 - Crítica externa ao design (respondida na §13 do spec): `docs/analise_critica_inemaccbot_design.md`
 
-## Estrutura do código (etapa 0)
+## Estrutura do código
 
 ```
 src/
   db/           abrir.ts (SQLite + WAL), migrations.ts, backup.ts
-  fila/         types.ts (Job/Perfil/Fila), store.ts (FilaSqlite), runner.ts (contrato
-                Runner/Execucao), runner-claude.ts (motor claude), worker.ts (stepper)
-  dominio/      perfil.ts (resolverPerfil — motor/modelo/esforço)
-  integracao/   testes que legitimamente cruzam camadas (ex.: backup-restore.test.ts)
-  arquitetura.test.ts   verifica as fronteiras entre camadas acima
-  index.ts      placeholder — etapa 1 liga Worker, Telegram e o resto aqui
+  fila/         types.ts (Job/Perfil/Fila/ContextoTarefa), store.ts (FilaSqlite),
+                runner.ts (contrato Runner/Execucao), runner-claude.ts (motor claude),
+                worker.ts (stepper: passo/bater/drenar/abortar)
+    tarefas/    catálogo FECHADO de tarefas `function`: http.ts (http.get), ffmpeg.ts
+                (ffmpeg.thumb), index.ts (criarTarefas)
+  dominio/      perfil.ts (resolverPerfil — motor/modelo/esforço; sem chamador em
+                produção nesta etapa, entra na etapa 2 com kind=agent)
+  gateway/      telegram.ts (adaptador grammy + allowlist + corte de mensagem),
+                comandos.ts (parse/executa comandos, puro, sem grammy),
+                notificar.ts (job terminado -> mensagem no chat)
+  config.ts     carregarConfig — lê e valida o ambiente
+  integracao/   testes que legitimamente cruzam camadas
+  arquitetura.test.ts   verifica as fronteiras entre camadas (agora com gateway/)
+  index.ts      boot, laço, agendamento e desligamento — o miolo do processo
 ```
 
 ## Desenvolvimento
@@ -33,12 +49,109 @@ src/
 npm install
 npm test           # vitest run
 npm run typecheck  # tsc --noEmit
-npm run build      # tsc
+npm run build      # tsc -> dist/index.js (dist/ é o outDir do tsconfig, rootDir=src)
 ```
 
-Config futura em `.env` (modo 600, fora do git) — nomes previstos, ainda **não lidos por nenhum
-loader de configuração nesta etapa** (isso entra quando `src/index.ts` deixar de ser placeholder):
-`BOT_TOKEN`, `QUEUE_DB`, `STATE_DIR`, `LOG_FILE`, `MOTOR_PADRAO`, `MODELO_PADRAO`, `ESFORCO_PADRAO`.
+Em produção: `node dist/index.js` com o `.env` no `WorkingDirectory` (ver `deploy/inemaccbot.service`).
+
+### `.env`
+
+Variáveis lidas por `carregarConfig` (`src/config.ts`) — as quatro primeiras são **obrigatórias**;
+sem uma delas o boot falha alto e cedo, antes de subir qualquer worker:
+
+| variável | obrigatória | default | para quê |
+|---|---|---|---|
+| `BOT_TOKEN` | sim | — | token do bot no Telegram (nunca commitar o valor real) |
+| `QUEUE_DB` | sim | — | caminho do arquivo SQLite da fila |
+| `STATE_DIR` | sim | — | raiz de estado do processo; `STATE_DIR/midia` vira a raiz de mídia (ver `ffmpeg.thumb` abaixo) |
+| `LOG_FILE` | sim | — | arquivo onde `main()` também grava cada linha de log (além de stderr) |
+| `ALLOWED_CHAT_IDS` | sim | — | lista de chat ids separados por vírgula; a allowlist do gateway |
+| `MOTOR_PADRAO` | não | `claude` | fallback de motor pro perfil de execução (etapa 2) |
+| `MODELO_PADRAO` | não | `sonnet` | idem, modelo |
+| `ESFORCO_PADRAO` | não | `low` | idem, esforço |
+
+`.env` fica fora do git, modo 600. O parser (`lerEnv` em `src/index.ts`) é minimalista de
+propósito (`CHAVE=valor`, `#` comenta, aspas opcionais) — não é `dotenv`, é o suficiente pro boot.
+O ambiente real do processo (systemd `EnvironmentFile`, ou override manual) sempre vence o que está
+escrito no arquivo quando os dois definem a mesma chave.
+
+## Boot: a ordem importa
+
+`criarServico(...).iniciar()`, em `src/index.ts`, segue esta sequência e ela não é arbitrária:
+
+1. **Migrations** (`aplicarMigrations`) — um checksum divergente derruba o boot ali mesmo (com o
+   `db.close()` antes de propagar o erro): subir sobre um schema que o código não reconhece é pior
+   que não subir.
+2. **Raiz de mídia** — `STATE_DIR/midia` é criada (`mkdirSync recursive`). Não é uma variável nova;
+   é derivada do `STATE_DIR` que já existe.
+3. **`recuperarLeasesVencidos()`** — chamada ANTES de qualquer `passo()`, e o resultado vai pro log:
+   `boot: recuperação de leases — requeued=N failed=M`. Essa linha é a única evidência de que o
+   processo anterior caiu com trabalho em voo. Rodar isso depois de já ter workers puxando da fila
+   abriria uma corrida entre "reclamar lease vencido" e um worker novo competindo pelo mesmo job por
+   engano — por isso vem antes de tudo o que segue.
+4. **Só então** workers e bot sobem: o catálogo de tarefas é montado, o transporte Telegram é
+   criado, os laços (`passo()` em loop, um por unidade de concorrência de cada fila) começam a
+   girar, o heartbeat (`bater()`) é armado, e por fim `transporte.iniciar()` é chamado.
+
+**É essa ordem — migrations, depois recuperação, só então trabalho novo — que torna o processo
+recuperável de uma queda.** Um `kill -9` no meio de um job não deixa lixo indefinido: na próxima
+subida, o passo 3 reclama qualquer lease vencido antes que um worker novo possa competir por ele.
+
+## Desligamento: o que `drenar()` garante e o que não garante
+
+`SIGTERM`/`SIGINT` chamam `svc.parar()` (memoizado — o segundo sinal é no-op). A sequência em
+`desligar()`:
+
+1. o transporte para de **receber** primeiro — nenhum comando novo entra durante o dreno;
+2. os laços param de reclamar trabalho novo e são acordados das esperas ociosas;
+3. dreno com teto: `Promise.race` entre (`w.drenar()` de cada worker + todos os laços) e um timeout
+   (`timeoutDrenoMs`, 110s em produção — ver `deploy/inemaccbot.service`);
+4. o que sobrou depois do teto vira falha explícita via `w.abortar()` — nunca fica `running` com
+   lease vivo, que é o estado que nenhuma recuperação futura consegue distinguir de trabalho ainda
+   legitimamente em andamento;
+5. timers e DB fecham por último.
+
+A sutileza que um leitor futuro vai errar se não ler isto: **`drenar()` espera só o trabalho que
+esta instância ainda POSSUI o lease.** Um job cujo lease vence e é roubado por outra instância no
+meio do dreno é **abandonado de propósito** por `bater()` — o `passo()` correspondente pode nunca
+assentar, porque o worker desistiu (`ctx.sinal` foi abortado) e quem tem o job agora é outro
+processo. Por isso `desligar()` corre `drenar()` **e** os `lacos` na mesma race com timeout, nunca
+num `await` que assume que todos os `passo()` terminam. Ou seja: **`drenar()` retornar não significa
+que todo `passo()` em voo já assentou** — significa que o trabalho que ainda era nosso terminou (ou
+foi abortado no timeout).
+
+## Filas e concorrência
+
+Definidas em `CONCORRENCIAS` (`src/index.ts`), as cinco filas do spec sobem sempre, mesmo as ainda
+sem tarefa — assim a etapa 2 acrescenta tarefas sem mexer no boot:
+
+| fila | concorrência | tarefas nesta etapa |
+|---|---|---|
+| `io` | 10 | `http.get` |
+| `cpu` | 1 | `ffmpeg.thumb` |
+| `texto` | 2 | nenhuma — ociosa |
+| `render` | 1 | nenhuma — ociosa |
+| `navegador` | 1 | nenhuma — ociosa |
+
+## As duas tarefas `function`
+
+O catálogo (`src/fila/tarefas/index.ts`) é **fechado**: o campo `tarefa` de um job só pode ser uma
+das chaves aqui, nunca texto livre do usuário.
+
+- **`http.get`** (`src/fila/tarefas/http.ts`) — faz um GET simples. Recusa qualquer esquema que não
+  seja `http:`/`https:` (nada de `file://` virando leitura de disco a partir de uma URL do usuário),
+  repassa `ctx.sinal` pro `fetch` (a requisição para junto com o encerramento do serviço), e trunca
+  a resposta em 8000 caracteres.
+- **`ffmpeg.thumb`** (`src/fila/tarefas/ffmpeg.ts`) — gera uma thumbnail via `execFile('ffmpeg', ...)`
+  (array de argumentos, nunca shell). **Constrangida a arquivos dentro de `STATE_DIR/midia`**
+  (a raiz de mídia criada no boot): o caminho de entrada é resolvido e comparado por prefixo contra
+  essa raiz (usando o separador de path, para `/dados/secreta` não passar por prefixo de
+  `/dados/secret-algo`) — sem isso, um comando de chat vindo de um chat autorizado ainda poderia
+  pedir a thumbnail de qualquer arquivo legível pelo processo no disco, o que é exatamente o tipo de
+  acesso que a allowlist de chat não cobre (allowlist decide QUEM fala com o bot, não O QUE o bot
+  pode tocar no disco). O processo do ffmpeg recebe `ctx.sinal`: se o worker desiste do job
+  (encerramento ou lease perdido), o filho é morto — sem isso ele sobreviveria reparentado ao
+  init, continuando a rodar depois que o banco já marcou o job como `failed`.
 
 ## Convenções
 
@@ -58,12 +171,24 @@ loader de configuração nesta etapa** (isso entra quando `src/index.ts` deixar 
 
 `src/fila/worker.ts` não tem `iniciar()` nem agenda a si mesmo. Ele expõe `passo()` (processa no
 máximo um job), `bater()` (renova o lease do que está em voo — e LARGA o job cujo lease já não é
-mais nosso, sem dar ack), `drenar()` (para de aceitar novos
-jobs e espera o que este worker ainda possui, renovando o lease enquanto espera — um job roubado no
-meio do drain é abandonado, então retornar não garante que todo `passo()` já terminou) e `abortar()` (cancela à força
-o que sobrou depois do timeout do drain). Quem chama `passo()` em loop, quem chama `bater()`
-periodicamente e quem liga `SIGTERM` a `drenar()` é `src/index.ts` — isso é trabalho da etapa 1,
-não desta classe. `WorkerOpts.dono` identifica a instância do worker (etapa 1: algo estável como
-`hostname:pid`): ele vai gravado em `jobs.lease_owner` no claim e é exigido em todo ack
-(`renovar`/`concluir`/`falhar`/`reagendar`), para que um worker estolado não sobrescreva um job que
-outra instância já reclamou. `cancelar()` é a exceção: é ação de operador, não do dono do lease.
+mais nosso, sem dar ack), `drenar()` (para de aceitar novos jobs e espera o que este worker ainda
+possui, renovando o lease enquanto espera — um job roubado no meio do drain é abandonado, então
+retornar não garante que todo `passo()` já terminou) e `abortar()` (cancela à força o que sobrou
+depois do timeout do drain). Quem chama `passo()` em loop, quem chama `bater()` periodicamente e
+quem liga `SIGTERM` a `drenar()` é `src/index.ts` (desde a etapa 1) — isso é trabalho de boot, não
+desta classe. `WorkerOpts.dono` identifica a instância do worker (`hostname:pid`, calculado uma vez
+em `criarServico`): ele vai gravado em `jobs.lease_owner` no claim e é exigido em todo ack
+(`renovar`/`concluir`/`falhar`), para que um worker estolado não sobrescreva um job que outra
+instância já reclamou. `cancelar()` é a exceção: é ação de operador, não do dono do lease.
+`WorkerOpts.aoTerminar`, quando presente, é chamado depois do ack com o job relido do banco — é
+assim que `src/index.ts` liga `criarNotificador(...)` sem que `fila/` conheça `gateway/`.
+
+## Deploy
+
+`deploy/inemaccbot.service` — `ExecStart=/usr/bin/node dist/index.js` (confirmado contra
+`tsconfig.json`: `outDir=dist`, `rootDir=src`), `TimeoutStopSec=120` com folga sobre o
+`timeoutDrenoMs=110_000` que `main()` passa pro serviço, `EnvironmentFile` apontando pro `.env` no
+mesmo diretório de onde `main()` o lê (`resolve(process.cwd(), '.env')`, com
+`WorkingDirectory` igual). `Restart=on-failure`: um código de saída não-zero (falha fatal do
+transporte depois do boot, ou desligamento que não completou) reergue o processo; um `SIGTERM`
+tratado sai 0 e não é reiniciado.

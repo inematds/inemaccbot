@@ -51,7 +51,7 @@ describe('lease_owner no store', () => {
 
     // A estola; o lease vence; a recuperação devolve o job à fila; B pega.
     t = 1_061;
-    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, failed: 0 });
+    expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, falhados: [] });
     const jobB = fila.pegar('render', 60, 'B')!;
     expect(jobB.id).toBe(jobA.id);
 
@@ -82,11 +82,11 @@ describe('Worker.bater', () => {
     const w = new Worker(fila, {
       fila: 'io', dono: 'A', concorrencia: 1, leaseSegundos: 60,
       tarefas: {}, runners: { fake: runner },
-      promptDe: (job: Job) => ({
+      promptDe: async (job: Job) => ({
         prompt: job.input, cwd: '/tmp',
         perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {},
       }),
-    });
+    }, () => t);
     const job = fila.enfileirar({
       fila: 'io', kind: 'agent', tarefa: 'x', input: '', max_tentativas: 3,
       perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
@@ -118,12 +118,12 @@ describe('Worker.bater', () => {
     const w = new Worker(fila, {
       fila: 'io', dono: 'A', concorrencia: 1, leaseSegundos: 60,
       tarefas: {}, runners: { fake: runner },
-      promptDe: (job: Job) => ({
+      promptDe: async (job: Job) => ({
         prompt: job.input, cwd: '/tmp',
         perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {},
       }),
       log: (m) => logs.push(m),
-    });
+    }, () => t);
     const job = fila.enfileirar({
       fila: 'io', kind: 'agent', tarefa: 'x', input: '', max_tentativas: 3,
       perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },

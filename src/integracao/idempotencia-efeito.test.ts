@@ -21,7 +21,6 @@ import { abrirDb } from '../db/abrir.js';
 import { MIGRATIONS, aplicarMigrations } from '../db/migrations.js';
 import { FilaSqlite } from '../fila/store.js';
 import { Worker, type Tarefa } from '../fila/worker.js';
-import type { Job } from '../fila/types.js';
 
 /** Serviço externo caro e NÃO idempotente — criar duas vezes custa duas vezes. */
 class ServicoExterno {
@@ -50,11 +49,12 @@ let servico: ServicoExterno;
 let t = 1_000;
 
 function tarefaComEfeito(aposEfeito: (id: string) => Promise<string>): Tarefa {
-  return async (job: Job) => {
+  return async (ctx) => {
+    const job = ctx.job;
     const titulo = tituloCurto(job.idem_key!);
 
     // 1) o efeito já foi concluído numa tentativa anterior? adota o resultado.
-    const anterior = fila.jaConcluido(job.idem_key!);
+    const anterior = ctx.fila.jaConcluido(job.idem_key!);
     if (anterior?.resultado) return anterior.resultado;
 
     // 2) sem linha `done` (crash antes do ack): procure no serviço externo.
@@ -71,8 +71,8 @@ function novoWorker(dono: string, tarefa: Tarefa): Worker {
     fila: 'io', dono, concorrencia: 1, leaseSegundos: 60,
     tarefas: { efeito: tarefa },
     runners: {},
-    promptDe: () => { throw new Error('sem agente neste teste'); },
-  });
+    promptDe: async () => { throw new Error('sem agente neste teste'); },
+  }, () => t);
 }
 
 beforeEach(() => {
@@ -104,7 +104,7 @@ it('crash DEPOIS do efeito e ANTES do ack não duplica o efeito externo', async 
 
   // Boot depois do crash: o lease vence e o job volta pra fila.
   t = 1_061;
-  expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, failed: 0 });
+  expect(fila.recuperarLeasesVencidos()).toEqual({ requeued: 1, falhados: [] });
 
   // Tentativa 2, noutra instância: tem que ADOTAR o efeito, não criar outro.
   const wB = novoWorker('B', tarefaComEfeito(async (id) => id));

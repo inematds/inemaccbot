@@ -20,13 +20,13 @@ function novoWorker(over: Partial<ConstructorParameters<typeof Worker>[1]> = {})
     fila: 'io', dono: 'A', concorrencia: 1, leaseSegundos: 60,
     tarefas: { ok: async () => 'pronto', explode: async () => { throw new Error('boom'); } },
     runners: { fake: new FakeRunner({ respostas: ['saida do agente'] }) },
-    promptDe: (job: Job) => ({
+    promptDe: async (job: Job) => ({
       prompt: job.input, cwd: '/tmp',
       perfil: { motor: job.motor ?? 'fake', modelo: job.modelo ?? 'sonnet', esforco: job.esforco ?? 'low' },
       vars: {},
     }),
     ...over,
-  });
+  }, () => t);
 }
 
 beforeEach(() => {
@@ -80,6 +80,64 @@ describe('passo', () => {
 
   it('devolve false quando não há nada na fila', async () => {
     expect(await novoWorker().passo()).toBe(false);
+  });
+
+  it('entrega à tarefa um contexto com job, fila e relógio', async () => {
+    // Identidade, não forma: uma tarefa que recebesse outra instância do store
+    // veria o mesmo banco mas não a mesma sessão, e um teste de forma (ex.:
+    // "tem método obter") não distinguiria os dois casos.
+    let visto: { id: number; mesmaFila: boolean; agora: number } | undefined;
+    const w = novoWorker({
+      tarefas: {
+        espia: async (ctx) => {
+          visto = { id: ctx.job.id, mesmaFila: ctx.fila === fila, agora: ctx.agora() };
+          return 'ok';
+        },
+      },
+    });
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'espia', input: '' });
+    await w.passo();
+    expect(visto).toEqual({ id: job.id, mesmaFila: true, agora: 1_000 });
+  });
+
+  it('a tarefa consegue consultar jaConcluido pelo contexto (§2.5 alcançável)', async () => {
+    const CHAVE = 'P#1/alvo/fase';
+    const anterior = fila.enfileirarSeNovo({
+      fila: 'io', kind: 'function', tarefa: 'x', input: '', idem_key: CHAVE,
+    });
+    fila.pegar('io', 60, 'w0');
+    fila.concluir(anterior.job.id, 'artefato-antigo', 'w0');
+
+    const w = novoWorker({
+      tarefas: { adota: async (ctx) => ctx.fila.jaConcluido(ctx.job.idem_key!)?.resultado ?? 'novo' },
+    });
+    const job = fila.enfileirar({
+      fila: 'io', kind: 'function', tarefa: 'adota', input: '', idem_key: CHAVE,
+    });
+    await w.passo();
+    expect(fila.obter(job.id)!.resultado).toBe('artefato-antigo');
+  });
+
+  it('aguarda um promptDe assíncrono antes de chamar o runner', async () => {
+    let ordem: string[] = [];
+    const rastreador = {
+      nome: 'fake',
+      iniciar: (ctx: any) => {
+        ordem.push('runner');
+        return new FakeRunner({ respostas: ['saida'] }).iniciar(ctx);
+      },
+    };
+    const w = novoWorker({
+      promptDe: async (job: Job) => {
+        await new Promise((r) => setTimeout(r, 5));
+        ordem.push('prompt');
+        return { prompt: job.input, cwd: '/tmp', perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' }, vars: {} };
+      },
+      runners: { fake: rastreador },
+    });
+    fila.enfileirar({ fila: 'io', kind: 'agent', tarefa: 'x', input: 'p', perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' } });
+    await w.passo();
+    expect(ordem).toEqual(['prompt', 'runner']);
   });
 });
 
@@ -205,5 +263,185 @@ describe('drain', () => {
 
     liberar!(); // libera a promise pendente pra não deixar handle solto
     await emCurso;
+  });
+
+  // Sem sinal, um `ffmpeg` gerado por tarefa `function` sobrevive ao processo:
+  // vira órfão do init e escreve a saída de um job que o banco diz `failed`.
+  it('abortar dispara ctx.sinal da tarefa function em voo', async () => {
+    let liberar: (() => void) | undefined;
+    let sinal: AbortSignal | undefined;
+    let abortou = false;
+    const w = novoWorker({
+      tarefas: {
+        lento: (ctx) => new Promise<string>((r) => {
+          sinal = ctx.sinal;
+          ctx.sinal.addEventListener('abort', () => { abortou = true; });
+          liberar = () => r('fim');
+        }),
+      },
+    });
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+    const emCurso = w.passo();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sinal!.aborted).toBe(false);
+
+    await w.abortar();
+
+    expect(abortou).toBe(true);
+    expect(sinal!.aborted).toBe(true);
+
+    liberar!();
+    await emCurso;
+  });
+
+  it('lease perdido também dispara ctx.sinal (job roubado não pode deixar filho vivo)', async () => {
+    let liberar: (() => void) | undefined;
+    let sinal: AbortSignal | undefined;
+    const w = novoWorker({
+      tarefas: {
+        lento: (ctx) => new Promise<string>((r) => { sinal = ctx.sinal; liberar = () => r('fim'); }),
+      },
+    });
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+    const emCurso = w.passo();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    t += 10_000;                 // lease vence
+    fila.recuperarLeasesVencidos();
+    fila.pegar('io', 60, 'outra-instancia');  // outro worker rouba o job
+    await w.bater();
+
+    expect(sinal!.aborted).toBe(true);
+
+    liberar!();
+    await emCurso;
+  });
+
+  // A cadeia que faz o `/cancelar` MATAR o ffmpeg é emergente e mora em três
+  // arquivos: `cancelar()` põe status='canceled' → o `WHERE status='running'`
+  // do `renovar()` deixa de casar → `bater()` vê false → `ctrl.abort()`. Sem
+  // este teste, tirar `AND status = 'running'` do `renovar` mantém tudo verde e
+  // transforma o `/cancelar` numa flag no banco com um ffmpeg vivo atrás.
+  it('/cancelar mata o processo filho: cancelar + bater dispara ctx.sinal e larga o job', async () => {
+    let liberar: (() => void) | undefined;
+    let sinal: AbortSignal | undefined;
+    const logs: string[] = [];
+    const w = novoWorker({
+      tarefas: {
+        lento: (ctx) => new Promise<string>((r) => { sinal = ctx.sinal; liberar = () => r('fim'); }),
+      },
+      log: (m: string) => logs.push(m),
+    });
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '' });
+    const emCurso = w.passo();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(w.emVoo).toBe(1);
+    expect(sinal!.aborted).toBe(false);
+
+    expect(fila.cancelar(job.id)).toBe(true);
+    await w.bater();
+
+    expect(sinal!.aborted).toBe(true);
+    expect(w.emVoo).toBe(0);
+    // E o log não pode chamar isto de "lease perdido": foi o operador.
+    expect(logs.some((l) => /CANCELADO pelo operador/.test(l))).toBe(true);
+
+    liberar!();
+    await emCurso;
+    expect(fila.obter(job.id)!.status).toBe('canceled');
+  });
+
+  it('NÃO dispara ctx.sinal no caminho de conclusão normal', async () => {
+    let sinal: AbortSignal | undefined;
+    const w = novoWorker({
+      tarefas: { ok: async (ctx) => { sinal = ctx.sinal; return 'pronto'; } },
+    });
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    await w.passo();
+    expect(fila.obter(job.id)!.status).toBe('done');
+    expect(sinal!.aborted).toBe(false);
+  });
+});
+
+describe('aoTerminar', () => {
+  it('é chamado depois do ack com o job relido (status done + resultado)', async () => {
+    const vistos: Job[] = [];
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    await novoWorker({ aoTerminar: async (j) => { vistos.push(j); } }).passo();
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]!.id).toBe(job.id);
+    expect(vistos[0]!.status).toBe('done');
+    expect(vistos[0]!.resultado).toBe('pronto');
+  });
+
+  it('é chamado depois de uma falha final com status failed + erro', async () => {
+    const vistos: Job[] = [];
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'explode', input: '', max_tentativas: 1 });
+    await novoWorker({ aoTerminar: async (j) => { vistos.push(j); } }).passo();
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]!.status).toBe('failed');
+    expect(vistos[0]!.erro).toMatch(/boom/);
+  });
+
+  it('NÃO é chamado quando o job foi reenfileirado para nova tentativa', async () => {
+    const vistos: Job[] = [];
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'explode', input: '', max_tentativas: 2 });
+    await novoWorker({ aoTerminar: async (j) => { vistos.push(j); } }).passo();
+    expect(vistos).toHaveLength(0);
+  });
+
+  it('exceção dentro de aoTerminar não impede o próximo passo()', async () => {
+    const logs: string[] = [];
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    const job2 = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    const w = novoWorker({
+      aoTerminar: async () => { throw new Error('falha ao notificar'); },
+      log: (m: string) => logs.push(m),
+    });
+    expect(await w.passo()).toBe(true);
+    expect(await w.passo()).toBe(true);
+    expect(fila.obter(job2.id)!.status).toBe('done');
+    expect(logs.some((l) => l.includes('falha ao notificar'))).toBe(true);
+  });
+
+  // §8 não abre exceção por caminho: `abortar()` é a OUTRA transição terminal —
+  // e o catch de `passo()` a pula de propósito (o id está em `abortados`).
+  it('abortar() no encerramento também notifica (failed), e o await termina dentro dele', async () => {
+    const vistos: Job[] = [];
+    let liberar: (() => void) | undefined;
+    let notificou = false;
+    const w = novoWorker({
+      tarefas: { lento: () => new Promise<string>((r) => { liberar = () => r('fim'); }) },
+      aoTerminar: async (j) => {
+        // Um tick real: se `abortar()` não aguardasse, o `process.exit(0)` de
+        // `main()` cortaria a mensagem exatamente aqui.
+        await new Promise((r) => setTimeout(r, 5));
+        vistos.push(j);
+        notificou = true;
+      },
+    });
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'lento', input: '', max_tentativas: 1 });
+    const emCurso = w.passo();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await w.abortar();
+
+    expect(notificou).toBe(true);
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]!.status).toBe('failed');
+    expect(vistos[0]!.erro).toMatch(/interrompido no encerramento/);
+
+    liberar!();
+    await emCurso;
+  });
+
+  it('worker sem aoTerminar continua funcionando normalmente', async () => {
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'ok', input: '' });
+    expect(await novoWorker().passo()).toBe(true);
+    expect(fila.obter(job.id)!.status).toBe('done');
   });
 });

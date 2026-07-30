@@ -3,9 +3,9 @@
 // falha registrada, e drain que NÃO solta o lease do que está em voo (spec §1.3).
 import type { Execucao, ContextoExecucao, Runner } from './runner.js';
 import type { FilaSqlite } from './store.js';
-import type { Fila, Job } from './types.js';
+import type { Agora, ContextoTarefa, Fila, Job } from './types.js';
 
-export type Tarefa = (job: Job) => Promise<string>;
+export type Tarefa = (ctx: ContextoTarefa) => Promise<string>;
 
 export interface WorkerOpts {
   fila: Fila;
@@ -20,8 +20,17 @@ export interface WorkerOpts {
   leaseSegundos: number;
   tarefas: Record<string, Tarefa>;
   runners: Record<string, Runner>;
-  promptDe: (job: Job) => ContextoExecucao;
+  promptDe: (job: Job) => Promise<ContextoExecucao>;
   log?: (m: string) => void;
+  /**
+   * Chamado depois do ack (concluir/falhar), com o job RELIDO do banco — carrega
+   * o `status`, `resultado`/`erro` finais, não o snapshot pré-execução. O worker
+   * não sabe o que é feito aqui (spec: fila/ não importa gateway/); quem liga a
+   * notificação de verdade é `src/index.ts` passando `criarNotificador(...)`.
+   * Uma exceção aqui NUNCA pode derrubar o worker — o ack já aconteceu, perder a
+   * notificação é aceitável, perder a fila não é (ver `passo()`).
+   */
+  aoTerminar?: (job: Job) => Promise<void>;
 }
 
 /**
@@ -29,9 +38,23 @@ export interface WorkerOpts {
  * loop, chama `bater()` periodicamente e liga `SIGTERM` a `drenar()` é o
  * `src/index.ts` — não esta classe.
  */
+/**
+ * O que um job em voo carrega para poder ser encerrado à força. UM mapa só (em
+ * vez de um `Map` paralelo de controllers) porque `bater()` e `abortar()` já
+ * iteram `ativos` e destructuram a entrada: com os dois campos juntos, o
+ * cancelamento do agente e o abort da função são feitos no MESMO ponto, e não
+ * existe limpeza em dois lugares para alguém esquecer.
+ *
+ * `exec` só existe em job `kind=agent`; `ctrl` só existe em `kind=function`.
+ */
+interface Ativo {
+  exec: Execucao | null;
+  ctrl: AbortController | null;
+}
+
 export class Worker {
   private drenando = false;
-  private readonly ativos = new Map<number, Execucao | null>();
+  private readonly ativos = new Map<number, Ativo>();
   /**
    * Ids já encerrados por `abortar()`. Sem isto, `abortar` e o catch de `passo`
    * chamam `falhar` para o MESMO job e quem ganha é ordem de microtask — o
@@ -42,6 +65,7 @@ export class Worker {
   constructor(
     private readonly fila: FilaSqlite,
     private readonly opts: WorkerOpts,
+    private readonly agora: Agora,
   ) {}
 
   get emVoo(): number {
@@ -64,9 +88,18 @@ export class Worker {
    */
   async bater(): Promise<void> {
     const log = this.opts.log ?? (() => {});
-    for (const [id, exec] of [...this.ativos]) {
+    for (const [id, ativo] of [...this.ativos]) {
       if (this.fila.renovar(id, this.opts.leaseSegundos, this.opts.dono)) continue;
-      log(`[job ${id}] LEASE PERDIDO (dono=${this.opts.dono}) — abandonando o trabalho em voo`);
+      // `renovar` devolve false por DUAS causas muito diferentes, e chamar as
+      // duas de "LEASE PERDIDO" mente para o operador: o `/cancelar` dele põe
+      // o job em `canceled`, e é o `WHERE status = 'running'` do `renovar` que
+      // rejeita — este é o caminho por onde o ffmpeg do job cancelado morre.
+      // O status é uma leitura só; distinguir sai barato.
+      const status = this.fila.obter(id)?.status;
+      const motivo = status === 'canceled'
+        ? 'CANCELADO pelo operador'
+        : `LEASE PERDIDO (dono=${this.opts.dono})`;
+      log(`[job ${id}] ${motivo} — abandonando o trabalho em voo`);
       this.abortados.add(id);
       this.ativos.delete(id);
       // Se `exec` ainda é null (job reclamado mas a Execução ainda não foi
@@ -75,7 +108,13 @@ export class Worker {
       // terminar sozinho. Janela estreita (entre `passo()` reclamar o job e
       // `rodarAgente`/`rodarFuncao` atribuir a Execução) e nenhum ack é possível
       // de qualquer forma, então não há dado em risco — só um processo órfão.
-      await exec?.cancelar();
+      //
+      // O `ctrl.abort()` é o mesmo cuidado para `kind=function`: sem ele um
+      // ffmpeg deste job continuaria rodando enquanto a instância que roubou o
+      // job reexecuta a MESMA tarefa — dois processos escrevendo o mesmo
+      // arquivo de saída.
+      ativo.ctrl?.abort(new Error('lease perdido'));
+      await ativo.exec?.cancelar();
     }
   }
 
@@ -87,16 +126,19 @@ export class Worker {
     const job = this.fila.pegar(this.opts.fila, this.opts.leaseSegundos, this.opts.dono);
     if (!job) return false;
 
-    this.ativos.set(job.id, null);
+    this.ativos.set(job.id, { exec: null, ctrl: null });
     const log = this.opts.log ?? (() => {});
     const ref = job.flow_ref ? ` ${job.flow_ref}` : '';
     log(`[job ${job.id}${ref}] ${job.fila}/${job.tarefa} motor=${job.motor ?? '-'} modelo=${job.modelo ?? '-'} esforco=${job.esforco ?? '-'}`);
 
+    let terminou = false;
     try {
       const saida = job.kind === 'function'
         ? await this.rodarFuncao(job)
         : await this.rodarAgente(job);
-      if (!this.fila.concluir(job.id, saida, this.opts.dono)) {
+      if (this.fila.concluir(job.id, saida, this.opts.dono)) {
+        terminou = true;
+      } else {
         log(`[job ${job.id}] terminou mas não era mais nosso (cancelado/roubado?) — done rejeitado`);
       }
     } catch (e) {
@@ -106,26 +148,70 @@ export class Worker {
         const erro = (e as Error).message.slice(0, 1_000);
         const r = this.fila.falhar(job.id, erro, this.opts.dono, 30);
         log(`[job ${job.id}] ${r}: ${erro}`);
+        // 'requeued' não é término — só 'failed' final justifica notificar (§8:
+        // uma retentativa não é conclusão, silenciosa de propósito aqui).
+        terminou = r === 'failed';
       }
     } finally {
       this.ativos.delete(job.id);
       this.abortados.delete(job.id);
     }
+    if (terminou) await this.notificarTermino(job.id);
     return true;
+  }
+
+  /**
+   * Único ponto que dispara `aoTerminar`. Existe porque o término NÃO acontece
+   * só em `passo()`: `abortar()` também fecha jobs como `failed`, e a spec §8
+   * não abre exceção por caminho — silêncio nunca é estado válido.
+   * Relê o job para carregar `status`/`erro` finais, e nunca propaga: o ack já
+   * aconteceu, perder a notificação é aceitável, perder o worker não é.
+   */
+  private async notificarTermino(id: number): Promise<void> {
+    if (!this.opts.aoTerminar) return;
+    const log = this.opts.log ?? (() => {});
+    try {
+      const relido = this.fila.obter(id);
+      if (relido) await this.opts.aoTerminar(relido);
+    } catch (e) {
+      log(`[job ${id}] aoTerminar falhou: ${(e as Error).message}`);
+    }
   }
 
   private async rodarFuncao(job: Job): Promise<string> {
     const tarefa = this.opts.tarefas[job.tarefa];
     if (!tarefa) throw new Error(`tarefa desconhecida: ${job.tarefa}`);
-    return tarefa(job);
+    const ctrl = new AbortController();
+    // Só mutamos a entrada se ela AINDA existe: `bater()` pode ter largado este
+    // job (lease perdido) enquanto procurávamos a tarefa, e um `set()` cru
+    // ressuscitaria uma entrada já removida — o job voltaria a `ativos` e o
+    // drain esperaria por trabalho que não é mais nosso.
+    const ativo = this.ativos.get(job.id);
+    if (ativo) ativo.ctrl = ctrl;
+    else ctrl.abort(new Error('job não é mais deste worker'));
+    try {
+      return await tarefa({
+        job,
+        fila: this.fila,
+        agora: this.agora,
+        log: this.opts.log ?? (() => {}),
+        sinal: ctrl.signal,
+      });
+    } finally {
+      if (ativo) ativo.ctrl = null;
+    }
   }
 
   private async rodarAgente(job: Job): Promise<string> {
-    const ctx = this.opts.promptDe(job);
+    const ctx = await this.opts.promptDe(job);
     const runner = this.opts.runners[ctx.perfil.motor];
     if (!runner) throw new Error(`motor desconhecido: ${ctx.perfil.motor}`);
     const exec = runner.iniciar(ctx);
-    this.ativos.set(job.id, exec);
+    // Mesma razão de `rodarFuncao`: nunca ressuscitar uma entrada que `bater()`
+    // já removeu.
+    const ativo = this.ativos.get(job.id);
+    if (ativo) ativo.exec = exec;
+    else await exec.cancelar();
     try {
       return await exec.aguardar();
     } finally {
@@ -143,6 +229,18 @@ export class Worker {
    * deliberadamente abandonado — seu `passo()` pode continuar assentando em
    * segundo plano (ack bloqueado pela guarda de posse) — então `drenar()`
    * retornar NÃO garante que toda promise de `passo()` já se resolveu.
+   *
+   * ATENÇÃO — `drenar()` NÃO cobre a CAUDA DE NOTIFICAÇÃO. `passo()` remove o
+   * job de `ativos` no seu `finally`, ANTES de chamar `aoTerminar` (de
+   * propósito: enquanto a entrada existe, um `bater()` concorrente renovaria o
+   * lease de um job já ackado). Logo `ativos.size` chega a 0 — e este método
+   * retorna — com a mensagem do último job ainda em voo.
+   *
+   * Quem precisa da cauda (o desligamento precisa: sem ela o "✅ Job N
+   * concluído" some) tem que esperar TAMBÉM as promises de `laco()` que chamam
+   * `passo()`, porque é `passo()` que só assenta depois do `aoTerminar`. Ver
+   * `desligar()` em src/index.ts. Trocar aquele `Promise.all` por
+   * `workers.map(w => w.drenar())` sozinho quebra isto — há teste guardando.
    */
   async drenar(): Promise<void> {
     this.drenando = true;
@@ -157,10 +255,20 @@ export class Worker {
     // Snapshot antes do loop: `passo()` deleta de `ativos` no seu `finally`
     // enquanto estamos em await, e mutar o Map durante a iteração faria um job
     // que terminou no meio do abort ser pulado (visível com concorrência > 1).
-    for (const [id, exec] of [...this.ativos]) {
+    for (const [id, ativo] of [...this.ativos]) {
       this.abortados.add(id);
-      await exec?.cancelar();
-      this.fila.falhar(id, 'interrompido no encerramento do serviço', this.opts.dono, 30);
+      // Antes do `falhar`: a tarefa `function` precisa receber o sinal para
+      // matar o processo filho que ela gerou, senão o filho sobrevive ao
+      // processo e escreve a saída de um job marcado como `failed`.
+      ativo.ctrl?.abort(new Error('serviço encerrando'));
+      await ativo.exec?.cancelar();
+      const r = this.fila.falhar(id, 'interrompido no encerramento do serviço', this.opts.dono, 30);
+      // §8: esta é uma transição terminal FORA de `passo()` — e o catch de
+      // `passo()` a pula de propósito (o id está em `abortados`). Sem este
+      // await o job morreria em silêncio. `await` e não fire-and-forget porque
+      // `desligar()` chama `abortar()` com await e logo depois `main()` faz
+      // `process.exit(0)`: uma notificação solta seria cortada no meio.
+      if (r === 'failed') await this.notificarTermino(id);
     }
     this.ativos.clear();
   }

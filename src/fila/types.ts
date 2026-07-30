@@ -43,6 +43,32 @@ export interface Job {
   terminado_em: number | null;
 }
 
+/**
+ * O que uma tarefa `kind=function` recebe. Ela precisa do STORE, não só do job:
+ * é por aqui que a regra "procure antes de criar" do §2.5 fica alcançável —
+ * sem isto, uma tarefa não consegue consultar `jaConcluido` e a garantia de
+ * efeito único vira comentário.
+ */
+export interface ContextoTarefa {
+  job: Job;
+  // import inline de propósito — types.ts precisa continuar sem import de
+  // runtime, senão a exceção de fronteira dominio/ -> fila/types.js vira
+  // acoplamento de verdade.
+  fila: import('./store.js').FilaSqlite;
+  agora: Agora;
+  log: (m: string) => void;
+  /**
+   * Dispara quando o worker desiste deste job — encerramento do serviço
+   * (`abortar()`) ou lease perdido (`bater()`). Uma tarefa `function` PRECISA
+   * repassar este sinal para tudo que ela gera (processo filho, `fetch`) e
+   * parar. Ignorá-lo é o bug do processo órfão: o serviço sai, o filho é
+   * reparentado ao init e continua queimando CPU — escrevendo a saída de um job
+   * que o banco já marcou como `failed`, e ainda concorrendo com a próxima
+   * instância que reexecuta o mesmo trabalho.
+   */
+  sinal: AbortSignal;
+}
+
 export interface NovoJob {
   fila: Fila;
   kind: Kind;
