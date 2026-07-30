@@ -12,7 +12,7 @@ seu próprio spec de detalhe depois.
 |---|---|
 | forma | **monólito modular** com motor de workflow e fila durável — 1 repo, 1 processo, 1 DB |
 | nome | pasta/repo/serviço `inemaccbot` (sem o `v` de vídeo — o escopo deixou de ser só vídeo) |
-| fila | `mkiservico` como *conceito*; nomes de env sem produto (`QUEUE_DB`, `BOT_TOKEN`) |
+| fila | **interna ao processo** — não há serviço separado, logo o nome `mkiservico` não é usado em lugar nenhum (o conceito de "serviço de fila" foi absorvido); nomes de env sem produto (`QUEUE_DB`, `BOT_TOKEN`) |
 | Telegram | token novo (bot novo); token antigo revogado na etapa 6 |
 | motor de fila | **portado do `mkivideos`** (já escrito host-agnóstico), corrigido para claim atômico + lease |
 | tipos de job | `kind = agent` (sobe `claude -p`) · `kind = function` (código determinístico) |
@@ -233,7 +233,7 @@ Testável com fila fake e um `flow.json` de brinquedo — sem Telegram, sem Clau
 | `/skills` · `/fluxos` | listam os registries |
 | `/<fluxo> <assunto> [\| alvos=a,b] [\| versao=N]` | cria e dispara |
 | `/status [P#16]` | tabela alvo × fase × estado |
-| `/status log` | histórico |
+| `/status log` (alias `/statuslog`) | histórico — alias mantido pela memória muscular do v1 |
 | `/refazer P#16 [alvo]` | retenta o que falhou |
 | `/cancelar P#16 [alvo]` \| `/cancelar <job>` | cancela |
 | `/furar <job>` | prioridade máxima |
@@ -286,6 +286,11 @@ dos três. **Verificado por teste** (§6), não por revisão humana.
 | `interpret.ts` | 128 | porta + estende | o prompt do `claude -p` passa a conhecer fluxos |
 | `skills.ts` | 32 | porta + estende | vira loader de registry |
 | `jobref.ts` | 40 | simplifica | prefixos `V#`/`T#` existiam por causa de 2 DBs; agora id é global |
+
+Cuidado de cutover no `jobref`: nas etapas 1–5 os dois bots estão vivos e o usuário pode colar no
+bot novo um id vindo do velho. Um id que não exista no DB novo é **rejeitado com mensagem clara**
+("job #N não é deste bot — veja `/fila`"), nunca resolvido silenciosamente contra o DB próprio, que
+agiria no job errado. Ids com prefixo `V#`/`T#` também são rejeitados com a mesma mensagem.
 | `help.ts` | 57 | reescreve | gerado dos registries |
 | `config.ts` | 66 | reescreve | env sem nome de produto |
 | `bot.ts` | 724 | reescreve fino | vira `gateway/` de roteamento |
