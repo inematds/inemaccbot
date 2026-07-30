@@ -71,6 +71,30 @@ describe('falhar', () => {
     expect(d.status).toBe('failed');
     expect(d.terminado_em).toBe(1_000);
   });
+
+  // Wart: quando job não é 'running', falhar retorna 'failed' como placeholder
+  // (não há terceira variante no tipo 'requeued' | 'failed'). Não significa
+  // que as tentativas se esgotaram — só o estado do job é autoritário.
+  it('falha sem efeito se job nunca foi claimed (queued)', () => {
+    const job = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
+    const disponivel_em_antes = fila.obter(job.id)!.disponivel_em;
+    fila.falhar(job.id, 'erro-que-nao-deve-aparecer');
+    const d = fila.obter(job.id)!;
+    expect(d.status).toBe('queued');
+    expect(d.erro).toBeNull();
+    expect(d.tentativas).toBe(0);
+    expect(d.disponivel_em).toBe(disponivel_em_antes);
+  });
+
+  it('falha sem efeito se job foi cancelado', () => {
+    fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'a', input: '' });
+    const job = fila.pegar('io', 60)!;
+    fila.cancelar(job.id);
+    fila.falhar(job.id, 'x');
+    const d = fila.obter(job.id)!;
+    expect(d.status).toBe('canceled');
+    expect(d.erro).toBeNull();
+  });
 });
 
 describe('cancelar e reagendar', () => {
