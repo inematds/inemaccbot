@@ -16,6 +16,7 @@ fluxos, não há dashboard nem entrega de arquivo/anexo, e os serviços antigos 
 
 ## Documentos
 
+- **Comece por aqui se está retomando o projeto:** `docs/HANDOFF.md`
 - Arquitetura: `docs/superpowers/specs/2026-07-30-inemaccbot-design.md`
 - Perfil de execução (motor/modelo/esforço): `docs/perfil-de-execucao.md`
 - Planos: `docs/superpowers/plans/2026-07-30-etapa-0-fila-duravel.md`,
