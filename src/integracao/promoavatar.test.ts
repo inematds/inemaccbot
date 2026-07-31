@@ -16,7 +16,8 @@ import { carregarSkills } from '../dominio/registry.js';
 import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
 import { Fluxos } from '../fluxos/runtime.js';
-import { tituloEstudio } from '../fluxos/entrada-fase.js';
+import { pastaTextos, tituloEstudio } from '../fluxos/entrada-fase.js';
+import { criarPromptDe } from '../fila/skills.js';
 
 const REPO_BOT = new URL('../..', import.meta.url).pathname;
 const REPO_DOMINIO = join(REPO_BOT, '..', 'promoavatar');
@@ -81,6 +82,45 @@ describe('flow.json real do promoavatar', () => {
       expect(dados.canal, nome).toMatch(/^lives\d+$/);
       expect(dados.gatilho, nome).toBeTruthy();
     }
+  });
+});
+
+/**
+ * A OUTRA metade do contrato de caminho: o portão lê `<pasta>/<alvo>.md`, mas
+ * quem GRAVA ali é o agente, obedecendo ao `{{pasta}}` do prompt. Se a variável
+ * não chegar ao template, `renderizarPrompt` derruba o job — e sem este teste
+ * isso só apareceria no primeiro `/promoavatar` real.
+ *
+ * É a armadilha que o HANDOFF diz ter aparecido TRÊS vezes: código alcançável
+ * com os testes ackando job à mão, sem passar pelo caminho que o agente usa.
+ */
+describe('a fase de texto recebe a pasta ditada pelo bot', () => {
+  async function promptDaFase1(): Promise<string> {
+    const id = criar(['mulheres']);
+    const job = fila.listar().find((j) => j.flow_ref === `A#${id}//texto`)!;
+    const ctx = await criarPromptDe({
+      defs: carregarSkills(join(REPO_BOT, 'config', 'skills.json'), REPO_BOT),
+      raizRepo: REPO_BOT, raizArtefatos: join(dir, 'artefatos'), cwd: dir,
+      perfilPadrao: { motor: 'claude', modelo: 'sonnet', esforco: 'low' },
+    })(job);
+    return ctx.prompt;
+  }
+
+  it('renderiza {{pasta}} com o caminho absoluto do repo de domínio', async () => {
+    const prompt = await promptDaFase1();
+    expect(prompt).toContain(join(dir, 'dominio', 'textos', 'A1'));
+  });
+
+  // Placeholder literal chegando ao agente é o modo de falha que o §9 chama de
+  // pior: ele inventaria uma pasta, e o portão reportaria 12 faltas.
+  it('não deixa nenhum placeholder por preencher', async () => {
+    expect(await promptDaFase1()).not.toContain('{{');
+  });
+
+  it('a pasta que o prompt manda gravar é a MESMA que o portão vai ler', async () => {
+    const prompt = await promptDaFase1();
+    const fluxo = estado.obter(1)!;
+    expect(prompt).toContain(pastaTextos(join(dir, 'dominio'), fluxo));
   });
 });
 
