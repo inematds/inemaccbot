@@ -361,7 +361,10 @@ export class Fluxos {
         faltando.push(alvo);
         continue;
       }
-      this.avisar(fluxo, `🎬 ${tituloEstudio(fluxo, alvo)}\n(${alvo})\n\n${fala}`);
+      // Sem `(${alvo})`: o título JÁ carrega o público (`A6-jovens-v1`), e
+      // repetir empurra a fala para baixo numa mensagem que existe para ser
+      // copiada.
+      this.avisar(fluxo, `🎬 ${tituloEstudio(fluxo, alvo)}\n\n${fala}`);
     }
 
     // Falta NUNCA vira lista curta silenciosa: sem esta linha, um público sem
