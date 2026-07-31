@@ -118,12 +118,20 @@ describe('o registry REAL do repo', () => {
   const repo = new URL('../..', import.meta.url).pathname;
   const defs = carregarSkills(join(repo, 'config', 'skills.json'), repo);
 
-  it('é válido e tem as skills das etapas 2 e 3', () => {
+  it('é válido e tem as skills das etapas 2 e 3, mais as da Agnes', () => {
     expect(defs.map((d) => d.command).sort()).toEqual(
-      ['curso', 'demo', 'dublar', 'explicativo', 'reel', 'reelinematds', 'transcrever'],
+      ['curso', 'demo', 'dublar', 'explicativo', 'historia', 'imagem',
+        'reel', 'reelinematds', 'transcrever'],
     );
     expect(acharSkill(defs, 'transcrever')?.fila).toBe('texto');
     expect(acharSkill(defs, 'explicativo')?.fila).toBe('render');
+    // `historia` fica na fila `cpu`, NÃO em `render`: ela roda de 30 min a
+    // horas (rate limit de 5 req/min no vídeo da Agnes) e, em `render`, um
+    // filme seguraria a fila dos reels do promoavatar a tarde inteira.
+    expect(acharSkill(defs, 'historia')?.fila).toBe('cpu');
+    // `imagem` é uma chamada de API de segundos — vai para `io`, que tem 10
+    // simultâneos, e não fica atrás de um filme de duas horas.
+    expect(acharSkill(defs, 'imagem')?.fila).toBe('io');
     expect(acharSkill(defs, 'inexistente')).toBeUndefined();
   });
 

@@ -48,8 +48,11 @@ beforeEach(() => {
   });
   const skills = carregarSkills(join(REPO_BOT, 'config', 'skills.json'), REPO_BOT).map((s) => s.command);
   def = congelar(carregarFlow(REPO_DOMINIO, skills), REPO_DOMINIO);
-  // Destino do público `mulheres` (lives24), como em produção.
-  mkdirSync(join(dir, 'projetos', 'yt-pub-lives24', 'imports', 'videos'), { recursive: true });
+  // Destino do público `mulheres`, como em produção — o canal vem do flow.json
+  // REAL, então este caminho segue o remapeamento de 2026-07-31 (lives24 →
+  // lives4). Se divergir, o `destino` do job de reel vem `undefined` e este
+  // teste é o que avisa.
+  mkdirSync(join(dir, 'projetos', 'yt-pub-lives4', 'imports', 'videos'), { recursive: true });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -368,7 +371,7 @@ describe('do assunto ao reel, com o portão no meio', () => {
     // O gatilho do público entra na instrução — é o que vira headline-choque.
     expect(input.entrada).toContain('autonomia');
     // Canal por NOME no flow.json; caminho resolvido pelo bot (§3.2).
-    expect(input.destino).toContain('yt-pub-lives24');
+    expect(input.destino).toContain('yt-pub-lives4');
     void id;
   });
 

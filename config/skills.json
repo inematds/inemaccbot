@@ -184,5 +184,60 @@
     "descricao": "reel pessoal no estilo INEMATDS a partir de um bruto vertical (skill reel-edita-inematds)",
     "exemplo": "reelinematds: /home/user/bruto.mp4 | lives3",
     "timeout_setup_segundos": 5400
+  },
+  {
+    "command": "historia",
+    "fila": "cpu",
+    "kind": "agent",
+    "prompt": "prompts/historia.md",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 3,
+    "timeout_segundos": 10800,
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
+    "aceita_destino": true,
+    "campos": {
+      "nome": {
+        "tipo": "texto",
+        "padrao": "",
+        "descricao": "nome curto da história (sem espaço); vazio = derivado do título"
+      }
+    },
+    "descricao": "história/conto → filme animado narrado (Agnes AI, US$ 0 · skill videos-agnes)",
+    "exemplo": "historia: Era uma vez três balões que queriam ver o mar... | nome=baloes"
+  },
+  {
+    "command": "imagem",
+    "fila": "io",
+    "kind": "agent",
+    "prompt": "prompts/imagem.md",
+    "artefato_exts": [
+      "png"
+    ],
+    "max_tentativas": 3,
+    "timeout_segundos": 900,
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
+    "aceita_destino": true,
+    "campos": {
+      "ratio": {
+        "tipo": "texto",
+        "padrao": "",
+        "descricao": "proporção, ex.: 16:9 ou 1:1"
+      },
+      "size": {
+        "tipo": "texto",
+        "padrao": "",
+        "descricao": "resolução: 1K, 2K ou 4K"
+      }
+    },
+    "descricao": "gera uma imagem pela API Agnes (US$ 0 · skill imagens-agnes)",
+    "exemplo": "imagem: uma raposa ruiva numa floresta nevada, cinematográfico | ratio=16:9"
   }
 ]

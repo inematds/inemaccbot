@@ -39,7 +39,7 @@ beforeEach(() => {
   });
   const skills = carregarSkills(join(REPO_BOT, 'config', 'skills.json'), REPO_BOT).map((s) => s.command);
   def = congelar(carregarFlow(REPO_DOMINIO, skills), REPO_DOMINIO);
-  mkdirSync(join(dir, 'projetos', 'yt-pub-lives24', 'imports', 'videos'), { recursive: true });
+  mkdirSync(join(dir, 'projetos', 'yt-pub-lives4', 'imports', 'videos'), { recursive: true });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -133,7 +133,7 @@ describe('a cadeia inteira, sem parada', () => {
     ackar('P#1/mulheres/avatar', 'P1-mulheres-v1');
     ackar('P#1/mulheres/baixar', '/tmp/P1-mulheres-v1.mp4');
     const reel = fila.listar().find((j) => j.flow_ref === 'P#1/mulheres/reel')!;
-    expect((JSON.parse(reel.input) as { destino: string }).destino).toContain('yt-pub-lives24');
+    expect((JSON.parse(reel.input) as { destino: string }).destino).toContain('yt-pub-lives4');
     ackar('P#1/mulheres/reel', '/tmp/reel.mp4');
     expect(estado.obter(id)!.status).toBe('feito');
   });
