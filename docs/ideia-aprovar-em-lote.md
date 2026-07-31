@@ -113,3 +113,35 @@ Detalhes a decidir:
   lugar deixa o resto mentindo.
 - **Combina com o lote:** `/pronto` sem argumento, quando só existe um fluxo
   esperando, lê muito melhor que `/aprovar` sem argumento. É o caso mais comum.
+
+---
+
+## Evidência de campo: as quatro tentativas (2026-07-31)
+
+Para liberar o A#8, o dono digitou, nesta ordem:
+
+| digitado | resultado | por quê |
+|---|---|---|
+| `/pronto` | **falhou** | o comando não existe (é a ideia acima, ainda não feita) |
+| `/ok` | **falhou** | existe como apelido, mas sem referência → "diga qual: /aprovar P#16" |
+| `/aprovar a8` | **falhou** | `parseRef` exige o `#`: o regex é `^([A-Za-z]{1,3})#(\d+)$` |
+| `/aprovar a#8` | **funcionou** | minúscula é aceita (`toUpperCase` interno) |
+
+Três coisas que isso mostra, e nenhuma é opinião:
+
+**1. O `/pronto` é o verbo certo — a pessoa o alcançou primeiro, sem ele
+existir.** Isso vale mais que qualquer argumento de design: foi o que veio à
+cabeça de quem acabou de gravar 12 avatares. Sobe a prioridade da renomeação.
+
+**2. O `#` obrigatório não tem razão de ser.** `a8` é inequívoco: letras
+seguidas de dígitos, sem `#`, não colidem com id de job (que é só dígitos) nem
+com nada mais. `parseRef` poderia aceitar `A#8`, `a#8`, `A8` e `a8` — quatro
+formas, um significado. O `#` vira enfeite opcional em vez de armadilha.
+Cuidado: `A8` não pode passar a casar onde se espera um NÚMERO de job.
+
+**3. `/ok` sozinho não adivinha.** Se existe exatamente UM fluxo aguardando,
+`/ok` (ou `/pronto`) sem argumento deveria liberá-lo — é o caso mais comum e o
+que menos exige memória. Já estava na inclinação acima; agora tem caso real.
+
+Custo de não fazer: quatro tentativas para uma ação, às 5 da manhã, com 12
+avatares já gravados esperando.
