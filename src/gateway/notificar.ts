@@ -45,7 +45,22 @@ export function criarNotificador(
   const log = deps.log ?? ((): void => {});
 
   return async (job: Job): Promise<void> => {
-    if (job.chat_id === null) return;
+    // ENTREGAR e AVISAR são coisas diferentes, e estavam coladas: o `return`
+    // por `chat_id === null` pulava as duas. Job de FASE de fluxo tem chat nulo
+    // de propósito (senão um fluxo de 12 públicos mandaria 48 mensagens), então
+    // nenhum reel de fluxo chegava ao `livesN` — o destino de publicação, que o
+    // `flow.json` configura por público e que o job carregava no `input`.
+    // Descoberto com o A#8: 11 reels prontos, zero entregues.
+    if (job.chat_id === null) {
+      if (job.status === 'done' && deps.temArtefato?.(job)) {
+        try {
+          planejarEntrega(job.resultado ?? '', deps.entregaDe?.(job) ?? {});
+        } catch (e) {
+          log(`[job ${job.id}] entrega falhou: ${(e as Error).message}`);
+        }
+      }
+      return;
+    }
 
     if (job.status === 'done') {
       const bruto = job.resultado ?? '';
