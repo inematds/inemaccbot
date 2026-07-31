@@ -91,9 +91,19 @@ function tratarComandoDeFluxo(
   if (verbo === '/status' || verbo === '/refazer' || verbo === '/cancelar') {
     const [ref, alvo] = resto;
     if (!ref) return undefined; // `/status` sozinho é a lista de jobs
-    if (verbo === '/status') return statusFluxo(ref, depsFluxo);
-    if (verbo === '/refazer') return refazerFluxo(ref, alvo, depsFluxo);
-    return cancelarFluxo(ref, alvo, depsFluxo);
+    const resposta = verbo === '/status' ? statusFluxo(ref, depsFluxo)
+      : verbo === '/refazer' ? refazerFluxo(ref, alvo, depsFluxo)
+        : cancelarFluxo(ref, alvo, depsFluxo);
+    if (resposta !== undefined) return resposta;
+    // `undefined` = não era referência de fluxo. Número É legítimo (`/status 13`
+    // é job) e segue adiante. Qualquer outra coisa é referência ERRADA, e dizer
+    // isso importa: `/refazer A6 jovens` (sem o `#`) caía calado no tratador de
+    // job e morria como comando desconhecido — o `/aprovar` já avisava, estes
+    // dois não.
+    if (!/^\d+$/.test(ref)) {
+      return `não entendi "${ref}" — para fluxo use ${verbo} A#6 [público]; para job, ${verbo} 13.`;
+    }
+    return undefined;
   }
 
   const registrado = registrados.find((f) => `/${f.command}` === verbo);

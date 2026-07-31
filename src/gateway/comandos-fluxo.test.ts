@@ -284,3 +284,31 @@ describe('/refazer e /cancelar de fluxo', () => {
     expect(fila.obter(1)!.status).toBe('canceled');
   });
 });
+
+/**
+ * `/refazer A6 jovens` (sem o `#`) caía calado: `refazerFluxo` devolvia
+ * `undefined`, o texto escorregava para o tratador de JOB, que espera número, e
+ * morria como comando desconhecido. O `/aprovar` já avisava; estes dois não.
+ */
+describe('referência de fluxo malformada', () => {
+  it('/refazer sem o # avisa em vez de sumir', async () => {
+    const r = await manda('/refazer A6 jovens');
+    expect(r).toContain('não entendi');
+    expect(r).toContain('A#6');
+  });
+
+  it('/cancelar sem o # também avisa', async () => {
+    expect(await manda('/cancelar B1')).toContain('não entendi');
+  });
+
+  // Número continua sendo JOB — o fallthrough é intencional aí.
+  it('número segue para o tratador de job', async () => {
+    const r = await manda('/status 13');
+    expect(r).not.toContain('não entendi');
+  });
+
+  it('referência certa continua funcionando', async () => {
+    await manda('/brinquedo Assunto');
+    expect(await manda('/status B#1')).toContain('B#1');
+  });
+});
