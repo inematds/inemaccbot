@@ -58,3 +58,28 @@ Começar pelo mais barato e mais seguro:
 Se a conferência do item 3 for feita, ela também resolve um risco que já existe
 hoje: aprovar cedo demais queima a janela de 90 minutos sem ninguém perceber. O
 `HANDOFF` registra isso como característica do portão; virava garantia.
+
+---
+
+## `| aprovar` na criação (2026-07-31)
+
+Pedido: `/promoavatar <assunto> | aprovar` — liberar o portão de antemão, para
+o fluxo seguir sozinho assim que a fase 1 acabar.
+
+**Não resolve o caso que motivou o pedido** (rodar a noite toda), e é importante
+registrar por quê: o `heygen.baixar` tem janela de **90 minutos**
+(`intervalo: 120, timeout: 5400`). Um auto-aprovar dispara os 12 downloads
+assim que os roteiros ficam prontos, e os 12 morrem 90 min depois se ninguém
+gravou os avatares. O portão não é o gargalo — o gargalo é uma pessoa gravando
+12 vídeos no estúdio.
+
+Onde `| aprovar` FARIA sentido:
+
+- quem grava dentro da janela de 90 min, acordado;
+- no **`promoclub`**, onde a fase de avatar é do bot (navegador) e não há humano
+  no meio. Ali o auto-aprovar é o comportamento natural — mas aquela fase nunca
+  rodou por este runner, e o prompt do promoclub ainda é a versão velha.
+
+Mesma decisão de desenho do resto deste documento: liberar sem conferir é
+acelerar de olhos fechados. A versão segura confere no HeyGen antes
+(`porTitulo` aceita lista) e libera só o que já existe.
