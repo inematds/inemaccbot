@@ -17,10 +17,25 @@
 
 export class SemContrato extends Error {}
 
+/**
+ * Enfeite de markdown em volta da linha de contrato.
+ *
+ * Aconteceu no A#5: o agente declarou `` `ERRO: skill não encontrada` `` — com
+ * crase — e o contrato não casou, então o bot disse "terminou sem declarar"
+ * sobre um agente que TINHA declarado. Diagnóstico errado sobre uma falha real
+ * custa mais que a falha.
+ *
+ * Tirar crase, asterisco de negrito e marcador de lista é seguro: nenhum deles
+ * pode aparecer num caminho de arquivo válido nem muda o sentido do motivo.
+ */
+function semEnfeite(linha: string): string {
+  return linha.replace(/^[\s>*_`-]+/, '').replace(/[\s*_`]+$/, '');
+}
+
 function ultimaLinhaCasando(texto: string, re: RegExp): string | null {
   let achado: string | null = null;
   for (const linha of texto.split('\n')) {
-    const m = linha.match(re);
+    const m = semEnfeite(linha).match(re);
     if (m) achado = m[1].trim();
   }
   return achado;

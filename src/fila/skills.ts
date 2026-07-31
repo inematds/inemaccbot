@@ -167,7 +167,12 @@ function contextoDeFase(job: Job, opts: OpcoesSkills, motorForcado?: string): Co
     // `renderizarPrompt` recusa variável que o template não usa, então uma fase
     // só recebe o que o prompt dela realmente pede.
     prompt: renderizarPrompt(e.prompt_texto, filtrarUsadas(e.prompt_texto, vars)),
-    cwd: opts.cwd,
+    // O repo de DOMÍNIO, não `homedir()`: é onde vivem as skills de projeto
+    // (`<repo>/.claude/skills/`) e o git em que o prompt manda commitar. O
+    // valor vem do registry validado no boot (§9 exige `cwd` conferido contra
+    // a lista de repos registrados), e cai para `opts.cwd` se a fase não
+    // declarou repo — fluxo criado por versão anterior a isto.
+    cwd: existsSync(e.fluxo?.repo ?? '') ? e.fluxo.repo : opts.cwd,
     perfil,
     vars: {},
     timeoutMs: TIMEOUT_FASE_SEGUNDOS * 1_000,

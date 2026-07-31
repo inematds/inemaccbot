@@ -32,3 +32,33 @@ describe('extrairArtefato', () => {
     expect(extrairArtefato(saida, ['txt'])).toBe('/tmp/ok.txt');
   });
 });
+
+/**
+ * O A#5 declarou `` `ERRO: skill não encontrada` `` — com crase — e o contrato
+ * não casou. O bot então disse "terminou sem declarar" sobre um agente que
+ * TINHA declarado: diagnóstico errado sobre uma falha real.
+ */
+describe('enfeite de markdown na linha de contrato', () => {
+  it('aceita ERRO: entre crases', () => {
+    expect(() => extrairArtefato('fiz\n`ERRO: skill não encontrada`', ['txt']))
+      .toThrow(/skill não encontrada/);
+  });
+
+  it('aceita ERRO: em negrito', () => {
+    expect(() => extrairArtefato('fiz\n**ERRO: deu ruim**', ['txt'])).toThrow(/deu ruim/);
+  });
+
+  it('aceita RESULT: entre crases', () => {
+    expect(extrairArtefato('ok\n`RESULT: /tmp/a.txt`', ['txt'])).toBe('/tmp/a.txt');
+  });
+
+  it('aceita RESULT: como item de lista', () => {
+    expect(extrairArtefato('ok\n- RESULT: /tmp/a.txt', ['txt'])).toBe('/tmp/a.txt');
+  });
+
+  // Sem contrato nenhum continua sendo falha — o enfeite não pode virar uma
+  // porta para aceitar qualquer coisa.
+  it('texto solto continua sem contrato', () => {
+    expect(() => extrairArtefato('`terminei tudo`', ['txt'])).toThrow(/sem declarar/);
+  });
+});

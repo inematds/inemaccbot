@@ -95,7 +95,7 @@ describe('flow.json real do promoavatar', () => {
  * com os testes ackando job à mão, sem passar pelo caminho que o agente usa.
  */
 describe('a fase de texto recebe a pasta ditada pelo bot', () => {
-  async function promptDaFase1(): Promise<string> {
+  async function ctxDaFase1(): Promise<{ prompt: string; cwd: string }> {
     const id = criar(['mulheres']);
     const job = fila.listar().find((j) => j.flow_ref === `A#${id}//texto`)!;
     const ctx = await criarPromptDe({
@@ -103,8 +103,26 @@ describe('a fase de texto recebe a pasta ditada pelo bot', () => {
       raizRepo: REPO_BOT, raizArtefatos: join(dir, 'artefatos'), cwd: dir,
       perfilPadrao: { motor: 'claude', modelo: 'sonnet', esforco: 'low' },
     })(job);
-    return ctx.prompt;
+    return { prompt: ctx.prompt, cwd: ctx.cwd };
   }
+
+  const promptDaFase1 = async (): Promise<string> => (await ctxDaFase1()).prompt;
+
+  /**
+   * O A#5 falhou DUAS vezes com "skill inemaclub-textos não encontrada": ela é
+   * skill de PROJETO (`<repo>/.claude/skills/`) e o job rodava em `homedir()`.
+   * É também o diretório onde o prompt manda commitar.
+   */
+  it('roda DENTRO do repo de domínio, não no home', async () => {
+    mkdirSync(join(dir, 'dominio'), { recursive: true });
+    expect((await ctxDaFase1()).cwd).toBe(join(dir, 'dominio'));
+  });
+
+  it('cai no cwd padrão quando a fase não declarou repo (fluxo antigo)', async () => {
+    // Sem o diretório no disco, o repo declarado não vale — §9 não aceita
+    // `cwd` que não existe.
+    expect((await ctxDaFase1()).cwd).toBe(dir);
+  });
 
   it('renderiza {{pasta}} com o caminho absoluto do repo de domínio', async () => {
     const prompt = await promptDaFase1();

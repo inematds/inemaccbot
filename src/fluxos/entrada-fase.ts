@@ -104,7 +104,12 @@ export function montarInput(ctx: ContextoEntrada): string {
   // nasceu com 1 alvo e o agente escreveu 12 arquivos, já que o texto dizia
   // "para TODOS os públicos do pipeline". O fluxo sabia; o prompt não.
   const extra: Record<string, string> = {
-    ...(ctx.repoDominio ? { pasta: pastaTextos(ctx.repoDominio, fluxo) } : {}),
+    // `repo` vira o `cwd` do processo do agente (ver `contextoDeFase`). Sem
+    // isto o job roda em `homedir()` e NÃO enxerga as skills de projeto do
+    // domínio: o A#5 falhou duas vezes com "skill inemaclub-textos não
+    // encontrada" porque ela mora em `<repo>/.claude/skills/`. É também o
+    // diretório onde o prompt manda commitar.
+    ...(ctx.repoDominio ? { repo: ctx.repoDominio, pasta: pastaTextos(ctx.repoDominio, fluxo) } : {}),
     ...(ctx.alvosDoFluxo?.length ? { publicos: ctx.alvosDoFluxo.join(', ') } : {}),
   };
   return JSON.stringify({
