@@ -49,3 +49,32 @@ Job avulso (sem fluxo) continua sem a parte do meio.
 `docs/ideia-comando-de-limpeza.md` levanta a mesma família: falta um `/espaco`
 (ou uma linha no `/fila`) dizendo quanto o disco está ocupando. Se o `/fila` for
 mexido, é a hora de resolver os dois.
+
+---
+
+## Tirar o emoji da mensagem do portão (2026-07-31)
+
+A mensagem de cada roteiro começa com `🎬 A8-jovens-v1`. **O emoji atrapalha na
+hora de copiar** — a mensagem existe para ser selecionada e colada no HeyGen, e
+o `🎬` entra na seleção junto.
+
+Mudança: tirar o emoji SÓ da mensagem de roteiro do portão
+(`entregarRoteiros`, em `src/fluxos/runtime.ts`). A linha vira só o título:
+
+```
+A8-jovens-v1
+
+<fala>
+```
+
+**Não** tirar dos avisos que ninguém copia — `⏸️` do portão, `⚠️` da falta,
+`✅`/`❌` do fim. Ali o emoji ajuda a varrer o chat com o olho.
+
+Cuidado ao implementar: os testes de `promoavatar.test.ts` filtram as mensagens
+de roteiro por `texto.startsWith('🎬')`. Trocar a mensagem sem trocar o filtro
+faz os testes passarem por vazio — nenhuma mensagem casa, e um `toHaveLength(0)`
+vira verde pelo motivo errado. Filtrar por outra coisa (o título) antes de
+mexer.
+
+**Não aplicado na hora do pedido:** o A#8 estava rodando com 12 públicos e o
+serviço não podia ser reiniciado sem matar o reel em curso.
