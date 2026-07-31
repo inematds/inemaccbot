@@ -12,6 +12,7 @@ import type { FilaSqlite } from '../fila/store.js';
 import type { Agora, Job } from '../fila/types.js';
 import { EstadoFluxos, type Fase, type Fluxo } from './estado.js';
 import { montarInput, pastaTextos, tituloEstudio } from './entrada-fase.js';
+import type { Publicacao } from './publicar.js';
 
 /** Arquivo ausente é resposta legítima ("este público não saiu"), não erro de
  * execução — o portão a transforma em linha de falta no chat. */
@@ -53,6 +54,12 @@ export interface OpcoesRuntime {
    * disco; o padrão lê o arquivo que a fase de texto gravou.
    */
   lerRoteiro?: (pasta: string, alvo: string) => string | null;
+  /**
+   * Publica o vídeo final e devolve os links. Injetado porque só o boot conhece
+   * a pasta servida e as bases de URL (`config.publicoDir`/`publicoUrls`).
+   * Ausente = nenhum link vai ao chat, e o fluxo diz isso em vez de calar.
+   */
+  publicar?: (origem: string, titulo: string) => Publicacao | undefined;
 }
 
 export interface EventoFluxo {
@@ -108,6 +115,7 @@ export class Fluxos {
   private readonly aoEvento: (evento: EventoFluxo) => void;
   private readonly repoDe: (tipo: string) => string | undefined;
   private readonly lerRoteiro: (pasta: string, alvo: string) => string | null;
+  private readonly publicar?: (origem: string, titulo: string) => Publicacao | undefined;
 
   constructor(opts: OpcoesRuntime) {
     this.estado = opts.estado;
@@ -119,6 +127,7 @@ export class Fluxos {
     this.aoEvento = opts.aoEvento ?? ((): void => {});
     this.repoDe = opts.repoDe ?? ((): undefined => undefined);
     this.lerRoteiro = opts.lerRoteiro ?? lerRoteiroDoDisco;
+    this.publicar = opts.publicar;
   }
 
   private avisar(fluxo: Fluxo, texto: string): void {
@@ -376,6 +385,40 @@ export class Fluxos {
       `${status === 'feito' ? '✅' : '⚠️'} ${fluxo.prefixo}#${fluxo.id} terminou: ${status}`
       + ` — ${feitas} fase(s) feita(s)${falhas ? `, ${falhas} falhada(s)` : ''}.`,
     );
+    this.entregarVideos(fluxo, fases);
+  }
+
+  /**
+   * O vídeo FINAL de cada alvo, com o nome do título e um link por rede.
+   *
+   * Só a ÚLTIMA fase por alvo: o fluxo produz um avatar no meio do caminho, e
+   * mandar os dois links faria a pessoa baixar o errado. O que ela quer é o
+   * reel pronto.
+   *
+   * Link e não anexo porque o reel do A#4 tem 38 MB — passa do teto prático do
+   * Telegram e, mesmo quando cabe, chega comprimido.
+   */
+  private entregarVideos(fluxo: Fluxo, fases: Fase[]): void {
+    if (fluxo.chat_id === null) return;
+    const ultima = fases.filter((f) => f.alvo).reduce<Map<string, Fase>>((m, f) => {
+      const atual = m.get(f.alvo);
+      if (!atual || f.ordem > atual.ordem) m.set(f.alvo, f);
+      return m;
+    }, new Map());
+
+    for (const [alvo, fase] of ultima) {
+      if (fase.estado !== 'feito' || !fase.dados) continue;
+      const titulo = tituloEstudio(fluxo, alvo);
+      const pub = this.publicar?.(fase.dados, titulo);
+      if (!pub) {
+        // O vídeo existe no disco do bot; só não deu para publicar. Dizer o
+        // caminho é melhor que omitir — sem isto o alvo simplesmente sumiria
+        // da mensagem final.
+        this.avisar(fluxo, `🎬 ${titulo} — pronto, mas sem link: ${fase.dados}`);
+        continue;
+      }
+      this.avisar(fluxo, `🎬 ${titulo}\n${pub.links.join('\n')}`);
+    }
   }
 
   /** Aplica `novo` às fases posteriores do MESMO alvo que estejam `pendente`

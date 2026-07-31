@@ -20,6 +20,7 @@ import { carregarSkills as carregarSkillsPadrao, type SkillDef } from './dominio
 import { criarPromptDe, parseEntradaSkill } from './fila/skills.js';
 import { carregarFluxos as carregarFluxosPadrao, type FluxoRegistrado } from './dominio/registry-fluxos.js';
 import { EstadoFluxos } from './fluxos/estado.js';
+import { publicarVideo } from './fluxos/publicar.js';
 import { Fluxos } from './fluxos/runtime.js';
 import { aplicarMigrations } from './db/migrations.js';
 import { CONCORRENCIAS, FILAS } from './fila/filas.js';
@@ -332,6 +333,11 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // Fechamento sobre a variável, não sobre o valor: o registry de fluxos só
       // é carregado logo ABAIXO, e ler aqui daria `undefined` para sempre.
       repoDe: (tipo) => fluxosRegistrados?.find((f) => f.command === tipo)?.repo,
+      // O link do vídeo final. A cópia acontece aqui, e não em `fluxos/`,
+      // porque só o boot sabe qual pasta já é servida por HTTP e por quais
+      // bases de URL ela responde.
+      publicar: (origem, titulo) =>
+        publicarVideo(origem, titulo, cfg.publicoDir, cfg.publicoUrls),
     });
     fluxosRegistrados = (deps.carregarFluxos ?? carregarFluxosPadrao)(
       join(RAIZ_REPO, 'config', 'fluxos.json'),

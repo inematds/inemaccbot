@@ -166,7 +166,7 @@ describe('criarBot', () => {
       chatsPermitidos: [123],
       motorPadrao: 'claude',
       modeloPadrao: 'sonnet',
-      esforcoPadrao: 'low',
+      esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
       projetosDir: '/tmp/projetos-inexistente',
       heygenEnvPath: '/tmp/heygen-inexistente.env',
     };
@@ -187,7 +187,7 @@ describe('criarBot', () => {
       chatsPermitidos: [123], // chat 999 abaixo fica de fora de propósito
       motorPadrao: 'claude',
       modeloPadrao: 'sonnet',
-      esforcoPadrao: 'low',
+      esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
       projetosDir: '/tmp/projetos-inexistente',
       heygenEnvPath: '/tmp/heygen-inexistente.env',
     };

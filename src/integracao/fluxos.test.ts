@@ -516,7 +516,8 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
     ack('B#1//texto');
     ack('B#1/mulheres/render');
     ack('B#1/mulheres/entregar');
-    expect(eventos.at(-1)!.texto).toContain('terminou: feito');
+    // `some` e não `at(-1)`: depois do aviso de fim vem o link do vídeo final.
+    expect(eventos.some((e) => e.texto.includes('terminou: feito'))).toBe(true);
   });
 
   it('fluxo sem chat_id não gera evento nenhum', () => {

@@ -17,6 +17,19 @@ export interface Config {
   motorPadrao: string;
   modeloPadrao: string;
   esforcoPadrao: string;
+  /**
+   * Pasta que um servidor HTTP já serve (o `python -m http.server 8202` sobre
+   * `~/projetos/output/reels`). O vídeo final do fluxo é copiado para cá com o
+   * nome do título, e é isso que vira link no chat.
+   */
+  publicoDir: string;
+  /**
+   * Bases de URL que apontam para `publicoDir`. São DUAS porque a máquina fica
+   * nas duas redes ao mesmo tempo (ver `~/projetos/wifi/dual-network.sh`) e o
+   * celular está em uma delas — mandar os dois links evita depender de DNS,
+   * que não existe para um nome tipo `rede` fora desta máquina.
+   */
+  publicoUrls: string[];
 }
 
 function exigir(env: NodeJS.ProcessEnv, nome: string): string {
@@ -50,5 +63,9 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     motorPadrao: env.MOTOR_PADRAO?.trim() || 'claude',
     modeloPadrao: env.MODELO_PADRAO?.trim() || 'sonnet',
     esforcoPadrao: env.ESFORCO_PADRAO?.trim() || 'low',
+    publicoDir: env.PUBLICO_DIR?.trim()
+      || join(env.HOME ?? homedir(), 'projetos', 'output', 'reels'),
+    publicoUrls: (env.PUBLICO_URLS?.trim() || '')
+      .split(',').map((u) => u.trim().replace(/\/+$/, '')).filter(Boolean),
   };
 }

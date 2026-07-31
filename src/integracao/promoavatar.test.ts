@@ -241,6 +241,64 @@ describe('portão entrega os roteiros no chat', () => {
   });
 });
 
+/**
+ * O que a pessoa recebe quando o fluxo fecha. O reel do A#4 tinha 38 MB e o
+ * artefato do bot chama `9.mp4` — o id do job não diz nada a quem recebe, e o
+ * arquivo não cabe bem em anexo. O que serve é link + nome do título.
+ */
+describe('vídeo final: link e nome do título', () => {
+  function fluxosComPublicacao(): { f: Fluxos; publicados: string[] } {
+    const publicados: string[] = [];
+    const f = new Fluxos({
+      fila, estado, agora: () => t,
+      raizArtefatos: join(dir, 'artefatos'), projetosDir: join(dir, 'projetos'),
+      aoEvento: (e) => eventos.push(e),
+      repoDe: () => join(dir, 'dominio'),
+      publicar: (origem, titulo) => {
+        publicados.push(`${titulo}<-${origem}`);
+        return { arquivo: `/servida/${titulo}.mp4`, links: [`http://rede:8202/${titulo}.mp4`] };
+      },
+    });
+    return { f, publicados };
+  }
+
+  function rodarAteOFim(f: Fluxos, id: number): void {
+    const acabar = (ref: string, res: string): void => {
+      const job = fila.listar().find((j) => j.flow_ref === ref && j.status !== 'done')!;
+      if (job.status !== 'running') fila.pegar(job.fila, 600, 'W');
+      fila.concluir(job.id, res, 'W', (j) => f.avancar(j));
+    };
+    acabar(`A#${id}//texto`, join(dir, 'artefatos', 'fluxos', '1.txt'));
+    f.aprovar(id);
+    acabar(`A#${id}/mulheres/baixar`, join(dir, 'avatar.mp4'));
+    acabar(`A#${id}/mulheres/reel`, join(dir, 'reel-9.mp4'));
+  }
+
+  it('manda o link do vídeo final com o nome do título', () => {
+    const { f, publicados } = fluxosComPublicacao();
+    const id = f.criar({
+      tipo: 'promoavatar', definicao: def, hash: hashDefinicao(def, REPO_DOMINIO),
+      assunto: 'x', alvos: ['mulheres'], chatId: 55,
+    }).id;
+    rodarAteOFim(f, id);
+
+    // Publicou o artefato da ÚLTIMA fase (o reel), não o avatar do meio.
+    expect(publicados).toEqual([`A1-mulheres-v1<-${join(dir, 'reel-9.mp4')}`]);
+
+    const msg = eventos.filter((e) => e.texto.startsWith('🎬')).at(-1)!.texto;
+    expect(msg).toContain('A1-mulheres-v1');
+    expect(msg).toContain('http://rede:8202/A1-mulheres-v1.mp4');
+  });
+
+  it('sem publicação configurada, diz o caminho em vez de omitir o alvo', () => {
+    const id = criar(['mulheres']);
+    rodarAteOFim(fluxos, id);
+    const msg = eventos.filter((e) => e.texto.includes('sem link')).at(-1)!.texto;
+    expect(msg).toContain('A1-mulheres-v1');
+    expect(msg).toContain(join(dir, 'reel-9.mp4'));
+  });
+});
+
 describe('do assunto ao reel, com o portão no meio', () => {
   it('para depois do texto e só segue com /aprovar', () => {
     const id = criar();
@@ -303,7 +361,8 @@ describe('do assunto ao reel, com o portão no meio', () => {
     ackar('A#1/mulheres/baixar', '/tmp/a.mp4');
     ackar('A#1/mulheres/reel', '/tmp/reel.mp4');
     expect(estado.obter(id)!.status).toBe('feito');
-    expect(eventos.at(-1)!.texto).toContain('terminou: feito');
+    // `some` e não `at(-1)`: depois do aviso de fim vem o link do vídeo final.
+    expect(eventos.some((e) => e.texto.includes('terminou: feito'))).toBe(true);
   });
 
   it('aprovar duas vezes não duplica job', () => {

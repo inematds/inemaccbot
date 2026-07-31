@@ -39,7 +39,7 @@ function criarCfg(): Config {
     chatsPermitidos: [42],
     motorPadrao: 'claude',
     modeloPadrao: 'sonnet',
-    esforcoPadrao: 'low',
+    esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
     projetosDir: '/tmp/projetos-inexistente',
     heygenEnvPath: '/tmp/heygen-inexistente.env',
   };
