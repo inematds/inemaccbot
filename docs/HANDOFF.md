@@ -24,7 +24,7 @@ Leia pelo menos §1 (camadas), §2.5 e §2.5.1 (efeito único e posse do lease),
 
 ## 2. Estado em 2026-07-30
 
-- `master` em `master`. **470 testes verdes**, typecheck limpo.
+- `master` empurrado. **497 testes verdes**, typecheck limpo.
 - **Etapas 0 a 5 mergeadas, mais o promoclub/promoavatar.** Etapa 2 = fila `texto` com `kind=agent`, registry de
   skills, gateway completo (skill digitada, texto livre, pergunta, anexo, entrega).
   Plano: `docs/superpowers/plans/2026-07-30-etapa-2-texto.md`.
@@ -119,6 +119,15 @@ conclusão, e `/refazer <id>`.
 **Título do estúdio é contrato:** `A1-mulheres-v1` (prefixo + id do fluxo + alvo +
 versão). É a chave de idempotência do download. Nome diferente = vídeo nunca
 encontrado, e a fase expira em 90 min.
+
+### Documentação é regra, não intenção
+
+Todo domínio do catálogo responde ajuda: escrita (`HELP.md` no fluxo,
+`<prompt>.help.md` na skill) ou DERIVADA do registro. `ajuda-dominio.test.ts`
+varre os dois catálogos e falha com o nome do domínio mudo — é isso que faz virar
+regra. O procedimento de entrada de domínio novo está no README.
+
+No chat: `/ajuda <nome>` · `/<fluxo> help`.
 
 ### ⚠️ Armadilha que já apareceu TRÊS vezes neste projeto
 
@@ -286,15 +295,37 @@ Os três arquivos não commitados do v1 (`src/config.ts`, `src/interpret.ts`,
 
 **Transcrever e dublar agora só existem no bot novo.**
 
-### Pedido em aberto (perguntado, não respondido)
+### ⛔ O que NÃO foi provado (leia antes de dizer que está pronto)
 
-Começar um fluxo numa fase mais adiante — "eu escrevo os textos, o bot continua
-da 2.5". Três caminhos foram apresentados; a recomendação é `| de=<fase>` no
-comando de criação (~30 linhas, marca as fases anteriores como `pulado`, serve
-para qualquer fluxo). O nó: o título do estúdio deriva do id do fluxo, que só
-existe depois de criar — então quem gera os avatares antes precisa renomear no
-estúdio. **Pergunta que trava a escolha:** onde ficam os textos escritos à mão?
-Se for em `textos/<slug>/<publico>.md`, `| de=avatar` sai de graça junto.
+**Nenhum dos dois fluxos rodou de verdade.** Todas as dependências foram
+verificadas em 2026-07-30 e estão de pé (skills do domínio, `HEYGEN_API_KEY`,
+37 pastas `yt-pub-livesN`, stack `:99` `active`+`enabled` com Chromium vivo), o
+código está no ar e a conferência em sombra passa nos dois. Mas os quatro elos
+com o mundo real seguem sem prova:
+
+1. **fase 1** — o prompt é novo; se o agente ignorar o contrato `RESULT:`, falha;
+2. **fase 2 do promoclub** — o `claude --chrome` nunca subiu por este runner;
+3. **fase 2.5** — o cliente do HeyGen nunca bateu na API de verdade;
+4. **fase 3** — a skill `reel` nunca rodou pela fila `render` nova (na etapa 3 só
+   o `explicativo` foi validado de verdade).
+
+**Ordem sugerida, do mais barato ao mais caro:**
+`/promoavatar <assunto> | alvos=mulheres` prova 1, 2.5 e 3 — os três elos que os
+dois fluxos compartilham — gastando uma fase de texto, um avatar e um reel.
+Depois `/promoclub <assunto> | alvos=mulheres` prova o elo do navegador, que é o
+único exclusivo dele. **Não rodar com 12 públicos antes disso:** se a fase 1
+falhar no contrato, o erro custa 12 vezes mais.
+
+### Perguntas em aberto para o dono
+
+- **Onde ficam os textos escritos à mão?** Se for em `textos/<slug>/<publico>.md`
+  (a convenção da skill), então `| de=avatar` — você escreve, o bot gera os
+  avatares — sai de graça. Se for outro lugar, o prompt da fase 2 precisa mudar.
+- **O `promoclub` continua com a fase 2 automática?** Se na prática só o
+  `promoavatar` for usado, o runner de navegador (`src/fila/runner-chrome.ts`) e
+  a fila `navegador` deixam de ter dono — e vale apagar em vez de manter algo
+  frágil que ninguém exercita. O `HELP.md` do promoclub não foi escrito por causa
+  desta dúvida (ele responde com a ajuda derivada, que está correta).
 
 ### Antigo próximo: etapa 3 (`render`)
 
