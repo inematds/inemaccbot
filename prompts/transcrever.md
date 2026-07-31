@@ -25,3 +25,14 @@ Ao terminar com sucesso, sua ÚLTIMA linha deve ser exatamente:
 
 Se falhar, sua ÚLTIMA linha deve ser exatamente:
 `ERRO: <motivo curto, sem caminhos de configuração nem credenciais>`
+
+
+## NÃO MEXA NA MÁQUINA
+
+**PROIBIDO instalar, atualizar, remover ou trocar qualquer coisa do ambiente** —
+pacote (`npm i`, `pip`, `apt`, `snap`), binário, modelo, driver ou variável de
+ambiente persistente. Vale mesmo quando uma ferramenta SUGERE a instalação no
+log dela.
+
+Se faltar alguma ferramenta: **NÃO instale.** Declare
+`ERRO: falta <o quê>` e pare. Quem decide o que entra nesta máquina é o dono.

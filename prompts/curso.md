@@ -51,3 +51,21 @@ Sua ÚLTIMA linha deve ser exatamente:
 
 Se não conseguir nem disparar o render, sua ÚLTIMA linha deve ser:
 `ERRO: <motivo curto, sem caminhos de configuração nem credenciais>`
+
+
+## NÃO MEXA NA MÁQUINA
+
+**PROIBIDO instalar, atualizar, remover ou trocar qualquer coisa do ambiente** —
+pacote (`npm i`, `npx @puppeteer/browsers install`, `pip`, `apt`, `snap`),
+binário, navegador, driver, modelo ou variável de ambiente persistente. Isso vale
+mesmo quando uma ferramenta SUGERE a instalação no próprio log dela.
+
+Já custou caro: um render leu no log a dica "install chrome-headless-shell for
+the optimized path", instalou, e o binário errado (pacote `linux_arm` numa
+máquina aarch64) derrubou o render SEGUINTE — sonda de GPU falhando, captura em
+software, 1 worker, timeout de 300s. Um job que altera a máquina onde roda quebra
+o próximo, e nenhum teste pega isso.
+
+Se faltar alguma ferramenta, ou se o log pedir uma instalação que pareça
+resolver: **NÃO instale.** Declare `ERRO: falta <o quê> — <o que o log sugeriu>`
+e pare. Quem decide o que entra nesta máquina é o dono dela.
