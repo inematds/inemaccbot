@@ -16,6 +16,7 @@ import type { Agora, Job, Perfil } from '../fila/types.js';
 import type { SkillDef } from '../dominio/registry.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
 import type { Fluxos } from '../fluxos/runtime.js';
+import { ajudaDaSkill } from './ajuda-dominio.js';
 import { executar, parseComando } from './comandos.js';
 import {
   ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, refazerFluxo, statusFluxo,
@@ -46,6 +47,9 @@ export interface DepsMensagem {
   redigir?: (texto: string) => string;
 }
 
+/** Raiz do repo — os arquivos de ajuda das skills ficam ao lado dos prompts. */
+const RAIZ_REPO = new URL('../..', import.meta.url).pathname;
+
 /**
  * Devolve a resposta quando o texto é comando de FLUXO; `undefined` quando não
  * é — aí o roteamento normal segue.
@@ -66,6 +70,17 @@ function tratarComandoDeFluxo(
   const argumento = resto.join(' ');
 
   if (verbo === '/fluxos') return textoFluxos(registrados);
+
+  // `/ajuda <nome>` — a ajuda de UM domínio, skill ou fluxo. Sem nome, cai no
+  // `/ajuda` geral (a lista de comandos), tratado adiante.
+  if ((verbo === '/ajuda' || verbo === '/help') && argumento.trim()) {
+    const nome = argumento.trim().toLowerCase().replace(/^\//, '');
+    const fluxo = registrados.find((f) => f.command === nome);
+    if (fluxo) return ajudaDoFluxo(fluxo, depsFluxo.skills);
+    const skill = deps.defs.find((d) => d.command === nome);
+    if (skill) return ajudaDaSkill(skill, RAIZ_REPO);
+    return `não conheço "${nome}". Veja /skills e /fluxos.`;
+  }
 
   if (verbo === '/aprovar' || verbo === '/ok') {
     const [ref] = resto;

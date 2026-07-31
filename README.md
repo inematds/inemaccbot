@@ -2,25 +2,87 @@
 
 Gateway Telegram + fila durável. Sucessor do `inemaccvbot`.
 
-**Estado: etapa 1 concluída.** A etapa 0 entregou o núcleo da fila (SQLite + WAL, lease,
-recuperação, drain); a etapa 1 transformou isso num serviço vivo: `src/config.ts` lê o `.env`,
-`src/gateway/` fala com o Telegram, duas tarefas `function` (`http.get`, `ffmpeg.thumb`) rodam de
-verdade, e `src/index.ts` liga tudo — boot, laço, `SIGTERM` — num processo que sobrevive a queda e
-desliga sem perder trabalho em voo.
+**Estado: etapas 0 a 5 concluídas, mais os fluxos de domínio.** A fila é durável (SQLite em
+WAL, lease com heartbeat, drain, claim atômico), o gateway fala com o Telegram, as skills
+rodam como agente (`transcrever`, `dublar`, `explicativo`, `curso`, `demo`, `reel`,
+`reelinematds`), e o motor de fluxos executa pipelines com estado por fase e alvo,
+definição congelada, portão humano e retomada. O v1 (`inemaccvbot`, `mkivideos`,
+`mkitexto`) está desligado.
 
-O que a etapa 1 **não** entrega, de propósito (fica para a etapa 2+): nenhum job `kind=agent` roda
-em produção (`promptDe` em `src/index.ts` lança erro se algum aparecer), `interpret` com `claude -p`
-não existe, não há registries (`skills.json`/`fluxos.json`/`destinos.json`), não há runtime de
-fluxos, não há dashboard nem entrega de arquivo/anexo, e os serviços antigos (`mkitexto`,
-`mkivideos`) continuam de pé — o cutover das filas `texto` e `render` é etapa 2 e 3.
+O que **não** existe de propósito: barreira entre fases, preempção de job, teto global de
+agentes, multiusuário. Ver §11 do spec — cada item com o gatilho para reconsiderar.
+
+## Como entra um domínio novo
+
+Este é o teste do desenho: **domínio novo não deve exigir linha de código no bot.**
+
+### Uma SKILL (uma etapa, sem estado)
+
+Vale quando "rodar de novo do zero" é aceitável. Não guarda progresso, não tem `/status`
+próprio.
+
+1. Escreva o prompt em `prompts/<nome>.md`. Use `{{input}}` (o que a pessoa pediu) e
+   `{{saida}}` (onde gravar). A última linha do agente tem que ser `RESULT: <caminho>`.
+2. Acrescente a entrada em `config/skills.json`:
+
+   ```jsonc
+   { "command": "minhaskill", "fila": "texto", "kind": "agent",
+     "prompt": "prompts/minhaskill.md", "artefato_exts": ["txt"],
+     "max_tentativas": 2, "timeout_segundos": 3600,
+     "aceita_destino": false,
+     "campos": { "vertical": { "tipo": "bandeira", "padrao": "não" } },
+     "descricao": "o que ela faz", "exemplo": "minhaskill: assunto" }
+   ```
+
+3. **Ajuda (opcional):** `prompts/minhaskill.help.md`. Sem ele, o bot deriva a ajuda do
+   registro — ver "Regra da documentação" abaixo.
+4. `npm test`. O registry é validado no boot: entrada inválida **derruba o serviço**, e é
+   assim de propósito — subir com um catálogo que não entendemos é pior que não subir.
+
+Campo declarado tem que ser usado no prompt, e variável do prompt tem que ser declarada —
+há teste para os dois lados.
+
+### Um FLUXO (várias fases, com estado)
+
+Vale quando há trabalho parcial que seria absurdo jogar fora. Ganha `/status`, `/refazer`
+seletivo, retomada e definição congelada.
+
+1. Crie o repo de domínio (`~/projetos/<nome>`) com `flow.json` e `prompts/`.
+2. `flow.json`: `nome`, `prefixo` (o `P` de `P#16` — único por fluxo), `versao_def`,
+   `alvos` (cada um com o que o domínio precisar: `canal`, `gatilho`…) e `fases`.
+   Cada fase: `id`, `escopo` (`fluxo` = um job para todos, `alvo` = um por alvo), `fila`,
+   `kind`, `tarefa`, `max_tentativas`, e opcionalmente `prompt`, `espera`
+   (poll: `{intervalo, timeout}`), `entrega` e `pausa_apos` (portão humano → `/aprovar`).
+3. `tarefa` só pode ser: `fluxo-agente`, `fluxo-navegador`, `heygen.baixar`, ou o
+   `command` de uma skill do catálogo. Nome fora disso é recusado na carga.
+4. Acrescente em `config/fluxos.json`: `{ "command", "repo", "descricao", "exemplo" }`.
+5. **Ajuda (opcional):** `HELP.md` na raiz do repo de domínio.
+6. Confira em SOMBRA antes de gastar qualquer coisa:
+   `/<fluxo> <assunto> | sombra` imprime fase × alvo × fila × tarefa e **não enfileira nada**.
+
+O domínio diz para QUEM (canal por nome, `lives21`); o bot sabe ONDE (o caminho no disco).
+Nunca ponha caminho no `flow.json`.
+
+### Regra da documentação (verificada por teste)
+
+**Todo domínio que entra no catálogo responde ajuda.** Não por disciplina — por construção:
+
+1. quem entende do assunto escreve (`HELP.md` no fluxo, `<prompt>.help.md` na skill);
+2. se não escreveu, a ajuda é **derivada do registro** — fases, alvos, campos, prazos,
+   prefixo. O derivado não pode divergir, porque sai da mesma fonte que o bot usa para
+   executar;
+3. `src/gateway/ajuda-dominio.test.ts` varre os dois catálogos e **falha** se algum domínio
+   não responder ajuda utilizável.
+
+No chat: `/ajuda <nome>` para qualquer um, ou `/<fluxo> help`.
 
 ## Documentos
 
 - **Comece por aqui se está retomando o projeto:** `docs/HANDOFF.md`
 - Arquitetura: `docs/superpowers/specs/2026-07-30-inemaccbot-design.md`
 - Perfil de execução (motor/modelo/esforço): `docs/perfil-de-execucao.md`
-- Planos: `docs/superpowers/plans/2026-07-30-etapa-0-fila-duravel.md`,
-  `docs/superpowers/plans/2026-07-30-etapa-1-gateway-io-cpu.md`
+- Planos: `docs/superpowers/plans/` (uma etapa por arquivo, 0 a 5 + promoclub)
+- Testes herdados do v1 e onde cada um foi parar: `docs/herdado-do-v1.md`
 - Crítica externa ao design (respondida na §13 do spec): `docs/analise_critica_inemaccbot_design.md`
 
 ## Estrutura do código
