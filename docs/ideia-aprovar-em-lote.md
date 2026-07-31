@@ -83,3 +83,33 @@ Onde `| aprovar` FARIA sentido:
 Mesma decisão de desenho do resto deste documento: liberar sem conferir é
 acelerar de olhos fechados. A versão segura confere no HeyGen antes
 (`porTitulo` aceita lista) e libera só o que já existe.
+
+---
+
+## Renomear `/aprovar` → `/pronto` (2026-07-31)
+
+Pedido do dono. O verbo está errado para o que a pessoa faz.
+
+`/aprovar` sugere **julgar** — dar um parecer sobre um trabalho que o bot fez. O
+que acontece de verdade no portão do `promoavatar` é o contrário: **a pessoa é
+quem trabalhou** (gravou os avatares no HeyGen) e está avisando o bot de que
+pode seguir. O verbo natural é "pronto", "terminei", "pode ir".
+
+Isso também explica a confusão desta madrugada. Depois de um `/refazer`, a
+pessoa mandou `/aprovar` achando que precisava liberar algo. Com `/pronto` a
+pergunta que a pessoa se faz muda: "eu já fiz minha parte?" — e a resposta é
+óbvia, porque ela sabe se gravou ou não.
+
+Detalhes a decidir:
+
+- **Manter `/aprovar` como sinônimo?** O `/ok` já existe como apelido. Três
+  nomes para a mesma coisa é ruído; dois já existem hoje. Talvez `/pronto` vire
+  o principal, `/ok` continue, e `/aprovar` saia da ajuda mas siga funcionando
+  por um tempo — quebrar o comando que a pessoa decorou é pior que ter um
+  sinônimo escondido.
+- **Onde o nome aparece:** a mensagem do portão (`Quando estiver pronto:
+  /aprovar A#N`), a ajuda derivada do `flow.json` (`Liberar o portão:`), o
+  `HELP.md` de domínio quando existir, e o texto do `/ajuda`. Trocar em um só
+  lugar deixa o resto mentindo.
+- **Combina com o lote:** `/pronto` sem argumento, quando só existe um fluxo
+  esperando, lê muito melhor que `/aprovar` sem argumento. É o caso mais comum.
