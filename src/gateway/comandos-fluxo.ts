@@ -310,7 +310,11 @@ export function aprovarFluxo(ref: string, deps: DepsFluxo): string | undefined {
   const visao = deps.fluxos.status(r.id);
   if (!visao || visao.fluxo.prefixo !== r.prefixo) return `${ref} não existe neste bot.`;
   const { liberados, fase } = deps.fluxos.aprovar(r.id);
-  if (!liberados) return `${ref} não está esperando aprovação agora.`;
+  // "Não está esperando" é verdade e não ajuda: quem digitou quer saber se
+  // precisa fazer algo. Aconteceu de verdade — depois de um `/refazer`, o
+  // fluxo já estava trabalhando e a pessoa insistiu no `/aprovar` achando que
+  // faltava liberar, até criar um fluxo novo por engano.
+  if (!liberados) return `${ref} não está esperando aprovação.\n${oQueEstaFazendo(visao)}`;
   return `${ref}: ${fase} aprovada — ${liberados} job(s) enfileirado(s).`;
 }
 
@@ -319,9 +323,16 @@ export function refazerFluxo(ref: string, alvo: string | undefined, deps: DepsFl
   if (!r) return undefined;
   const visao = deps.fluxos.status(r.id);
   if (!visao || visao.fluxo.prefixo !== r.prefixo) return `${ref} não existe neste bot.`;
-  const { refeitos } = deps.fluxos.refazer(r.id, alvo);
+  const { refeitos, itens } = deps.fluxos.refazer(r.id, alvo);
   if (!refeitos) return `nada a refazer em ${ref}${alvo ? ` (alvo ${alvo})` : ''} — nenhuma fase falhou.`;
-  return `${ref}: ${refeitos} fase(s) reenfileirada(s).`;
+  // Dizer O QUE voltou e que NÃO precisa aprovar. Antes era só a contagem, e o
+  // silêncio dos minutos seguintes fazia parecer que o comando não pegou — a
+  // pessoa mandava `/aprovar`, não acontecia nada, e ela criava um fluxo novo.
+  return [
+    `${ref}: ${refeitos} fase(s) de volta na fila.`,
+    ...itens.map((i) => `  ▶️ ${i.fase}${i.alvo ? ` (${i.alvo})` : ''} — job ${i.jobId}`),
+    'Não precisa aprovar: o portão já foi passado. Eu aviso quando terminar.',
+  ].join('\n');
 }
 
 export function cancelarFluxo(ref: string, alvo: string | undefined, deps: DepsFluxo): string | undefined {
@@ -336,4 +347,22 @@ export function cancelarFluxo(ref: string, alvo: string | undefined, deps: DepsF
     // contrato de cancelamento, não gentileza.
     'O que já tiver sido criado fora (render no estúdio, arquivo entregue) continua lá.',
   ].join('\n');
+}
+
+/**
+ * Uma linha dizendo o que o fluxo está fazendo AGORA. Serve às respostas que
+ * antes só negavam ("não está esperando aprovação"): quem digitou precisa saber
+ * se falta uma ação dele ou se é só esperar.
+ */
+function oQueEstaFazendo(visao: { fluxo: { status: string }; fases: Fase[] }): string {
+  const rodando = visao.fases.filter((f) => f.estado === 'rodando');
+  if (rodando.length) {
+    const quais = rodando.map((f) => `${f.fase}${f.alvo ? ` (${f.alvo})` : ''}`).join(', ');
+    return `Está trabalhando: ${quais}. Só esperar — eu aviso quando terminar.`;
+  }
+  const pendentes = visao.fases.filter((f) => f.estado === 'pendente').length;
+  if (pendentes) return `${pendentes} fase(s) na fila esperando a vez. Só esperar.`;
+  if (visao.fluxo.status === 'feito') return 'Já terminou.';
+  if (visao.fluxo.status === 'falhou') return 'Terminou com falha — veja /status para retentar.';
+  return `Status: ${visao.fluxo.status}.`;
 }

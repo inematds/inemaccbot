@@ -312,3 +312,51 @@ describe('referência de fluxo malformada', () => {
     expect(await manda('/status B#1')).toContain('B#1');
   });
 });
+
+/**
+ * O caso real: depois de um `/refazer`, o fluxo já estava trabalhando, mas a
+ * resposta era só a contagem e vinha silêncio por minutos. A pessoa insistiu no
+ * `/aprovar`, ouviu "não está esperando aprovação" — verdade que não ajuda — e
+ * acabou criando um fluxo NOVO por engano, gastando um avatar gravado à mão.
+ */
+describe('o bot diz o que está fazendo', () => {
+  async function comFaseFalhada(): Promise<void> {
+    await manda('/brinquedo Assunto | alvos=um');
+    const job = fila.listar()[0]!;
+    fila.pegar(job.fila, 600, 'W');
+    fila.falhar(job.id, 'deu ruim', 'W', 1, (j) => fluxos.avancar(j));
+  }
+
+  it('/refazer diz QUAL fase voltou e o job', async () => {
+    await comFaseFalhada();
+    const r = await manda('/refazer B#1');
+    expect(r).toContain('texto');
+    expect(r).toMatch(/job \d+/);
+  });
+
+  it('/refazer avisa que NÃO precisa aprovar', async () => {
+    await comFaseFalhada();
+    expect(await manda('/refazer B#1')).toContain('Não precisa aprovar');
+  });
+
+  it('/aprovar num fluxo que está trabalhando diz o que ele faz, não só "não"', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    const r = await manda('/aprovar B#1');
+    expect(r).toContain('não está esperando aprovação');
+    expect(r).toContain('Está trabalhando');
+    expect(r).toContain('texto');
+  });
+
+  it('/aprovar num fluxo já terminado diz que terminou', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    for (const j of fila.listar()) {
+      fila.pegar(j.fila, 600, 'W');
+      fila.concluir(j.id, 'ok', 'W', (x) => fluxos.avancar(x));
+    }
+    for (const j of fila.listar().filter((x) => x.status === 'queued')) {
+      fila.pegar(j.fila, 600, 'W');
+      fila.concluir(j.id, 'ok', 'W', (x) => fluxos.avancar(x));
+    }
+    expect(await manda('/aprovar B#1')).toMatch(/Já terminou|Está trabalhando|na fila/);
+  });
+});

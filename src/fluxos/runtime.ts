@@ -518,11 +518,16 @@ export class Fluxos {
    * quando pedido. Nunca mexe no que está pendente ou rodando — isso poria dois
    * jobs no mesmo trabalho.
    */
-  refazer(fluxoId: number, alvo?: string): { refeitos: number; jobs: number[] } {
+  refazer(fluxoId: number, alvo?: string): {
+    refeitos: number; jobs: number[]; itens: { fase: string; alvo: string; jobId: number }[];
+  } {
     const fluxo = this.estado.obter(fluxoId);
     if (!fluxo) throw new Error('fluxo não existe');
     const def = this.estado.definicaoDe(fluxo);
     const jobs: number[] = [];
+    // Quais fases voltaram, não só quantas: o chat precisa dizer O QUE está
+    // rodando agora, senão quem mandou o comando não sabe se pegou.
+    const itens: { fase: string; alvo: string; jobId: number }[] = [];
 
     for (const fase of this.estado.fases(fluxoId)) {
       if (fase.estado !== 'falhou') continue;
@@ -534,10 +539,12 @@ export class Fluxos {
       });
       // As fases que tinham ficado inalcançáveis voltam a esperar a vez.
       this.marcarPosteriores(fluxo, def, fase, 'pendente');
-      jobs.push(this.enfileirarFase(fluxo, faseDef, fase.alvo).id);
+      const job = this.enfileirarFase(fluxo, faseDef, fase.alvo);
+      jobs.push(job.id);
+      itens.push({ fase: fase.fase, alvo: fase.alvo, jobId: job.id });
     }
     if (jobs.length) this.estado.marcarStatus(fluxoId, 'rodando');
-    return { refeitos: jobs.length, jobs };
+    return { refeitos: jobs.length, jobs, itens };
   }
 
   /**
