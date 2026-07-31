@@ -18,7 +18,8 @@ import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
 import type { Fluxos } from '../fluxos/runtime.js';
 import { executar, parseComando } from './comandos.js';
 import {
-  aprovarFluxo, cancelarFluxo, criarFluxo, refazerFluxo, statusFluxo, textoFluxos,
+  ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, refazerFluxo, statusFluxo,
+  textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
 import { interpretar } from './interpret.js';
@@ -81,7 +82,14 @@ function tratarComandoDeFluxo(
   }
 
   const registrado = registrados.find((f) => `/${f.command}` === verbo);
-  if (registrado) return criarFluxo(registrado, argumento, depsFluxo);
+  if (registrado) {
+    // `/<fluxo> help` (ou `ajuda`) — antes de tratar como assunto, senão alguém
+    // que quer a ajuda dispara um fluxo com o assunto "help".
+    if (/^(help|ajuda|\?)$/i.test(argumento.trim())) {
+      return ajudaDoFluxo(registrado, depsFluxo.skills);
+    }
+    return criarFluxo(registrado, argumento, depsFluxo);
+  }
   return undefined;
 }
 

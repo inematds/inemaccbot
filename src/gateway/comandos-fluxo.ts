@@ -5,7 +5,10 @@
 // `/status`, `/refazer` e `/cancelar` são os MESMOS verbos dos jobs — o que
 // muda é o argumento: `12` é job, `P#16` é fluxo. Ter dois verbos para a mesma
 // pergunta seria atrito puro.
-import { carregarFlow, congelar, hashDefinicao, parseRef } from '../dominio/flow.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { carregarFlow, congelar, hashDefinicao, parseRef, type FlowDef } from '../dominio/flow.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
 import type { Fase } from '../fluxos/estado.js';
 import type { Fluxos } from '../fluxos/runtime.js';
@@ -25,6 +28,76 @@ const ICONE: Record<Fase['estado'], string> = {
   falhou: '❌', pulado: '⏭️',
 };
 
+/**
+ * `/<fluxo> help` — a ajuda COMPLETA, que mora no repo de domínio.
+ *
+ * Por que lá e não aqui: o domínio já é dono do `flow.json`, dos públicos e dos
+ * prompts. A ajuda é conhecimento do mesmo tipo — mantê-la no bot criaria dois
+ * lugares para atualizar quando um público mudasse, e um deles envelheceria
+ * calado.
+ *
+ * Lida do disco A CADA pedido, ao contrário do prompt (que é congelado por
+ * fluxo): ajuda não afeta execução nenhuma, e ajuda desatualizada é pior que
+ * ajuda que muda.
+ *
+ * Sem `HELP.md` no domínio, o fallback NÃO é um texto fixo: é a ajuda derivada
+ * do próprio `flow.json`. Assim o mínimo nunca mente, mesmo que ninguém tenha
+ * escrito nada.
+ */
+export function ajudaDoFluxo(
+  registrado: FluxoRegistrado, skills: string[], ler = lerArquivo,
+): string {
+  const doDominio = ler(join(registrado.repo, 'HELP.md'));
+  if (doDominio?.trim()) return doDominio.trim();
+
+  let def: FlowDef;
+  try {
+    def = carregarFlow(registrado.repo, skills);
+  } catch (e) {
+    return `/${registrado.command} — ${registrado.descricao}\n(não consegui ler a definição: ${(e as Error).message})`;
+  }
+
+  const alvos = Object.keys(def.alvos);
+  const linhas = [
+    `/${registrado.command} — ${registrado.descricao}`,
+    '',
+    `Uso: ${registrado.exemplo}`,
+    '',
+    'Fases:',
+    ...def.fases.map((f, i) => {
+      const quem = f.tarefa === 'fluxo-navegador' ? 'bot, navegador'
+        : f.tarefa === 'heygen.baixar' ? 'bot, automático'
+          : f.kind === 'agent' && !f.prompt_texto && !f.prompt ? `skill ${f.tarefa}` : 'bot';
+      const escopo = f.escopo === 'fluxo' ? 'um job para todos' : 'um job por público';
+      const pausa = f.pausa_apos ? ' → PARA e espera /aprovar' : '';
+      return `  ${i + 1}. ${f.id} (${quem} · ${escopo} · fila ${f.fila})${pausa}`;
+    }),
+    '',
+    `Públicos (${alvos.length}): ${alvos.join(', ')}`,
+    '',
+    'Campos:',
+    '  | alvos=a,b   só esses públicos',
+    '  | de=<fase>   começa nessa fase (as anteriores ficam puladas)',
+    '  | versao=N    versão do assunto',
+    '  | sombra      mostra o plano sem enfileirar nada',
+    '',
+    `Acompanhar: /status ${def.prefixo}#N · /refazer ${def.prefixo}#N [público] · /cancelar ${def.prefixo}#N`,
+  ];
+  if (def.fases.some((f) => f.pausa_apos)) {
+    linhas.push(`Liberar o portão: /aprovar ${def.prefixo}#N`);
+  }
+  return linhas.join('\n');
+}
+
+/** Leitura tolerante: ajuda ausente é o caso NORMAL, não erro. */
+function lerArquivo(caminho: string): string | undefined {
+  try {
+    return readFileSync(caminho, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
 export function textoFluxos(registrados: FluxoRegistrado[]): string {
   if (!registrados.length) {
     return 'nenhum fluxo registrado ainda. O motor está pronto; falta o repo de domínio.';
@@ -32,6 +105,8 @@ export function textoFluxos(registrados: FluxoRegistrado[]): string {
   return [
     'Fluxos disponíveis:',
     ...registrados.map((f) => `\n• /${f.command} — ${f.descricao}\n  ex.: ${f.exemplo}`),
+    '',
+    'Ajuda completa de um fluxo: /<fluxo> help',
   ].join('\n');
 }
 

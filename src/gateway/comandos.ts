@@ -136,6 +136,8 @@ const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
   { uso: 'thumb <caminho>', descricao: 'enfileira uma thumbnail' },
   { uso: '/refazer <id>', descricao: 'enfileira de novo um job já terminado' },
   { uso: '/skills', descricao: 'lista as skills do catálogo' },
+  { uso: '/fluxos', descricao: 'lista os fluxos (pipelines com estado e retomada)' },
+  { uso: '/aprovar <ref>', descricao: 'libera um fluxo parado esperando você' },
   { uso: '/ajuda (ou /help)', descricao: 'esta lista' },
 ];
 

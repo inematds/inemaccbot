@@ -115,6 +115,42 @@ describe('criar fluxo', () => {
   });
 });
 
+describe('/<fluxo> help — a ajuda mora no DOMÍNIO', () => {
+  it('usa o HELP.md do repo de domínio quando ele existe', async () => {
+    writeFileSync(join(repo, 'HELP.md'), 'ajuda escrita por quem entende do assunto');
+    expect(await manda('/brinquedo help')).toContain('quem entende do assunto');
+  });
+
+  it('help, ajuda e ? são a mesma coisa', async () => {
+    writeFileSync(join(repo, 'HELP.md'), 'MINHA AJUDA');
+    for (const forma of ['help', 'ajuda', '?']) {
+      expect(await manda(`/brinquedo ${forma}`)).toContain('MINHA AJUDA');
+    }
+  });
+
+  // Sem isto, quem digita `/brinquedo help` esperando ajuda DISPARA um fluxo
+  // com o assunto "help" — e gasta agente por engano.
+  it('não cria fluxo nenhum ao pedir ajuda', async () => {
+    await manda('/brinquedo help');
+    expect(fila.listar()).toHaveLength(0);
+  });
+
+  // O fallback não é texto fixo: é derivado do flow.json, então o mínimo nunca
+  // mente mesmo que ninguém escreva ajuda nenhuma.
+  it('sem HELP.md, gera a ajuda a partir do próprio flow.json', async () => {
+    const r = await manda('/brinquedo help');
+    expect(r).toContain('texto');
+    expect(r).toContain('render');
+    expect(r).toContain('um, dois');       // os alvos reais
+    expect(r).toContain('/status B#N');    // o prefixo real
+    expect(r).toContain('| sombra');
+  });
+
+  it('a ajuda gerada anuncia o portão só quando o fluxo tem portão', async () => {
+    expect(await manda('/brinquedo help')).not.toContain('/aprovar');
+  });
+});
+
 describe('| de=<fase>', () => {
   it('começa no meio e LISTA os títulos esperados no estúdio', async () => {
     const r = await manda('/brinquedo Assunto | alvos=um | de=render');
