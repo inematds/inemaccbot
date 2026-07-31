@@ -107,6 +107,8 @@ export async function esperarArtefato(alvo: string, opts: OpcoesEspera): Promise
   const prazo = agora() + opts.timeoutMs;
   let ultimoTamanho = -1;
   let paradoDesde = 0;
+  /** Ajustado quando o `.err` aparece; até lá, `null` = sem veredito. */
+  let prazoDeCarencia: number | null = null;
 
   while (agora() < prazo) {
     if (opts.sinal.aborted) {
@@ -116,12 +118,21 @@ export async function esperarArtefato(alvo: string, opts: OpcoesEspera): Promise
       throw new RenderFalhou('espera abortada (serviço encerrando ou lease perdido) — o render destacado continua');
     }
 
-    if (existsSync(marcadorErro)) {
-      let trecho = '';
-      try { trecho = readFileSync(arquivoLog, 'utf8').slice(-2_000); } catch { /* sem log */ }
-      throw new RenderFalhou(`o passo destacado morreu (ver ${arquivoLog})${trecho ? `\n${trecho}` : ''}`);
+    // O marcador de erro NÃO é veredito final enquanto o artefato pode aparecer.
+    //
+    // Aconteceu em produção (A#8/criadores): o `.err` foi criado 02:23, o MP4
+    // terminou 02:24 — o log dizia "Render complete", o arquivo tinha 50 MB, e
+    // o job foi declarado morto assim mesmo. Um passo interno devolveu código
+    // não-zero e o `|| touch .err` disparou, mas o render seguiu e completou.
+    //
+    // Então: visto o marcador, dá-se uma CARÊNCIA curta para o artefato
+    // aparecer e estabilizar. Se aparecer, ele é a verdade — arquivo pronto e
+    // validado vale mais que um marcador de saída. Se não aparecer, falha
+    // rápido, que é o motivo de o marcador existir.
+    if (existsSync(marcadorErro) && prazoDeCarencia === null) {
+      prazoDeCarencia = agora() + estavelMs * 2 + intervaloMs;
+      log(`marcador de erro visto em ${alvo} — dando carência até o artefato estabilizar`);
     }
-
     let tamanho = -1;
     try { tamanho = statSync(alvo).size; } catch { tamanho = -1; }
     if (tamanho > 0) {
@@ -134,8 +145,17 @@ export async function esperarArtefato(alvo: string, opts: OpcoesEspera): Promise
       } else {
         ultimoTamanho = tamanho;
         paradoDesde = 0;
+        // Cresceu = está vivo. Um marcador visto antes não pode matar um render
+        // que ainda está escrevendo.
+        if (prazoDeCarencia !== null) prazoDeCarencia = agora() + estavelMs * 2 + intervaloMs;
       }
     }
+    if (prazoDeCarencia !== null && agora() >= prazoDeCarencia) {
+      let trecho = '';
+      try { trecho = readFileSync(arquivoLog, 'utf8').slice(-2_000); } catch { /* sem log */ }
+      throw new RenderFalhou(`o passo destacado morreu (ver ${arquivoLog})${trecho ? `\n${trecho}` : ''}`);
+    }
+
     await dormir(intervaloMs);
   }
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -79,13 +79,20 @@ describe('esperarArtefato', () => {
   // de quem vigia. Se a vigília limpasse, ela apagaria a prova do passo que
   // morreu depressa — o `.err` chega ANTES de a vigília começar — e o serviço
   // esperaria as 2h inteiras. Achado por teste vermelho, não por revisão.
-  it('um .err presente na entrada é respeitado, não apagado', async () => {
+  // Este teste afirmava que `.err` + artefato pronto = FALHA. O A#8/criadores
+  // mostrou que está errado: o render tinha completado, o MP4 tinha 50 MB, e o
+  // job morreu. O próprio `trabalhoEmCurso` já discordava
+  // (`if (existsSync(alvo)) return true; // pronto: adotar é o certo`).
+  // A intenção original — `esperarArtefato` NÃO apaga marcador, quem limpa é
+  // quem dispara — continua provada abaixo.
+  it('com .err e artefato pronto, o ARTEFATO vence — e o marcador não é apagado', async () => {
     const { agoraMs, dormir } = relogio();
     writeFileSync(`${alvo}.err`, '');
     writeFileSync(alvo, 'pronto');
     await expect(esperarArtefato(alvo, {
       timeoutMs: 600_000, sinal: semSinal, agoraMs, dormir, estavelMs: 0,
-    })).rejects.toThrow(/passo destacado morreu/);
+    })).resolves.toBe(alvo);
+    expect(existsSync(`${alvo}.err`)).toBe(true);
   });
 
   it('timeout vira falha com o alvo no texto', async () => {
@@ -138,5 +145,43 @@ describe('trabalhoEmCurso', () => {
     writeFileSync(`${alvo}.log`, '');
     writeFileSync(`${alvo}.err`, '');
     expect(trabalhoEmCurso(alvo)).toBe(false);
+  });
+});
+
+/**
+ * A#8/criadores em produção: o `.err` foi criado 02:23, o MP4 terminou 02:24 —
+ * "Render complete" no log, 50 MB no disco — e o job foi declarado morto. A
+ * checagem do marcador vinha ANTES da do artefato.
+ */
+describe('marcador de erro com artefato a caminho', () => {
+  it('o artefato que aparece DEPOIS do .err ainda vale', async () => {
+    const alvo = join(dir, 'v.mp4');
+    writeFileSync(`${alvo}.err`, '');
+    writeFileSync(`${alvo}.log`, 'Render complete');
+    let t = 0;
+    const dormir = async (ms: number): Promise<void> => {
+      t += ms;
+      // O render termina logo depois do marcador, como no caso real.
+      if (t === 1_000) writeFileSync(alvo, 'x'.repeat(500));
+    };
+    const r = await esperarArtefato(alvo, {
+      timeoutMs: 600_000, estavelMs: 1_000, intervaloMs: 1_000,
+      sinal: new AbortController().signal, agoraMs: () => t, dormir,
+    });
+    expect(r).toBe(alvo);
+  });
+
+  it('sem artefato nenhum, o .err ainda falha rápido', async () => {
+    const alvo = join(dir, 'w.mp4');
+    writeFileSync(`${alvo}.err`, '');
+    writeFileSync(`${alvo}.log`, 'estourou a GPU');
+    let t = 0;
+    const dormir = async (ms: number): Promise<void> => { t += ms; };
+    await expect(esperarArtefato(alvo, {
+      timeoutMs: 600_000, estavelMs: 1_000, intervaloMs: 1_000,
+      sinal: new AbortController().signal, agoraMs: () => t, dormir,
+    })).rejects.toThrow(/passo destacado morreu/);
+    // Rápido: a carência é curta, não o timeout inteiro de 10 min.
+    expect(t).toBeLessThan(10_000);
   });
 });
