@@ -117,6 +117,18 @@ describe('a fase de texto recebe a pasta ditada pelo bot', () => {
     expect(await promptDaFase1()).not.toContain('{{');
   });
 
+  /**
+   * O filtro de alvos não chegava ao prompt: o A#4 nasceu com 1 público e o
+   * agente escreveu 12 arquivos, porque o texto dizia "para TODOS os públicos
+   * do pipeline". O fluxo sabia; o prompt não.
+   */
+  it('renderiza {{publicos}} com os alvos REAIS do fluxo, não com os 12', async () => {
+    const prompt = await promptDaFase1();
+    expect(prompt).toContain('mulheres');
+    expect(prompt).not.toContain('empreendedores');
+    expect(prompt).not.toContain('educadores');
+  });
+
   it('a pasta que o prompt manda gravar é a MESMA que o portão vai ler', async () => {
     const prompt = await promptDaFase1();
     const fluxo = estado.obter(1)!;

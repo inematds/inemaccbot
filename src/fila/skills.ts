@@ -171,7 +171,17 @@ function contextoDeFase(job: Job, opts: OpcoesSkills, motorForcado?: string): Co
     perfil,
     vars: {},
     timeoutMs: TIMEOUT_FASE_SEGUNDOS * 1_000,
-    interpretarSaida: (bruto: string) => bruto.trim(),
+    // O MESMO contrato das skills do catálogo, e não `bruto.trim()`.
+    //
+    // Sem isto a fase aceitava qualquer stdout como sucesso, e aconteceu em
+    // produção: o A#3 respondeu `ERRO: skill inemaclub-textos não encontrada`,
+    // o job virou `done` e o portão abriu numa fase que tinha falhado. Pior
+    // ainda em silêncio: `resultado` virava o texto inteiro do agente, e é ele
+    // que a fase SEGUINTE recebe como `anterior` — a fase de reel ganhava um
+    // blob de prosa onde esperava um caminho de arquivo.
+    //
+    // `.txt` porque é o que `{{saida}}` promete ao prompt (ver `saida` acima).
+    interpretarSaida: (bruto: string) => extrairArtefato(bruto, ['txt']),
   };
 }
 

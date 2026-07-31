@@ -230,6 +230,7 @@ export class Fluxos {
         raizArtefatos: this.raizArtefatos,
         projetosDir: this.projetosDir,
         ...(this.repoDe(fluxo.tipo) ? { repoDominio: this.repoDe(fluxo.tipo) as string } : {}),
+        alvosDoFluxo: this.alvosDoFluxo(fluxo),
       }),
       max_tentativas: fase.max_tentativas,
       flow_ref: flowRef(fluxo.prefixo, fluxo.id, alvo, fase.id),

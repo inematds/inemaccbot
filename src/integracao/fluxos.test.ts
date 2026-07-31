@@ -377,7 +377,9 @@ describe('a fase roda pelo WORKER (não só por ack manual)', () => {
   // sem implementação atrás.
   it('o worker executa a fase com o prompt CONGELADO, não com o do disco', async () => {
     const id = criar();
-    const runner = new FakeRunner({ respostas: ['saiu o texto'] });
+    // A resposta obedece ao contrato: fase, como skill, só é sucesso com
+    // `RESULT: <caminho>.txt` na última linha.
+    const runner = new FakeRunner({ respostas: [`saiu o texto\nRESULT: ${join(dir, 'art', 'fluxos', '1.txt')}`] });
     const w = new Worker(fila, {
       fila: 'texto', dono: 'W', concorrencia: 1, leaseSegundos: 60,
       tarefas: {}, runners: { fake: runner },
@@ -399,6 +401,62 @@ describe('a fase roda pelo WORKER (não só por ack manual)', () => {
     // E o avanço aconteceu na mesma transação do ack.
     expect(faseDe(id, 'texto').estado).toBe('feito');
     expect(fila.listar().filter((j) => j.flow_ref?.includes('/render'))).toHaveLength(2);
+  });
+
+  /**
+   * O A#3 rodou assim em produção: o agente respondeu
+   * `ERRO: skill inemaclub-textos não encontrada`, o job virou `done` e o
+   * portão abriu numa fase que tinha falhado. A fase usava
+   * `interpretarSaida: (bruto) => bruto.trim()` — aceitava qualquer stdout.
+   */
+  function workerDeFase(runner: FakeRunner): Worker {
+    return new Worker(fila, {
+      fila: 'texto', dono: 'W', concorrencia: 1, leaseSegundos: 60,
+      tarefas: {}, runners: { fake: runner },
+      promptDe: criarPromptDe({
+        defs: [], raizRepo: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
+        perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
+      }),
+      aoAckar: (job) => fluxos.avancar(job),
+    }, () => t);
+  }
+
+  it('agente que declara ERRO: NÃO passa por fase feita', async () => {
+    const id = criar();
+    const w = workerDeFase(new FakeRunner({
+      respostas: ['tentei\nERRO: skill inemaclub-textos não encontrada'],
+    }));
+    // `max_tentativas` do flow.json de teste: roda até esgotar.
+    for (let i = 0; i < 5 && await w.passo(); i += 1) fila.recuperarLeasesVencidos();
+
+    expect(faseDe(id, 'texto').estado).toBe('falhou');
+    const job = fila.listar().find((j) => j.flow_ref?.includes('//texto'))!;
+    expect(job.status).toBe('failed');
+    expect(job.erro).toContain('inemaclub-textos');
+  });
+
+  it('agente que não declara nada também falha', async () => {
+    const id = criar();
+    const w = workerDeFase(new FakeRunner({ respostas: ['fiz um monte de coisa e esqueci de dizer onde'] }));
+    for (let i = 0; i < 5 && await w.passo(); i += 1) fila.recuperarLeasesVencidos();
+
+    expect(faseDe(id, 'texto').estado).toBe('falhou');
+  });
+
+  /**
+   * O estrago silencioso do mesmo defeito: `resultado` virava o stdout inteiro,
+   * e é ele que a fase SEGUINTE recebe como `anterior`. A fase de reel ganhava
+   * um blob de prosa onde esperava um caminho de arquivo.
+   */
+  it('o resultado gravado é o CAMINHO, não o texto do agente', async () => {
+    criar();
+    const alvo = join(dir, 'art', 'fluxos', '1.txt');
+    const w = workerDeFase(new FakeRunner({ respostas: [`prosa que ninguém quer no chat\nRESULT: ${alvo}`] }));
+    await w.passo();
+
+    const job = fila.listar().find((j) => j.flow_ref?.includes('//texto'))!;
+    expect(job.resultado).toBe(alvo);
+    expect(job.resultado).not.toContain('prosa');
   });
 
   it('a fase recebe as variáveis do alvo (canal), sem receber as que o prompt não pede', async () => {

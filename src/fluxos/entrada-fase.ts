@@ -25,6 +25,8 @@ export interface ContextoEntrada {
   /** Repo de domínio deste fluxo (`config/fluxos.json`). Sem ele a fase de
    * texto não recebe `{{pasta}}` — ver `pastaTextos`. */
   repoDominio?: string;
+  /** Públicos REAIS deste fluxo, já filtrados por `| alvos=`. Vira `{{publicos}}`. */
+  alvosDoFluxo?: string[];
 }
 
 /**
@@ -98,9 +100,16 @@ export function montarInput(ctx: ContextoEntrada): string {
   // `pasta` entra DENTRO de `fluxo` porque `contextoDeFase` (fila/skills.ts)
   // promove a variável todo campo string daí — é como `canal` e `gatilho`
   // chegam ao prompt, e evita um caminho especial só para esta.
+  // `publicos` existe porque o filtro de alvos NÃO chegava ao prompt: o A#4
+  // nasceu com 1 alvo e o agente escreveu 12 arquivos, já que o texto dizia
+  // "para TODOS os públicos do pipeline". O fluxo sabia; o prompt não.
+  const extra: Record<string, string> = {
+    ...(ctx.repoDominio ? { pasta: pastaTextos(ctx.repoDominio, fluxo) } : {}),
+    ...(ctx.alvosDoFluxo?.length ? { publicos: ctx.alvosDoFluxo.join(', ') } : {}),
+  };
   return JSON.stringify({
     ...base,
-    ...(ctx.repoDominio ? { fluxo: { ...base.fluxo, pasta: pastaTextos(ctx.repoDominio, fluxo) } } : {}),
+    ...(Object.keys(extra).length ? { fluxo: { ...base.fluxo, ...extra } } : {}),
     entrada: fluxo.assunto,
     ...(fase.prompt_texto ? { prompt_texto: fase.prompt_texto } : {}),
     ...(alvo ? { titulo: tituloEstudio(fluxo, alvo) } : {}),
