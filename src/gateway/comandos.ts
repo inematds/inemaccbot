@@ -149,6 +149,7 @@ function respostaAjuda(defs: SkillDef[]): string {
     linhas.push('', 'Skills (formato `skill: entrada | campo`):');
     for (const d of defs) linhas.push(`${d.command}: … — ${d.descricao}`);
     linhas.push('', 'Campos: livesN (destino) · modelo=opus · esforco=high');
+    linhas.push('Ajuda de um comando específico: /ajuda <nome>');
   }
   return linhas.join('\n');
 }
