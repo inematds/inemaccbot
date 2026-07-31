@@ -22,6 +22,26 @@ export interface ContextoEntrada {
   anterior?: string | null;
   raizArtefatos: string;
   projetosDir: string;
+  /** Repo de domínio deste fluxo (`config/fluxos.json`). Sem ele a fase de
+   * texto não recebe `{{pasta}}` — ver `pastaTextos`. */
+  repoDominio?: string;
+}
+
+/**
+ * Onde a fase de texto grava um arquivo por público.
+ *
+ * O bot DITA este caminho, e isso foi pago em produção: o prompt pedia um
+ * caminho relativo (`textos/<slug-do-assunto>/`) e o job rodava com
+ * `cwd: homedir()`, então o agente escolhia o repo e o slug sozinho — o A#1
+ * gravou os 12 textos e o commit no repo do `promoclub`, não no do
+ * `promoavatar`. Caminho escolhido pelo agente é caminho que o portão não
+ * consegue reencontrar.
+ *
+ * `A1` e não o slug do assunto porque o portão precisa achar a pasta sabendo só
+ * o fluxo, e dois fluxos com o mesmo assunto não podem colidir.
+ */
+export function pastaTextos(repoDominio: string, fluxo: Fluxo): string {
+  return `${repoDominio}/textos/${fluxo.prefixo}${fluxo.id}`;
 }
 
 /**
@@ -74,8 +94,13 @@ export function montarInput(ctx: ContextoEntrada): string {
   }
 
   // Fase de agente com prompt próprio (`fluxo-agente`, `fluxo-navegador`).
+  //
+  // `pasta` entra DENTRO de `fluxo` porque `contextoDeFase` (fila/skills.ts)
+  // promove a variável todo campo string daí — é como `canal` e `gatilho`
+  // chegam ao prompt, e evita um caminho especial só para esta.
   return JSON.stringify({
     ...base,
+    ...(ctx.repoDominio ? { fluxo: { ...base.fluxo, pasta: pastaTextos(ctx.repoDominio, fluxo) } } : {}),
     entrada: fluxo.assunto,
     ...(fase.prompt_texto ? { prompt_texto: fase.prompt_texto } : {}),
     ...(alvo ? { titulo: tituloEstudio(fluxo, alvo) } : {}),

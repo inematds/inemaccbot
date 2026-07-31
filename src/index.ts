@@ -329,6 +329,9 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // ack, e uma chamada de rede lá dentro seguraria a transação. O envio
       // acontece logo depois do commit, no `aoTerminar`.
       aoEvento: (e) => eventosDeFluxo.push(e),
+      // Fechamento sobre a variável, não sobre o valor: o registry de fluxos só
+      // é carregado logo ABAIXO, e ler aqui daria `undefined` para sempre.
+      repoDe: (tipo) => fluxosRegistrados?.find((f) => f.command === tipo)?.repo,
     });
     fluxosRegistrados = (deps.carregarFluxos ?? carregarFluxosPadrao)(
       join(RAIZ_REPO, 'config', 'fluxos.json'),

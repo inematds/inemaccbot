@@ -41,6 +41,9 @@ beforeEach(() => {
     raizArtefatos: join(dir, 'artefatos'),
     projetosDir: join(dir, 'projetos'),
     aoEvento: (e) => eventos.push(e),
+    // Repo de domínio de mentira, mas caminho de verdade: o portão lê os
+    // arquivos do DISCO, e é esse encaixe que precisa de prova.
+    repoDe: () => join(dir, 'dominio'),
   });
   const skills = carregarSkills(join(REPO_BOT, 'config', 'skills.json'), REPO_BOT).map((s) => s.command);
   def = congelar(carregarFlow(REPO_DOMINIO, skills), REPO_DOMINIO);
@@ -81,6 +84,111 @@ describe('flow.json real do promoavatar', () => {
   });
 });
 
+/**
+ * O portão é o handoff para uma PESSOA: ela precisa do título exato do vídeo e
+ * do texto para colar no HeyGen. Antes disto a mensagem dizia só "fase
+ * concluída", e os 12 textos ficavam num arquivo em disco que ninguém via.
+ */
+describe('portão entrega os roteiros no chat', () => {
+  function escreverRoteiro(id: number, alvo: string, fala: string): void {
+    const pasta = join(dir, 'dominio', 'textos', `A${id}`);
+    mkdirSync(pasta, { recursive: true });
+    writeFileSync(
+      join(pasta, `${alvo}.md`),
+      `# assunto — ${alvo}\n\n### FALA (texto para o HeyGen)\n${fala}\n\n### SOBREPOSIÇÕES\n- x\n`,
+    );
+  }
+
+  function roteiros(): string[] {
+    return eventos.filter((e) => e.texto.startsWith('🎬')).map((e) => e.texto);
+  }
+
+  it('manda uma mensagem por público, com o título do estúdio e a fala', () => {
+    const id = criar(['mulheres', 'jovens']);
+    escreverRoteiro(id, 'mulheres', 'Autonomia de verdade com IA.');
+    escreverRoteiro(id, 'jovens', 'Tem uma profissão nascendo agora.');
+    ackar('A#1//texto', 'ok');
+
+    expect(roteiros()).toHaveLength(2);
+    // A ordem é a do `flow.json` (jovens antes de mulheres), não a do pedido:
+    // quem vai gravar 12 vídeos segue a lista do domínio.
+    expect(roteiros()[0]).toContain('A1-jovens-v1');
+    expect(roteiros()[0]).toContain('Tem uma profissão nascendo agora.');
+    expect(roteiros()[1]).toContain('A1-mulheres-v1');
+    expect(roteiros()[1]).toContain('Autonomia de verdade com IA.');
+  });
+
+  /**
+   * A garantia que sustenta o resto: `heygen.baixar` casa o vídeo por
+   * IGUALDADE EXATA de título. Se a mensagem ensinar um nome e o download
+   * procurar outro, a pessoa grava 12 vídeos e a fase expira em 90 min
+   * esperando algo que existe com outro nome.
+   */
+  it('o título da mensagem é o MESMO que o download vai procurar', () => {
+    const id = criar(['mulheres']);
+    escreverRoteiro(id, 'mulheres', 'fala.');
+    ackar('A#1//texto', 'ok');
+    fluxos.aprovar(id);
+
+    const baixar = fila.listar().find((j) => j.flow_ref === 'A#1/mulheres/baixar')!;
+    const { titulo } = JSON.parse(baixar.input) as { titulo: string };
+    expect(roteiros()[0]).toContain(titulo);
+  });
+
+  it('só manda a FALA — sobreposições são instrução do reel, não do estúdio', () => {
+    const id = criar(['mulheres']);
+    escreverRoteiro(id, 'mulheres', 'só isto se fala.');
+    ackar('A#1//texto', 'ok');
+
+    expect(roteiros()[0]).toContain('só isto se fala.');
+    expect(roteiros()[0]).not.toContain('SOBREPOSIÇÕES');
+  });
+
+  it('público sem arquivo vira FALTA visível, não lista curta silenciosa', () => {
+    const id = criar(['mulheres', 'jovens']);
+    escreverRoteiro(id, 'mulheres', 'fala.');
+    ackar('A#1//texto', 'ok');
+
+    expect(roteiros()).toHaveLength(1);
+    const falta = eventos.find((e) => e.texto.startsWith('⚠️ Sem roteiro'))!;
+    expect(falta.texto).toContain('jovens');
+    expect(falta.texto).not.toContain('mulheres,');
+  });
+
+  it('avisa em vez de silenciar quando não sabe o repo do domínio', () => {
+    const semRepo = new Fluxos({
+      fila, estado, agora: () => t,
+      raizArtefatos: join(dir, 'artefatos'), projetosDir: join(dir, 'projetos'),
+      aoEvento: (e) => eventos.push(e),
+      repoDe: () => undefined,
+    });
+    const id = semRepo.criar({
+      tipo: 'promoavatar', definicao: def, hash: hashDefinicao(def, REPO_DOMINIO),
+      assunto: 'x', alvos: ['mulheres'], chatId: 55,
+    }).id;
+    const job = fila.listar().find((j) => j.flow_ref === `A#${id}//texto`)!;
+    fila.pegar(job.fila, 600, 'W');
+    fila.concluir(job.id, 'ok', 'W', (j) => semRepo.avancar(j));
+
+    expect(eventos.some((e) => e.texto.includes('Não sei o repo'))).toBe(true);
+  });
+
+  // O fluxo com `chat_id` nulo (criado fora do chat) não pode virar erro de
+  // envio nem vazar roteiro para lugar nenhum.
+  it('sem chat, não manda nada', () => {
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: def, hash: hashDefinicao(def, REPO_DOMINIO),
+      assunto: 'x', alvos: ['mulheres'], chatId: null,
+    }).id;
+    escreverRoteiro(id, 'mulheres', 'fala.');
+    const job = fila.listar().find((j) => j.flow_ref === `A#${id}//texto`)!;
+    fila.pegar(job.fila, 600, 'W');
+    fila.concluir(job.id, 'ok', 'W', (j) => fluxos.avancar(j));
+
+    expect(eventos).toHaveLength(0);
+  });
+});
+
 describe('do assunto ao reel, com o portão no meio', () => {
   it('para depois do texto e só segue com /aprovar', () => {
     const id = criar();
@@ -91,7 +199,9 @@ describe('do assunto ao reel, com o portão no meio', () => {
     // PAROU. Nada de download enquanto a pessoa não gerar os avatares.
     expect(estado.fase(id, 'texto', '')!.estado).toBe('aguardando-ok');
     expect(fila.listar()).toHaveLength(1);
-    expect(eventos.at(-1)!.texto).toContain('/aprovar A#1');
+    // `some` e não `at(-1)`: depois do aviso do portão vêm os roteiros, um por
+    // público — a mensagem do `/aprovar` deixou de ser a última.
+    expect(eventos.some((e) => e.texto.includes('/aprovar A#1'))).toBe(true);
 
     // A pessoa gerou os avatares no estúdio e avisa.
     const r = fluxos.aprovar(id);

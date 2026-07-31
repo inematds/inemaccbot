@@ -5,11 +5,23 @@
 // lê isso e escolhe a próxima fase é este arquivo — e faz isso DENTRO da
 // transação do ack, para que "fase feita" e "próxima fase enfileirada" nunca
 // existam separadas (foi assim que o v1 produziu dispatch duplicado).
+import { readFileSync } from 'node:fs';
 import { flowRef, type FaseDef, type FlowDef } from '../dominio/flow.js';
+import { primeiraFala } from '../dominio/roteiro.js';
 import type { FilaSqlite } from '../fila/store.js';
 import type { Agora, Job } from '../fila/types.js';
 import { EstadoFluxos, type Fase, type Fluxo } from './estado.js';
-import { montarInput } from './entrada-fase.js';
+import { montarInput, pastaTextos, tituloEstudio } from './entrada-fase.js';
+
+/** Arquivo ausente é resposta legítima ("este público não saiu"), não erro de
+ * execução — o portão a transforma em linha de falta no chat. */
+function lerRoteiroDoDisco(pasta: string, alvo: string): string | null {
+  try {
+    return readFileSync(`${pasta}/${alvo}.md`, 'utf8');
+  } catch {
+    return null;
+  }
+}
 
 export interface OpcoesRuntime {
   fila: FilaSqlite;
@@ -30,6 +42,17 @@ export interface OpcoesRuntime {
    * gastar um documento inteiro fechando essa classe de buraco.
    */
   aoEvento?: (evento: EventoFluxo) => void;
+  /**
+   * Repo de domínio por tipo de fluxo (`config/fluxos.json`). Injetado, e não
+   * lido aqui, porque quem valida o registry é o boot — `fluxos/` não conhece
+   * `dominio/registry-fluxos`.
+   */
+  repoDe?: (tipo: string) => string | undefined;
+  /**
+   * Lê o roteiro de um público. Injetado para que o portão seja testável sem
+   * disco; o padrão lê o arquivo que a fase de texto gravou.
+   */
+  lerRoteiro?: (pasta: string, alvo: string) => string | null;
 }
 
 export interface EventoFluxo {
@@ -83,6 +106,8 @@ export class Fluxos {
   private readonly projetosDir: string;
   private readonly log: (m: string) => void;
   private readonly aoEvento: (evento: EventoFluxo) => void;
+  private readonly repoDe: (tipo: string) => string | undefined;
+  private readonly lerRoteiro: (pasta: string, alvo: string) => string | null;
 
   constructor(opts: OpcoesRuntime) {
     this.estado = opts.estado;
@@ -92,6 +117,8 @@ export class Fluxos {
     this.projetosDir = opts.projetosDir ?? '/tmp';
     this.log = opts.log ?? ((): void => {});
     this.aoEvento = opts.aoEvento ?? ((): void => {});
+    this.repoDe = opts.repoDe ?? ((): undefined => undefined);
+    this.lerRoteiro = opts.lerRoteiro ?? lerRoteiroDoDisco;
   }
 
   private avisar(fluxo: Fluxo, texto: string): void {
@@ -202,6 +229,7 @@ export class Fluxos {
         fluxo, def, fase, alvo, anterior,
         raizArtefatos: this.raizArtefatos,
         projetosDir: this.projetosDir,
+        ...(this.repoDe(fluxo.tipo) ? { repoDominio: this.repoDe(fluxo.tipo) as string } : {}),
       }),
       max_tentativas: fase.max_tentativas,
       flow_ref: flowRef(fluxo.prefixo, fluxo.id, alvo, fase.id),
@@ -272,6 +300,7 @@ export class Fluxos {
           `⏸️ ${fluxo.prefixo}#${fluxo.id} — fase ${fase.fase} concluída e AGUARDANDO você.\n`
           + `Quando estiver pronto: /aprovar ${fluxo.prefixo}#${fluxo.id}`,
         );
+        this.entregarRoteiros(fluxo);
       }
       return;
     }
@@ -290,6 +319,51 @@ export class Fluxos {
     }
     const status = this.estado.recalcularStatus(fluxo.id);
     if (status !== 'rodando') this.avisarFim(fluxo, status);
+  }
+
+  /**
+   * O portão manda os ROTEIROS, não só "concluída".
+   *
+   * Uma mensagem por público, porque cada uma é um vídeo a gravar e o que se faz
+   * com ela é copiar e colar no estúdio: juntar os 12 num texto só obrigaria a
+   * pessoa a caçar o trecho certo, e `cortar` (telegram.ts) truncaria em ~4000
+   * chars — silenciosamente, que é o pior jeito de perder texto.
+   *
+   * O título vem de `tituloEstudio`, a MESMA função que monta o que
+   * `heygen.baixar` procura por igualdade exata. Reescrevê-lo aqui à mão faria
+   * a mensagem instruir um nome que o download não acha, e a fase expira em
+   * 90 min esperando um vídeo que existe com outro nome.
+   */
+  private entregarRoteiros(fluxo: Fluxo): void {
+    if (fluxo.chat_id === null) return;
+    const repo = this.repoDe(fluxo.tipo);
+    if (!repo) {
+      this.avisar(fluxo, `⚠️ Não sei o repo do fluxo "${fluxo.tipo}" — os roteiros não vão no chat.`);
+      return;
+    }
+    const pasta = pastaTextos(repo, fluxo);
+    const faltando: string[] = [];
+
+    for (const alvo of this.alvosDoFluxo(fluxo)) {
+      const bruto = this.lerRoteiro(pasta, alvo);
+      const fala = bruto === null ? null : primeiraFala(bruto);
+      if (!fala) {
+        faltando.push(alvo);
+        continue;
+      }
+      this.avisar(fluxo, `🎬 ${tituloEstudio(fluxo, alvo)}\n(${alvo})\n\n${fala}`);
+    }
+
+    // Falta NUNCA vira lista curta silenciosa: sem esta linha, um público sem
+    // arquivo simplesmente não apareceria, e a pessoa gravaria 11 vídeos
+    // achando que fez os 12 — o fluxo só reclamaria 90 min depois, no download.
+    if (faltando.length) {
+      this.avisar(
+        fluxo,
+        `⚠️ Sem roteiro em ${pasta}: ${faltando.join(', ')}.\n`
+        + `Retentar a fase: /refazer ${fluxo.prefixo}#${fluxo.id}`,
+      );
+    }
   }
 
   private avisarFim(fluxo: Fluxo, status: string): void {
