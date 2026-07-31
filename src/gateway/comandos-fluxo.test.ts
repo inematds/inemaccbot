@@ -115,6 +115,74 @@ describe('criar fluxo', () => {
   });
 });
 
+/**
+ * O defeito que motivou isto: `/promoavatar <assunto> alvos=mulheres` — sem a
+ * barra — não filtrou nada. O `alvos=mulheres` virou TEXTO do assunto, o fluxo
+ * nasceu com os 12 públicos, e o agente ainda leu aquilo como ordem e gerou um
+ * público só. Três comportamentos errados e nenhum aviso.
+ */
+describe('campo escrito sem o separador', () => {
+  it('recusa em vez de engolir como assunto', async () => {
+    const r = await manda('/brinquedo Assunto qualquer alvos=um');
+    expect(r).toContain('ficou dentro do assunto');
+    expect(fila.listar()).toHaveLength(0);
+  });
+
+  it('o erro ensina as duas formas certas', async () => {
+    const r = await manda('/brinquedo Assunto alvos=um');
+    expect(r).toContain('| alvos=valor');
+    expect(r).toContain('--alvos=valor');
+  });
+
+  it('pega versao= e de= também, não só alvos=', async () => {
+    expect(await manda('/brinquedo Assunto versao=2')).toContain('ficou dentro do assunto');
+    expect(await manda('/brinquedo Assunto de=render')).toContain('ficou dentro do assunto');
+  });
+
+  // A guarda não pode passar a recusar assunto legítimo: `=` em texto corrido é
+  // comum, e só os NOMES de campo conhecidos disparam.
+  it('não confunde um "=" qualquer no assunto com campo', async () => {
+    const r = await manda('/brinquedo Aula sobre por que 2+2=4 e outras somas');
+    expect(r).toContain('B#1');
+  });
+});
+
+describe('--alvo=x, a forma de bandeira', () => {
+  it('--alvo=um filtra igual a | alvos=um', async () => {
+    await manda('/brinquedo Assunto --alvo=um');
+    expect(fluxos.status(1)!.fases.some((f) => f.alvo === 'dois')).toBe(false);
+  });
+
+  it('repetir --alvo acumula os públicos', async () => {
+    await manda('/brinquedo Assunto --alvo=um --alvo=dois');
+    const alvos = new Set(fluxos.status(1)!.fases.map((f) => f.alvo).filter(Boolean));
+    expect([...alvos].sort()).toEqual(['dois', 'um']);
+  });
+
+  it('--alvos=a,b também, e a vírgula solta não vira alvo vazio', async () => {
+    await manda('/brinquedo Assunto --alvo=um, --alvo=dois');
+    const alvos = new Set(fluxos.status(1)!.fases.map((f) => f.alvo).filter(Boolean));
+    expect([...alvos].sort()).toEqual(['dois', 'um']);
+  });
+
+  it('a bandeira sai do assunto — não sobra no texto que vai ao agente', async () => {
+    await manda('/brinquedo Lançamento de março --alvo=um');
+    expect(fluxos.status(1)!.fluxo.assunto).toBe('Lançamento de março');
+  });
+
+  it('--sombra não enfileira nada', async () => {
+    const r = await manda('/brinquedo Assunto --sombra');
+    expect(r).toContain('NADA foi enfileirado');
+    expect(fila.listar()).toHaveLength(0);
+  });
+
+  it('bandeira sem valor é erro nomeado, não alvo vazio', async () => {
+    const r = await manda('/brinquedo Assunto --alvo=');
+    expect(r).toContain('precisa de um valor');
+    expect(fila.listar()).toHaveLength(0);
+  });
+});
+
 describe('/<fluxo> help — a ajuda mora no DOMÍNIO', () => {
   it('usa o HELP.md do repo de domínio quando ele existe', async () => {
     writeFileSync(join(repo, 'HELP.md'), 'ajuda escrita por quem entende do assunto');

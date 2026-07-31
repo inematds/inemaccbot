@@ -75,8 +75,8 @@ export function ajudaDoFluxo(
     '',
     `Públicos (${alvos.length}): ${alvos.join(', ')}`,
     '',
-    'Campos:',
-    '  | alvos=a,b   só esses públicos',
+    'Campos (com "|" no fim, ou "--" em qualquer lugar):',
+    '  | alvos=a,b   só esses públicos (ou --alvo=a --alvo=b)',
     '  | de=<fase>   começa nessa fase (as anteriores ficam puladas)',
     '  | versao=N    versão do assunto',
     '  | sombra      mostra o plano sem enfileirar nada',
@@ -110,41 +110,110 @@ export function textoFluxos(registrados: FluxoRegistrado[]): string {
   ].join('\n');
 }
 
+interface ArgumentoFluxo {
+  assunto: string;
+  alvos?: string[];
+  versao?: number;
+  de?: string;
+  sombra: boolean;
+}
+
+/** Nomes de campo que o comando entende. Uma fonte só: a guarda de digitação
+ * abaixo casa contra ESTA lista, senão ela envelhece sozinha quando alguém
+ * acrescentar um campo. */
+const CAMPOS = ['alvos', 'alvo', 'versao', 'versão', 'de'] as const;
+
+/** `--alvo=x`, `--alvos=a,b`, `--sombra`. Repetível, e em qualquer posição. */
+const BANDEIRA = new RegExp(String.raw`--(${CAMPOS.join('|')}|sombra)(?:\s*=\s*([^\s|]+))?`, 'gi');
+
+/**
+ * Campo escrito SEM o `|` e SEM o `--`, sobrando dentro do assunto.
+ *
+ * Existe por um defeito real: `/promoavatar <assunto> alvos=mulheres` (sem a
+ * barra) não filtrou nada — o `alvos=mulheres` virou TEXTO do assunto, o fluxo
+ * nasceu com os 12 públicos, e o agente ainda leu aquilo como ordem e gerou um
+ * público só. Três comportamentos errados, nenhum aviso. Recusar é melhor que
+ * adivinhar: os dois consertos possíveis (era campo / era assunto mesmo) têm
+ * custos muito diferentes.
+ */
+const CAMPO_SOLTO = new RegExp(String.raw`(^|\s)(${CAMPOS.join('|')})\s*=`, 'i');
+
 /**
  * `/<fluxo> <assunto> [| alvos=a,b] [| versao=N] [| sombra]`
  *
- * `sombra` monta o plano e NÃO enfileira (§7.5) — é como se confere um
- * `flow.json` novo antes de gastar GPU.
+ * Também aceita a forma de bandeira, que é a que se digita sem pensar:
+ * `/<fluxo> <assunto> --alvo=mulheres --alvo=40mais`. As duas convivem porque
+ * as duas são digitadas — mesma decisão do `casarCampoDeclarado` na gramática
+ * de skill, que aceita `| curso x` e `| curso=x`.
  */
-export function criarFluxo(
-  registrado: FluxoRegistrado, argumento: string, deps: DepsFluxo,
-): string {
-  const partes = argumento.split('|').map((s) => s.trim());
-  const assunto = partes.shift() ?? '';
-  if (!assunto) return `faltou o assunto — ex.: ${registrado.exemplo}`;
-
+function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: string } {
   let alvos: string[] | undefined;
   let versao: number | undefined;
   let de: string | undefined;
   let sombra = false;
+  let erro: string | undefined;
+
+  const acrescentar = (nome: string, bruto: string | undefined): void => {
+    const chave = nome.toLowerCase();
+    if (chave === 'sombra') { sombra = true; return; }
+    const valor = (bruto ?? '').trim().replace(/,+$/, '');
+    if (!valor) { erro ??= `"${chave}" precisa de um valor — ex.: --${chave}=mulheres`; return; }
+    if (chave === 'alvo' || chave === 'alvos') {
+      // `--alvo=a --alvo=b` e `--alvos=a,b` chegam ao mesmo lugar: quem digita
+      // não deveria ter que saber qual das duas o parser prefere.
+      alvos = [...(alvos ?? []), ...valor.split(',').map((a) => a.trim()).filter(Boolean)];
+      return;
+    }
+    if (chave === 'de') { de = valor; return; }
+    const n = Number(valor);
+    if (!Number.isInteger(n) || n <= 0) { erro ??= `versão inválida: "${valor}"`; return; }
+    versao = n;
+  };
+
+  // Bandeiras saem do texto ANTES do corte por `|`, para poderem aparecer em
+  // qualquer posição sem que o pedaço vire assunto.
+  const semBandeiras = argumento.replace(BANDEIRA, (_todo, nome: string, valor?: string) => {
+    acrescentar(nome, valor);
+    return ' ';
+  });
+  if (erro) return { erro };
+
+  const partes = semBandeiras.split('|').map((s) => s.trim());
+  const assunto = (partes.shift() ?? '').replace(/\s+/g, ' ').trim();
+  if (!assunto) return { erro: 'sem-assunto' };
+
   for (const campo of partes.filter(Boolean)) {
-    const m = campo.match(/^(alvos|versao|versão|de)\s*=\s*(.+)$/i);
+    const m = campo.match(/^(alvos|alvo|versao|versão|de)\s*=\s*(.+)$/i);
     if (m) {
-      const chave = m[1].toLowerCase();
-      if (chave === 'alvos') {
-        alvos = m[2].split(',').map((a) => a.trim()).filter(Boolean);
-      } else if (chave === 'de') {
-        de = m[2].trim();
-      } else {
-        const n = Number(m[2].trim());
-        if (!Number.isInteger(n) || n <= 0) return `versão inválida: "${m[2].trim()}"`;
-        versao = n;
-      }
+      acrescentar(m[1], m[2]);
+      if (erro) return { erro };
       continue;
     }
     if (campo.toLowerCase() === 'sombra') { sombra = true; continue; }
-    return `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase> · sombra`;
+    return { erro: `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase> · sombra` };
   }
+
+  const solto = assunto.match(CAMPO_SOLTO);
+  if (solto) {
+    const nome = solto[2].toLowerCase();
+    return {
+      erro: `"${nome}=" ficou dentro do assunto — faltou o "|" ou o "--".\n`
+        + `Use: /<fluxo> <assunto> | ${nome}=valor   ou   --${nome}=valor\n`
+        + 'Sem isso o campo não filtra nada e o fluxo nasce com TODOS os públicos.',
+    };
+  }
+
+  return { assunto, alvos, versao, de, sombra };
+}
+
+export function criarFluxo(
+  registrado: FluxoRegistrado, argumento: string, deps: DepsFluxo,
+): string {
+  const lido = interpretarArgumento(argumento);
+  if ('erro' in lido) return lido.erro === 'sem-assunto'
+    ? `faltou o assunto — ex.: ${registrado.exemplo}`
+    : lido.erro;
+  const { assunto, alvos, versao, de, sombra } = lido;
 
   // A definição é lida do disco AQUI e congelada na criação. Um `flow.json`
   // inválido é recusado agora, com o usuário na frente, e não no primeiro job.
