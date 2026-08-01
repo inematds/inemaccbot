@@ -1,5 +1,90 @@
 # Handoff — inemaccbot
 
+**Atualizado em 2026-08-01.** A sessão de 2026-07-31/08-01 está abaixo; o
+handoff da criação do projeto (2026-07-30) segue depois dela, como histórico.
+
+---
+
+# Sessão 2026-07-31 → 2026-08-01
+
+Primeira sessão de USO real. Nove fluxos `promoavatar` rodaram (A#1..A#9), 23
+reels foram produzidos, e quase todo defeito abaixo apareceu em produção — não
+em teste. 616 testes verdes ao fim.
+
+## O que estava quebrado e foi consertado
+
+| defeito | onde | como apareceu |
+|---|---|---|
+| fase de fluxo aceitava QUALQUER stdout como sucesso | `fila/skills.ts` | A#3 declarou `ERRO:` e virou `done`, abrindo o portão de uma fase falhada. `resultado` virava o texto inteiro, e a fase seguinte recebia prosa onde esperava caminho |
+| filtro de alvos não chegava ao prompt | `fluxos/entrada-fase.ts` | A#4 nasceu com 1 público e o agente escreveu 12 arquivos |
+| prompt pedia caminho RELATIVO com `cwd: homedir()` | `promoavatar/prompts/fase1-texto.md` | A#1 gravou os 12 textos e o commit no repo do promoclub |
+| skill de PROJETO invisível | `fila/skills.ts` | A#5 falhou 2x: `inemaclub-textos` mora em `<repo>/.claude/skills/` e o job rodava no home. Hoje o `cwd` é o repo de domínio |
+| `.err` vencia o artefato pronto | `fila/render.ts` | A#8/criadores: log dizia "Render complete", MP4 com 50 MB, job declarado morto |
+| entrega nunca rodava para fluxo | `gateway/notificar.ts` | A#8: 11 reels prontos, ZERO entregues no `livesN`. `chat_id === null` pulava entrega E aviso |
+| contrato não tolerava markdown | `dominio/artefato.ts` | agente declarou `` `ERRO: …` `` com crase e o bot disse "terminou sem declarar" |
+| campo sem separador virava assunto | `gateway/comandos-fluxo.ts` | `/promoavatar <assunto> alvos=mulheres` nasceu com 12 públicos |
+
+## O que foi acrescentado
+
+- **Portão entrega os roteiros**: uma mensagem por público, título (de
+  `tituloEstudio`, a mesma função que o download casa) + fala, sem emoji para
+  copiar limpo. Público sem arquivo vira falta visível.
+- **Link do vídeo final** com o nome do título, publicado em
+  `~/projetos/output/<tipo-do-fluxo>/`.
+- **`/pronto`** (+ `/aprovado`, `/ok`, `/aprovar`) e, sem referência, libera o
+  único fluxo esperando. Referência aceita `A#9`, `a#9`, `A9`, `a9`.
+- **`j13 · A#9/jovens`** no `/fila` e `/status`.
+- **`/espaco`** e **`/limpar`** (fluxo · tipo · idade · tudo), dry-run por padrão.
+- **Legenda opcional, padrão DESLIGADA** (`| legenda`), caixa na borda inferior.
+- **Clipe de CTA por domínio** (`<repo>/cta/cta-9x16.mp4`), concatenado no fim.
+- **Skills `historia` e `imagem`** (Agnes AI, US$ 0) — filas `cpu` e `io`.
+- **Regra `NÃO MEXA NA MÁQUINA`** em todos os 8 prompts, com teste de catálogo:
+  um render instalou `chrome-headless-shell` seguindo dica de log e derrubou o
+  render SEGUINTE (pacote `linux_arm` numa máquina aarch64).
+
+## Infra mexida (NÃO versionada — se perde se a máquina mudar)
+
+- `.env`: `PUBLICO_DIR=~/projetos/output`, `PUBLICO_URLS=http://rede.club:8202,…`,
+  `HYPERFRAMES_BROWSER_PATH=/snap/chromium/current/usr/lib/chromium-browser/chrome`
+- `~/.config/systemd/user/inema-reels.service` repontado para `~/projetos/output`
+- 18 serviços `yt-scheduler`/`yt-dashboard` (21,24..31) parados e desabilitados
+- `~/.cache/puppeteer/chrome-headless-shell` RENOMEADO (`.desativado-2026-07-31`)
+- canais remapeados nos DOIS domínios: 21→2, 24→4, 25→1, 26→6, 27→7, 28→8,
+  29→9, 30→11, 31→3. `jovens`(22), `profissionais`(23) e `familia`(32) ficaram
+
+## ⛔ O que NÃO foi provado
+
+- **fila `navegador` / `fluxo-navegador`** — o promoclub inteiro. Último elo dos
+  quatro do handoff antigo que segue sem prova. Zero fluxos promoclub rodaram.
+- **fila `cpu`** — nunca teve job. É onde `historia` vai rodar.
+- **skills `historia` e `imagem`** — registradas, testadas, nunca executadas.
+- **entrega automática no `livesN`** — corrigida, mas A#8 e A#9 foram entregues
+  À MÃO. Só o próximo fluxo prova.
+- **`import_worker.py` não roda em canal nenhum.** 23 reels nas pastas
+  `imports/`, com lotes de 22–25/07 nunca consumidos. **Nada foi publicado no
+  YouTube.** É a ponta que decide se todo o resto virou resultado.
+
+## Dívida mais cara
+
+**O prompt do `promoclub` está na versão de 2026-07-30** — sem as regras de
+escrita, sem `{{pasta}}`, sem `{{publicos}}`, sem os quatro gatilhos. Só canal e
+`flow.json` foram atualizados. Rodar `/promoclub` hoje produz texto velho em
+lugar imprevisível. E ele não tem `HELP.md`.
+
+## Documentos desta sessão
+
+- `docs/amostra-a4-custo-e-tempo.md` — onde vai o tempo e o token (o render é 4%)
+- `docs/ideias-custo-de-token.md` — inclui qwen3.6 local / OpenRouter
+- `docs/analise-imagem-e-link-como-material.md` — imagem/link como material
+- `docs/ideia-comando-de-limpeza.md`, `ideia-fila-legivel.md`, `ideia-aprovar-em-lote.md`
+- `promoavatar/README.md` — onde mudar o quê (3 camadas), opções da criação
+- `promoavatar/docs/pipeline.md` — a tabela de tudo
+- `promoavatar/docs/canais-e-destinos.md` — para quem e onde fica
+- `promoavatar/docs/melhorias-criativas.md` — gancho, CTA-clipe, legenda embaixo
+
+---
+
+
 Escrito em 2026-07-30, ao fim da sessão que criou o projeto e entregou as etapas 0 e 1.
 **Atualizado em 2026-07-30 (mesmo dia), ao fim da etapa 2.**
 Ponto de partida para quem (agente ou humano) continuar daqui. Leia isto antes de
