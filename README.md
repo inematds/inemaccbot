@@ -149,9 +149,13 @@ legenda **queimada**) e `caption_url` (legenda solta). A tarefa lê **só
 `legenda` do fluxo, e legenda queimada não tem como ser removida depois.
 
 Não há como escolher estilo no download: a URL é pronta, e os endpoints de
-legenda da API dão 404. Isso se decide no estúdio, antes de renderizar. Detalhe,
-o que foi medido e o que **não** foi: comentário em `src/fila/tarefas/heygen.ts`
-e o README do repo de domínio.
+legenda da API dão 404. Isso se decide no estúdio, antes de renderizar.
+
+Medido em 2026-08-01 nos 25 vídeos completos mais recentes da conta:
+`video_url_caption` nulo e `caption_url` vazio em todos. **NÃO testado:** o que
+acontece com a legenda **ligada** no estúdio — não está provado que `video_url`
+continue limpo. Até alguém testar, a garantia é gravar sem legenda. Detalhe:
+comentário em `src/fila/tarefas/heygen.ts` e o README do repo de domínio.
 
 ### Regra da documentação (verificada por teste)
 
