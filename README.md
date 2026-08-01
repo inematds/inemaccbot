@@ -12,6 +12,84 @@ definição congelada, portão humano e retomada. O v1 (`inemaccvbot`, `mkivideo
 O que **não** existe de propósito: barreira entre fases, preempção de job, teto global de
 agentes, multiusuário. Ver §11 do spec — cada item com o gatilho para reconsiderar.
 
+## Uso no chat
+
+### Comandos de serviço
+
+| comando | o que faz |
+|---|---|
+| `/ping` | verifica se o bot está vivo |
+| `/ajuda` (`/help`) | a lista de comandos |
+| `/ajuda <nome>` | a ajuda de UMA skill ou fluxo (`/ajuda promoavatar`) |
+| `/skills` · `/fluxos` | os dois catálogos |
+| `/fila` | por fila: rodando, pendentes, idade, erro em 24h, retentados |
+| `/espaco` | quanto disco cada área ocupa (bot × skills), separadas |
+| `/status` | o que está na fila e o que terminou |
+| `/status j13` · `/status A#9` | detalhe de um JOB ou de um FLUXO |
+| `/cancelar j13` · `/cancelar A#9 [público]` | idem |
+| `/refazer j13` · `/refazer A#9 [público]` | idem — no fluxo, retoma da fase que falhou |
+| `/furar j13` | põe um job pendente na frente |
+| `/pronto [ref]` | "terminei minha parte" — libera o portão. Sinônimos: `/aprovar`, `/aprovado`, `/ok` |
+| `/limpar <escopo>` | ver abaixo |
+
+**Referência de fluxo:** `A#9`, `a#9`, `A9` e `a9` são a mesma coisa. Só número
+(`13`) é sempre JOB. Na lista, job aparece como `j13 · A#9/jovens` — o `j`
+separa de id de fluxo, e o sufixo diz de quem o job é.
+
+**`/pronto` sem referência** libera o fluxo quando só um está esperando. Com
+vários, ele lista quais. Com nenhum, diz isso.
+
+### Skills (uma etapa, sem estado)
+
+```
+<skill>: <entrada> [| campo]*
+```
+
+| exemplo | |
+|---|---|
+| `transcrever: https://…` | áudio → texto |
+| `dublar: https://… \| lives3` | e entrega no canal |
+| `explicativo: <assunto> \| vertical` | vídeo explicativo 9:16 |
+| `reel: /caminho/avatar.mp4 \| lives3` | reel empilhado |
+| `historia: Era uma vez… \| nome=baloes` | conto → filme narrado (Agnes, US$ 0) |
+| `imagem: uma raposa ruiva na neve \| ratio=16:9` | imagem avulsa (Agnes, US$ 0) |
+
+Campos genéricos: `livesN` (destino) · `modelo=haiku` · `esforco=high`. Os
+campos próprios de cada skill saem em `/ajuda <skill>`.
+
+### Fluxos (várias fases, com estado)
+
+```
+/promoavatar <assunto> [--alvo=jovens] [| legenda] [| versao=N] [| de=<fase>] [| sombra]
+```
+
+| opção | padrão | |
+|---|---|---|
+| `--alvo=x` (repetível) ou `\| alvos=a,b` | todos | só esses públicos |
+| `\| legenda` | **desligada** | legenda no reel, caixa encostada na borda inferior |
+| `\| versao=N` | 1 | muda o `-vN` do título do estúdio |
+| `\| de=<fase>` | — | começa no meio (você já fez texto e/ou avatar) |
+| `\| sombra` | — | mostra o plano, não enfileira nada |
+
+O `|` e o `--` convivem. **Campo escrito sem um dos dois é RECUSADO** — não vira
+assunto em silêncio, que é como um fluxo já nasceu com 12 públicos por engano.
+
+A ajuda completa de cada fluxo mora no repo de domínio: `/promoavatar help`.
+
+### Limpeza
+
+```
+/limpar A#8            artefato + avatares + publicados daquele fluxo
+/limpar promoavatar    todos os fluxos daquele tipo
+/limpar artefatos 14   área do bot, por idade
+/limpar tudo           artefatos + publicados dos fluxos conhecidos
+```
+
+**Dry-run por padrão**: sem a palavra `confirmar` no fim, só mostra o que sairia
+e quanto libera. O recorte por fluxo vem do `flow_ref` no banco, então limpar um
+fluxo com outro rodando é seguro. E o bot só toca no que ELE publicou dentro de
+`~/projetos/output` — o resto é de outros projetos.
+
 ## Como entra um domínio novo
 
 Este é o teste do desenho: **domínio novo não deve exigir linha de código no bot.**

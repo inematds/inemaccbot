@@ -137,7 +137,7 @@ const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
   { uso: '/ping', descricao: 'verifica se o bot está vivo' },
   { uso: '/fila', descricao: 'resumo de cada fila (rodando, pendente, idade, erro 24h)' },
   { uso: '/status', descricao: 'lista os jobs (ativos e os últimos terminados)' },
-  { uso: '/status <id>', descricao: 'detalhe de um job' },
+  { uso: '/status <id>', descricao: 'detalhe de um job (jN) ou de um fluxo (/status A#9, ou A9)' },
   { uso: '/cancelar <id>', descricao: 'cancela um job pendente ou em execução' },
   { uso: '/furar <id>', descricao: 'põe um job pendente na frente da fila' },
   { uso: 'http <url>', descricao: 'enfileira um GET' },
@@ -147,7 +147,7 @@ const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
   { uso: '/limpar <escopo>', descricao: 'A#8 · promoavatar · artefatos [dias] · tudo (mostra antes; some com "confirmar")' },
   { uso: '/skills', descricao: 'lista as skills do catálogo' },
   { uso: '/fluxos', descricao: 'lista os fluxos (pipelines com estado e retomada)' },
-  { uso: '/aprovar <ref>', descricao: 'libera um fluxo parado esperando você' },
+  { uso: '/pronto [ref]', descricao: 'terminei minha parte — libera o fluxo parado (sem ref, se só um espera). Também: /aprovar, /aprovado, /ok' },
   { uso: '/ajuda (ou /help)', descricao: 'esta lista' },
 ];
 
