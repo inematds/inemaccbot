@@ -516,6 +516,16 @@ export class Fluxos {
    * os avatares não deveria ter que lembrar do número. Se houver exatamente um,
    * não há ambiguidade nenhuma.
    */
+  /** Id, prefixo e tipo de cada fluxo — o que a limpeza precisa saber para
+   * recortar por fluxo ou por tipo, sem carregar fase nenhuma. */
+  listarResumo(): { id: number; prefixo: string; tipo: string }[] {
+    return this.estado.listar().map((f) => ({ id: f.id, prefixo: f.prefixo, tipo: f.tipo }));
+  }
+
+  listarTipos(): string[] {
+    return [...new Set(this.estado.listar().map((f) => f.tipo))];
+  }
+
   aguardandoAprovacao(): Fluxo[] {
     return this.estado.listar().filter((f) =>
       this.estado.fases(f.id).some((fase) => fase.estado === 'aguardando-ok'));

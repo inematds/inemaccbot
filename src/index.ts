@@ -196,8 +196,12 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // vários projetos, e medir não é a mesma coisa que poder apagar.
       areas: [
         { rotulo: 'bot (artefatos)', caminho: join(cfg.stateDir, 'artefatos'), doBot: true },
-        { rotulo: 'skills (output)', caminho: dirname(cfg.publicoDir), doBot: false },
+        { rotulo: 'skills (output)', caminho: cfg.publicoDir, doBot: false },
       ],
+      // O `/limpar` só pode tocar nestas duas raízes. Passar caminho é o que
+      // impede o comando de decidir sozinho onde vasculhar.
+      raizArtefatos: join(cfg.stateDir, 'artefatos'),
+      publicoDir: cfg.publicoDir,
       ...(fluxos ? { fluxos } : {}),
       fluxosRegistrados,
     });

@@ -15,7 +15,10 @@ import type { Runner } from '../fila/runner.js';
 import type { Agora, Job, Perfil } from '../fila/types.js';
 import type { SkillDef } from '../dominio/registry.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
+import { rmSync } from 'node:fs';
 import type { Fluxos } from '../fluxos/runtime.js';
+import { humano } from '../dominio/espaco.js';
+import { planejarLimpeza } from '../dominio/limpeza.js';
 import { ajudaDaSkill } from './ajuda-dominio.js';
 import { executar, parseComando } from './comandos.js';
 import {
@@ -40,6 +43,9 @@ export interface DepsMensagem {
   fluxosRegistrados?: FluxoRegistrado[];
   /** Áreas de disco que o `/espaco` mede. Vazio = o comando diz que não sabe. */
   areas?: { rotulo: string; caminho: string; doBot: boolean }[];
+  /** Raízes que o `/limpar` pode tocar. Sem elas o comando não apaga nada. */
+  raizArtefatos?: string;
+  publicoDir?: string;
   /**
    * Saneia o que entra no CONTEXTO da resposta. O log do serviço é lido do
    * disco e vai inteiro para o prompt; ele carrega caminhos, mensagens de erro
@@ -107,6 +113,10 @@ function tratarComandoDeFluxo(
     return aprovarFluxo(ref, depsFluxo) ?? `não entendi "${ref}" — use /aprovar A#9`;
   }
 
+  if (verbo === '/limpar') {
+    return limpar(resto, deps, depsFluxo.fluxos);
+  }
+
   if (verbo === '/status' || verbo === '/refazer' || verbo === '/cancelar') {
     const [ref, alvo] = resto;
     if (!ref) return undefined; // `/status` sozinho é a lista de jobs
@@ -135,6 +145,68 @@ function tratarComandoDeFluxo(
     return criarFluxo(registrado, argumento, depsFluxo);
   }
   return undefined;
+}
+
+/**
+ * `/limpar <escopo> [dias] [confirmar]`.
+ *
+ * DRY-RUN por padrão, e isso não é zelo: os escopos chegam a mais de 1 GB, e
+ * apagar não tem volta. Sem a palavra `confirmar`, só mostra.
+ */
+function limpar(
+  resto: string[], deps: DepsMensagem, fluxos: Fluxos,
+): string {
+  const args = resto.map((a) => a.toLowerCase());
+  const confirmar = args.includes('confirmar');
+  const escopo = resto.find((a) => a.toLowerCase() !== 'confirmar');
+  const dias = resto.map(Number).find((n) => Number.isInteger(n) && n >= 0);
+
+  if (!escopo) {
+    const tipos = [...new Set(fluxos.listarTipos())];
+    return `o que limpar? /limpar A#8 · ${tipos.join(' · ') || '<fluxo>'} · artefatos [dias] · tudo`
+      + '\nSem "confirmar" eu só mostro o que sairia.';
+  }
+
+  const plano = planejarLimpeza({
+    escopo,
+    ...(dias !== undefined ? { dias } : {}),
+    jobs: deps.fila.listar({ limite: 5000 }),
+    fluxos: fluxos.listarResumo(),
+    raizArtefatos: deps.raizArtefatos ?? '',
+    publicoDir: deps.publicoDir ?? '',
+    agoraMs: deps.agora() * 1000,
+  });
+  if (plano.erro) return plano.erro;
+  if (!plano.itens.length) return `nada a limpar em "${escopo}".`;
+
+  const total = plano.itens.reduce((n, i) => n + i.bytes, 0);
+  const cabeca = plano.itens.slice(0, 12).map((i) => `  ${humano(i.bytes)}  ${i.motivo}`);
+  const resto12 = plano.itens.length > 12 ? [`  … e mais ${plano.itens.length - 12}`] : [];
+
+  if (!confirmar) {
+    return [
+      `${escopo}: ${plano.itens.length} item(ns), ${humano(total)}`,
+      ...cabeca, ...resto12, '',
+      `Para apagar: /limpar ${escopo}${dias !== undefined ? ` ${dias}` : ''} confirmar`,
+    ].join('\n');
+  }
+
+  let apagados = 0;
+  let libertos = 0;
+  const falhas: string[] = [];
+  for (const i of plano.itens) {
+    try {
+      rmSync(i.caminho, { recursive: true, force: true });
+      apagados += 1;
+      libertos += i.bytes;
+    } catch (e) {
+      falhas.push(`${i.caminho}: ${(e as Error).message}`);
+    }
+  }
+  return [
+    `${escopo}: ${apagados} item(ns) apagado(s), ${humano(libertos)} liberados.`,
+    ...(falhas.length ? ['', `não consegui apagar ${falhas.length}:`, ...falhas.slice(0, 3)] : []),
+  ].join('\n');
 }
 
 /** Jobs deste chat, do mais recente para o mais antigo, com teto — o contexto
