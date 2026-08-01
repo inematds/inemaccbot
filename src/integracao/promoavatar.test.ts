@@ -173,7 +173,10 @@ describe('portão entrega os roteiros no chat', () => {
   }
 
   function roteiros(): string[] {
-    return eventos.filter((e) => e.texto.startsWith('🎬')).map((e) => e.texto);
+    // Filtra pelo TÍTULO e não por emoji: a mensagem do portão perdeu o `🎬`
+    // (atrapalhava copiar), e um filtro por emoji passaria a não casar com
+    // nada — deixando as asserções de contagem verdes por vazio.
+    return eventos.filter((e) => /^A\d+-/.test(e.texto)).map((e) => e.texto);
   }
 
   it('manda uma mensagem por público, com o título do estúdio e a fala', () => {
@@ -206,6 +209,15 @@ describe('portão entrega os roteiros no chat', () => {
     const baixar = fila.listar().find((j) => j.flow_ref === 'A#1/mulheres/baixar')!;
     const { titulo } = JSON.parse(baixar.input) as { titulo: string };
     expect(roteiros()[0]).toContain(titulo);
+  });
+
+  // A mensagem é para ser SELECIONADA e colada no estúdio; emoji entra junto.
+  it('a mensagem do roteiro começa no TÍTULO, sem emoji', () => {
+    const id = criar(['mulheres']);
+    escreverRoteiro(id, 'mulheres', 'fala.');
+    ackar('A#1//texto', 'ok');
+    expect(roteiros()[0]!.startsWith('A1-mulheres-v1')).toBe(true);
+    expect(roteiros()[0]).not.toContain('🎬');
   });
 
   it('só manda a FALA — sobreposições são instrução do reel, não do estúdio', () => {

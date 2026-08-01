@@ -262,7 +262,7 @@ describe('/status P#N', () => {
   // O verbo é o mesmo; o argumento é que diz se é job ou fluxo.
   it('/status com número continua sendo job, não fluxo', async () => {
     fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'x', input: '{}' });
-    expect(await manda('/status 1')).toContain('job 1');
+    expect(await manda('/status 1')).toContain('job j1');
   });
 
   it('/status sozinho continua sendo a lista de jobs', async () => {
@@ -291,14 +291,21 @@ describe('/refazer e /cancelar de fluxo', () => {
  * morria como comando desconhecido. O `/aprovar` já avisava; estes dois não.
  */
 describe('referência de fluxo malformada', () => {
-  it('/refazer sem o # avisa em vez de sumir', async () => {
-    const r = await manda('/refazer A6 jovens');
-    expect(r).toContain('não entendi');
-    expect(r).toContain('A#6');
+  // O `#` deixou de ser obrigatório: `B1` é tão inequívoco quanto `B#1`, e
+  // exigi-lo custou uma tentativa perdida no chat real (31/07). Agora só o que
+  // NÃO é referência nem número vira aviso.
+  it('sem o # é aceito como referência', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    expect(await manda('/status B1')).toContain('B#1');
+    expect(await manda('/status b1')).toContain('B#1');
   });
 
-  it('/cancelar sem o # também avisa', async () => {
-    expect(await manda('/cancelar B1')).toContain('não entendi');
+  it('referência de fluxo que não existe diz isso, e não "não entendi"', async () => {
+    expect(await manda('/refazer B9 um')).toContain('não existe neste bot');
+  });
+
+  it('texto que não é referência nem número avisa', async () => {
+    expect(await manda('/cancelar xyz')).toContain('não entendi');
   });
 
   // Número continua sendo JOB — o fallthrough é intencional aí.

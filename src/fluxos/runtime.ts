@@ -361,10 +361,12 @@ export class Fluxos {
         faltando.push(alvo);
         continue;
       }
-      // Sem `(${alvo})`: o título JÁ carrega o público (`A6-jovens-v1`), e
-      // repetir empurra a fala para baixo numa mensagem que existe para ser
-      // copiada.
-      this.avisar(fluxo, `🎬 ${tituloEstudio(fluxo, alvo)}\n\n${fala}`);
+      // SEM emoji e sem `(${alvo})`: esta mensagem existe para ser SELECIONADA
+      // e colada no HeyGen, e o `🎬` entra na seleção junto. O título já carrega
+      // o público (`A9-jovens-v1`), então repetir só empurra a fala para baixo.
+      // Os avisos que ninguém copia (portão, falta, fim) mantêm o emoji — ali
+      // ele ajuda a varrer o chat com o olho.
+      this.avisar(fluxo, `${tituloEstudio(fluxo, alvo)}\n\n${fala}`);
     }
 
     // Falta NUNCA vira lista curta silenciosa: sem esta linha, um público sem

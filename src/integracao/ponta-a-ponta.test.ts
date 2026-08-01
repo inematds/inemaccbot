@@ -123,9 +123,9 @@ describe('ponta a ponta: chat -> job -> execução -> resposta', () => {
     await chegar(42, 'http https://exemplo.test/x');
 
     // "enfileirado: job N (http.get)" é a resposta síncrona do comando.
-    const ack = mensagens.find((m) => /enfileirado: job \d+ \(http\.get\)/.test(m.texto));
+    const ack = mensagens.find((m) => /enfileirado: job j\d+ \(http\.get\)/.test(m.texto));
     expect(ack).toBeDefined();
-    const id = Number(/job (\d+)/.exec(ack!.texto)![1]);
+    const id = Number(/job j(\d+)/.exec(ack!.texto)![1]);
 
     // 2. o job existe na fila `io` com chat_id preenchido.
     const job = svc.fila.obter(id);
@@ -153,8 +153,8 @@ describe('ponta a ponta: chat -> job -> execução -> resposta', () => {
     await svc.iniciar();
 
     await chegar(42, 'http https://exemplo.test/erro');
-    const ack = mensagens.find((m) => /enfileirado: job \d+ \(http\.get\)/.test(m.texto));
-    const id = Number(/job (\d+)/.exec(ack!.texto)![1]);
+    const ack = mensagens.find((m) => /enfileirado: job j\d+ \(http\.get\)/.test(m.texto));
+    const id = Number(/job j(\d+)/.exec(ack!.texto)![1]);
 
     await ate(() => svc.fila.obter(id)?.status === 'failed');
 

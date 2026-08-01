@@ -144,7 +144,7 @@ describe('executar', () => {
       expect(job.tarefa).toBe('transcrever');
       expect(job.max_tentativas).toBe(2);
       expect(JSON.parse(job.input)).toEqual({ entrada: 'http://x' });
-      expect(r).toContain('job 1');
+      expect(r).toContain('job j1');
     });
 
     it('grava destino e override de perfil no input do job', () => {
@@ -259,7 +259,7 @@ describe('executar', () => {
       const r = executar(parseComando('/status'), depsSkills());
       // O id é o que faltava: sem ele não dá para usar /status, /cancelar,
       // /furar nem /refazer — era um beco sem saída no chat.
-      expect(r).toMatch(/\b1\b/);
+      expect(r).toMatch(/\bj1\b/);
       expect(r).toContain('transcrever');
       expect(r).toContain('exemplo.com');
     });

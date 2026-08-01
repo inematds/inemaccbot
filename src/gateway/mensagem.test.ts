@@ -63,7 +63,7 @@ describe('tratarMensagem', () => {
   it('skill digitada enfileira direto, sem passar pelo interpretador', async () => {
     const runner = new FakeRunner({ respostas: [] });
     const r = await tratarMensagem(1, 'transcrever: http://x', { ...deps([]), runner });
-    expect(r).toContain('job 1');
+    expect(r).toContain('job j1');
     expect(runner.chamadas).toHaveLength(0);
   });
 
@@ -74,7 +74,7 @@ describe('tratarMensagem', () => {
     const job = fila.obter(1)!;
     expect(job.tarefa).toBe('transcrever');
     expect(job.chat_id).toBe(9);
-    expect(r).toContain('job 1');
+    expect(r).toContain('job j1');
   });
 
   it('parte não atendida do pedido é dita, não engolida', async () => {

@@ -181,7 +181,7 @@ export function duracao(inicio: number | null, fim: number | null): string | und
 
 function fmtStatus(job: Job): string {
   const linhas = [
-    `job ${job.id}`,
+    `job j${job.id}${job.flow_ref ? ` · ${job.flow_ref}` : ''}`,
     `status: ${job.status}`,
     `fila: ${job.fila}`,
     `tarefa: ${job.tarefa}`,
@@ -221,7 +221,15 @@ function linhaLista(job: Job, agora: number): string {
     ? duracao(job.iniciado_em ?? job.criado_em, agora)
     : duracao(job.iniciado_em, job.terminado_em);
   const entrada = resumoEntrada(job.input);
-  return `${icone} ${job.id} ${job.tarefa}${entrada ? ` — ${entrada}` : ''}${quando ? ` (${quando})` : ''}`;
+  // `j13` e não `13`: o número solto no começo da linha se confunde com
+  // contagem, e o prefixo separa visualmente do id de FLUXO (`A#9`), que é
+  // outra coisa. Do chat real: "o que é 13 reel?".
+  //
+  // E o `flow_ref` responde DE QUEM é o job. Sem ele, doze reels de um fluxo de
+  // 12 públicos viram doze linhas idênticas, sem dizer qual público é qual nem
+  // qual cancelar se um travar.
+  const dono = job.flow_ref ? ` · ${job.flow_ref}` : '';
+  return `${icone} j${job.id} ${job.tarefa}${dono}${entrada ? ` — ${entrada}` : ''}${quando ? ` (${quando})` : ''}`;
 }
 
 /** Um pedaço curto do que foi pedido, para reconhecer o job na lista. O input é
@@ -317,7 +325,7 @@ function resumoFila(fila: FilaSqlite, nome: Fila, agora: number): string {
     `erro_24h=${taxaErro} retentados=${retentados}`,
   ];
   if (presos.length) {
-    linhas.push(`  ⚠️ possivelmente preso: ${presos.map((j) => `${j.id} (${duracao(j.iniciado_em, agora)})`).join(', ')}`);
+    linhas.push(`  ⚠️ possivelmente preso: ${presos.map((j) => `j${j.id}${j.flow_ref ? ` (${j.flow_ref})` : ''} ${duracao(j.iniciado_em, agora)}`).join(', ')}`);
   }
   return linhas.join('\n');
 }
@@ -395,7 +403,7 @@ export function executar(cmd: Comando, deps: DepsComando): string {
         input: JSON.stringify({ url: cmd.url }),
         chat_id: deps.chatId,
       });
-      return `enfileirado: job ${job.id} (http.get)`;
+      return `enfileirado: job j${job.id} (http.get)`;
     }
 
     case 'thumb': {
@@ -406,7 +414,7 @@ export function executar(cmd: Comando, deps: DepsComando): string {
         input: JSON.stringify({ entrada: cmd.entrada }),
         chat_id: deps.chatId,
       });
-      return `enfileirado: job ${job.id} (ffmpeg.thumb)`;
+      return `enfileirado: job j${job.id} (ffmpeg.thumb)`;
     }
 
     case 'skills':
@@ -449,7 +457,7 @@ export function executar(cmd: Comando, deps: DepsComando): string {
         perfil,
       });
       const destino = cmd.pedido.destinoToken ? ` → ${cmd.pedido.destinoToken}` : '';
-      return `enfileirado: job ${job.id} (${def.command})${destino}`;
+      return `enfileirado: job j${job.id} (${def.command})${destino}`;
     }
 
     case 'refazer': {

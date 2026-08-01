@@ -261,8 +261,16 @@ export function flowRef(prefixo: string, fluxoId: number, alvo: string, fase: st
 }
 
 /** `P#16` → `{ prefixo, id }`; `undefined` se não for uma referência. */
+/**
+ * `A#9`, `a#9`, `A9` e `a9` — as quatro formas, um significado.
+ *
+ * O `#` era obrigatório e virou armadilha: em 31/07 o dono tentou
+ * `/aprovar a8` e ouviu que não existia. Letras seguidas de dígitos são
+ * inequívocas — não colidem com id de JOB, que é só número, e é isso que
+ * mantém `/status 13` funcionando como job.
+ */
 export function parseRef(texto: string): { prefixo: string; id: number } | undefined {
-  const m = texto.trim().match(/^([A-Za-z]{1,3})#(\d+)$/);
+  const m = texto.trim().match(/^([A-Za-z]{1,3})#?(\d+)$/);
   if (!m) return undefined;
   return { prefixo: m[1].toUpperCase(), id: Number(m[2]) };
 }
