@@ -141,6 +141,18 @@ seletivo, retomada e definição congelada.
 O domínio diz para QUEM (canal por nome, `lives21`); o bot sabe ONDE (o caminho no disco).
 Nunca ponha caminho no `flow.json`.
 
+#### `heygen.baixar` sempre pega o MP4 SEM legenda
+
+O `video_status.get` devolve `video_url` (limpo), `video_url_caption` (com a
+legenda **queimada**) e `caption_url` (legenda solta). A tarefa lê **só
+`video_url`** — a legenda do reel é desenhada pelo nosso editor, sob a opção
+`legenda` do fluxo, e legenda queimada não tem como ser removida depois.
+
+Não há como escolher estilo no download: a URL é pronta, e os endpoints de
+legenda da API dão 404. Isso se decide no estúdio, antes de renderizar. Detalhe,
+o que foi medido e o que **não** foi: comentário em `src/fila/tarefas/heygen.ts`
+e o README do repo de domínio.
+
 ### Regra da documentação (verificada por teste)
 
 **Todo domínio que entra no catálogo responde ajuda.** Não por disciplina — por construção:
