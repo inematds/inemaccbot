@@ -10,7 +10,7 @@ import { flowRef, type FaseDef, type FlowDef } from '../dominio/flow.js';
 import { primeiraFala } from '../dominio/roteiro.js';
 import type { FilaSqlite } from '../fila/store.js';
 import type { Agora, Job } from '../fila/types.js';
-import { EstadoFluxos, type Fase, type Fluxo } from './estado.js';
+import { EstadoFluxos, type Fase, type Fluxo, type StatusFluxo } from './estado.js';
 import { montarInput, pastaTextos, tituloEstudio } from './entrada-fase.js';
 import type { Publicacao } from './publicar.js';
 
@@ -520,6 +520,13 @@ export class Fluxos {
    * recortar por fluxo ou por tipo, sem carregar fase nenhuma. */
   listarResumo(): { id: number; prefixo: string; tipo: string }[] {
     return this.estado.listar().map((f) => ({ id: f.id, prefixo: f.prefixo, tipo: f.tipo }));
+  }
+
+  /** Todos os fluxos, ou só os de um status. O painel do chat vive disto:
+   * `rodando`/`falhou` são os que ainda pedem alguma coisa de você,
+   * `feito` é o histórico. */
+  listarFluxos(status?: StatusFluxo): Fluxo[] {
+    return this.estado.listar(status);
   }
 
   listarTipos(): string[] {

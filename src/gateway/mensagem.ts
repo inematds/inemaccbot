@@ -22,8 +22,8 @@ import { planejarLimpeza } from '../dominio/limpeza.js';
 import { ajudaDaSkill } from './ajuda-dominio.js';
 import { executar, parseComando } from './comandos.js';
 import {
-  ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, refazerFluxo, statusFluxo,
-  textoFluxos,
+  ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, fluxosCompletos, painelFluxos,
+  refazerFluxo, statusFluxo, textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
 import { interpretar } from './interpret.js';
@@ -117,9 +117,18 @@ function tratarComandoDeFluxo(
     return limpar(resto, deps, depsFluxo.fluxos);
   }
 
+  if (verbo === '/completos') {
+    return fluxosCompletos(depsFluxo);
+  }
+
   if (verbo === '/status' || verbo === '/refazer' || verbo === '/cancelar') {
     const [ref, alvo] = resto;
-    if (!ref) return undefined; // `/status` sozinho é a lista de jobs
+    // `/status` sozinho é o painel dos FLUXOS. Era a lista de jobs, e mudou de
+    // dono porque a pergunta que se faz no chat é "quais assuntos estão em pé e
+    // o que cada um espera de mim" — job solto é detalhe de máquina. A lista de
+    // jobs não sumiu: `/jobs` é o mesmo comando de antes, e o rodapé do painel
+    // aponta para ela.
+    if (!ref) return verbo === '/status' ? painelFluxos(depsFluxo) : undefined;
     const resposta = verbo === '/status' ? statusFluxo(ref, depsFluxo)
       : verbo === '/refazer' ? refazerFluxo(ref, alvo, depsFluxo)
         : cancelarFluxo(ref, alvo, depsFluxo);

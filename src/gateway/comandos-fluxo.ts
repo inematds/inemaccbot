@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { carregarFlow, congelar, hashDefinicao, parseRef, type FlowDef } from '../dominio/flow.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
-import type { Fase } from '../fluxos/estado.js';
+import type { Fase, Fluxo } from '../fluxos/estado.js';
 import type { Fluxos } from '../fluxos/runtime.js';
 
 export interface DepsFluxo {
@@ -317,6 +317,21 @@ export function statusFluxo(ref: string, deps: DepsFluxo): string | undefined {
     return `${ref} não existe neste bot.`;
   }
 
+  return tabelaFluxo(visao, true);
+}
+
+/**
+ * O bloco fase × alvo de UM fluxo.
+ *
+ * `comandos` liga os atalhos (`/aprovar`, `/refazer`); o painel de vários
+ * fluxos desliga, porque repetir "libere com /aprovar C#12" doze vezes é
+ * exatamente o ruído que faz ninguém ler o painel. Lá o atalho aparece UMA vez,
+ * no rodapé.
+ */
+export function tabelaFluxo(
+  visao: { fluxo: Fluxo; fases: Fase[] },
+  comandos: boolean,
+): string {
   const { fluxo, fases } = visao;
   const linhas = [
     `${fluxo.prefixo}#${fluxo.id} — ${fluxo.tipo}: ${fluxo.assunto}`,
@@ -336,14 +351,94 @@ export function statusFluxo(ref: string, deps: DepsFluxo): string | undefined {
   }
   const esperando = fases.filter((f) => f.estado === 'aguardando-ok');
   if (esperando.length) {
-    linhas.push('', `⏸️ esperando você em "${esperando[0]!.fase}" — libere com /aprovar ${fluxo.prefixo}#${fluxo.id}`);
+    linhas.push('', comandos
+      ? `⏸️ esperando você em "${esperando[0]!.fase}" — libere com /aprovar ${fluxo.prefixo}#${fluxo.id}`
+      : `⏸️ esperando você em "${esperando[0]!.fase}"`);
   }
   const falhas = fases.filter((f) => f.estado === 'falhou');
   if (falhas.length) {
     linhas.push('', 'Falhas:');
     for (const f of falhas) linhas.push(`  ${f.alvo || '(todos)'}/${f.fase}: ${(f.erro ?? '').slice(0, 200)}`);
-    linhas.push(`Retentar: /refazer ${fluxo.prefixo}#${fluxo.id} [alvo]`);
+    if (comandos) linhas.push(`Retentar: /refazer ${fluxo.prefixo}#${fluxo.id} [alvo]`);
   }
+  return linhas.join('\n');
+}
+
+/** Quantos fluxos terminados o `/completos` mostra. O resto vira uma linha
+ * dizendo quantos ficaram de fora — truncar calado faz o painel mentir. */
+const COMPLETOS_NA_LISTA = 10;
+
+/** Assunto encurtado para a lista de uma linha. */
+function resumoAssunto(assunto: string, limite = 70): string {
+  const limpo = assunto.replace(/\s+/g, ' ').trim();
+  return limpo.length <= limite ? limpo : `${limpo.slice(0, limite - 1)}…`;
+}
+
+/** A situação de um fluxo em UMA palavra, para a lista de cima. */
+function situacao(visao: { fluxo: Fluxo; fases: Fase[] }): string {
+  const { fluxo, fases } = visao;
+  if (fases.some((f) => f.estado === 'aguardando-ok')) return '⏸️ esperando você';
+  if (fluxo.status === 'falhou') return '❌ falhou';
+  if (fluxo.status === 'cancelado') return '🚫 cancelado';
+  if (fluxo.status === 'feito') return '✅ feito';
+  const rodando = fases.find((f) => f.estado === 'rodando');
+  if (rodando) return `⏳ rodando "${rodando.fase}"`;
+  return '⏳ na fila';
+}
+
+/**
+ * `/status` sem argumento — o painel dos fluxos ABERTOS.
+ *
+ * Duas camadas de propósito: primeiro a lista de uma linha por fluxo (o número
+ * e a situação, que é o que se olha de relance), depois o detalhe fase × alvo
+ * de cada um. Os atalhos ficam UMA vez no rodapé, não repetidos por fluxo.
+ *
+ * `cancelado` não é aberto nem completo — não entra em lista nenhuma. Quem
+ * cancelou sabe que cancelou.
+ */
+export function painelFluxos(deps: DepsFluxo): string {
+  const abertos = [
+    ...deps.fluxos.listarFluxos('rodando'),
+    ...deps.fluxos.listarFluxos('falhou'),
+  ].sort((a, b) => a.id - b.id);
+
+  if (!abertos.length) {
+    return 'Nenhum fluxo aberto. Terminados: /completos · fila de jobs: /jobs';
+  }
+
+  const visoes = abertos
+    .map((f) => deps.fluxos.status(f.id))
+    .filter((v): v is { fluxo: Fluxo; fases: Fase[] } => v !== undefined);
+
+  const linhas = [`Fluxos abertos (${visoes.length}):`];
+  for (const v of visoes) {
+    linhas.push(`  ${v.fluxo.prefixo}#${v.fluxo.id} · ${situacao(v)} — ${resumoAssunto(v.fluxo.assunto)}`);
+  }
+  for (const v of visoes) {
+    linhas.push('', tabelaFluxo(v, false));
+  }
+  linhas.push(
+    '',
+    'Detalhe de um: /status C#12 · liberar: /aprovar C#12 · retentar: /refazer C#12',
+    'Terminados: /completos · fila de jobs: /jobs',
+  );
+  return linhas.join('\n');
+}
+
+/** `/completos` — os fluxos que terminaram, do mais novo para o mais velho. */
+export function fluxosCompletos(deps: DepsFluxo): string {
+  const feitos = deps.fluxos.listarFluxos('feito').sort((a, b) => b.id - a.id);
+  if (!feitos.length) return 'Nenhum fluxo completo ainda. Abertos: /status';
+
+  const mostrar = feitos.slice(0, COMPLETOS_NA_LISTA);
+  const linhas = [`Fluxos completos (${feitos.length}):`];
+  for (const f of mostrar) {
+    linhas.push(`  ${f.prefixo}#${f.id} · ${f.tipo} — ${resumoAssunto(f.assunto)}`);
+  }
+  if (feitos.length > mostrar.length) {
+    linhas.push(`  … e mais ${feitos.length - mostrar.length} mais antigo(s), fora desta lista.`);
+  }
+  linhas.push('', 'Detalhe de um: /status C#12 · abertos: /status');
   return linhas.join('\n');
 }
 

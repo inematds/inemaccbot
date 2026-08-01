@@ -24,7 +24,9 @@ agentes, multiusuário. Ver §11 do spec — cada item com o gatilho para recons
 | `/skills` · `/fluxos` | os dois catálogos |
 | `/fila` | por fila: rodando, pendentes, idade, erro em 24h, retentados |
 | `/espaco` | quanto disco cada área ocupa (bot × skills), separadas |
-| `/status` | o que está na fila e o que terminou |
+| `/status` | os fluxos ABERTOS: a lista de uma linha (número · situação · assunto) e depois o detalhe fase × alvo de cada um |
+| `/completos` | os fluxos que terminaram, do mais novo para o mais velho |
+| `/jobs` | a fila de jobs: o que está rodando e o que terminou |
 | `/status j13` · `/status A#9` | detalhe de um JOB ou de um FLUXO |
 | `/cancelar j13` · `/cancelar A#9 [público]` | idem |
 | `/refazer j13` · `/refazer A#9 [público]` | idem — no fluxo, retoma da fase que falhou |

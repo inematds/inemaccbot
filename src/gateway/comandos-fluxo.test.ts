@@ -265,8 +265,54 @@ describe('/status P#N', () => {
     expect(await manda('/status 1')).toContain('job j1');
   });
 
-  it('/status sozinho continua sendo a lista de jobs', async () => {
-    expect(await manda('/status')).toMatch(/Nada na fila|Na fila agora/);
+  // MUDANÇA DELIBERADA: `/status` sozinho era a lista de jobs e virou o painel
+  // dos fluxos. A pergunta que se faz no chat é "quais assuntos estão em pé e o
+  // que cada um espera de mim" — job solto é detalhe de máquina. A lista de
+  // jobs não sumiu: `/jobs` é o mesmo comando, e o painel aponta para ela.
+  describe('/status sozinho — o painel dos fluxos', () => {
+    it('sem fluxo aberto, diz isso e aponta as duas saídas', async () => {
+      const r = await manda('/status');
+      expect(r).toContain('Nenhum fluxo aberto');
+      expect(r).toContain('/completos');
+      expect(r).toContain('/jobs');
+    });
+
+    it('lista o número, a situação e o assunto de cada fluxo aberto', async () => {
+      await manda('/brinquedo Primeiro assunto');
+      await manda('/brinquedo Segundo assunto');
+      const r = await manda('/status');
+      expect(r).toContain('Fluxos abertos (2):');
+      expect(r).toContain('B#1');
+      expect(r).toContain('Primeiro assunto');
+      expect(r).toContain('B#2');
+      expect(r).toContain('Segundo assunto');
+    });
+
+    it('traz o detalhe fase × alvo de cada um, SEM repetir os atalhos por fluxo', async () => {
+      await manda('/brinquedo Primeiro assunto');
+      await manda('/brinquedo Segundo assunto');
+      const r = await manda('/status');
+      expect(r).toContain('versão da definição:');
+      // O atalho aparece UMA vez, no rodapé — não uma vez por fluxo.
+      expect(r.match(/\/refazer/g)?.length).toBe(1);
+    });
+
+    it('a lista de jobs continua viva em /jobs', async () => {
+      expect(await manda('/jobs')).toMatch(/Nada na fila|Na fila agora/);
+    });
+  });
+
+  describe('/completos', () => {
+    it('sem nada terminado, diz isso e aponta os abertos', async () => {
+      const r = await manda('/completos');
+      expect(r).toContain('Nenhum fluxo completo ainda');
+      expect(r).toContain('/status');
+    });
+
+    it('não mostra fluxo aberto', async () => {
+      await manda('/brinquedo Assunto aberto');
+      expect(await manda('/completos')).toContain('Nenhum fluxo completo ainda');
+    });
   });
 });
 
