@@ -107,6 +107,29 @@ describe('criar fluxo', () => {
     expect(fluxos.status(1)).toBeUndefined();
   });
 
+  // Aconteceu no chat: `| sombra.` morria como "campo desconhecido: sombra.".
+  // Ponto no fim é hábito de quem escreve frase, não erro de uso.
+  it('pontuação no fim do campo é aparada', async () => {
+    const r = await manda('/brinquedo Assunto | sombra.');
+    expect(r).toContain('NADA foi enfileirado');
+    expect(fila.listar()).toHaveLength(0);
+  });
+
+  it('pontuação é aparada também no campo com valor', async () => {
+    await manda('/brinquedo Assunto | alvos=um,dois;');
+    const visao = fluxos.status(1)!;
+    const alvos = new Set(visao.fases.filter((f) => f.alvo).map((f) => f.alvo));
+    expect(alvos).toEqual(new Set(['um', 'dois']));
+  });
+
+  // O assunto é `partes.shift()` e não passa pela aparagem — a pontuação DELE
+  // é conteúdo, e o assunto de debate ("isso é bom ou ruim?") vive disso.
+  it('a pontuação do ASSUNTO fica intacta', async () => {
+    await manda('/brinquedo Isso é bom ou ruim? | sombra');
+    await manda('/brinquedo Isso é bom ou ruim?');
+    expect(fluxos.status(1)!.fluxo.assunto).toBe('Isso é bom ou ruim?');
+  });
+
   it('flow.json quebrado é recusado na criação, não no primeiro job', async () => {
     writeFileSync(join(repo, 'flow.json'), '{"nome": "sem o resto"}');
     const r = await manda('/brinquedo Assunto');

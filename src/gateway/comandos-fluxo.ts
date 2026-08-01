@@ -225,7 +225,13 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   const assunto = (partes.shift() ?? '').replace(/\s+/g, ' ').trim();
   if (!assunto) return { erro: 'sem-assunto' };
 
-  for (const campo of partes.filter(Boolean)) {
+  for (const bruto of partes.filter(Boolean)) {
+    // Pontuação no fim do comando é hábito de quem escreve frase, não erro de
+    // uso: `| sombra.` era recusado como campo desconhecido "sombra.". O
+    // assunto NÃO passa por aqui (é `partes.shift()`), então a pontuação dele
+    // fica intacta — só os campos depois do `|` são aparados.
+    const campo = bruto.replace(/[.;,!?]+$/, '').trim();
+    if (!campo) continue;
     const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda)\s*=\s*(.+)$/i);
     if (m) {
       acrescentar(m[1], m[2]);
