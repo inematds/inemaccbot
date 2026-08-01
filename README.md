@@ -179,6 +179,15 @@ No chat: `/ajuda <nome>` para qualquer um, ou `/<fluxo> help`.
 - Testes herdados do v1 e onde cada um foi parar: `docs/herdado-do-v1.md`
 - Crítica externa ao design (respondida na §13 do spec): `docs/analise_critica_inemaccbot_design.md`
 
+Análises abertas (o que ainda não foi decidido):
+
+- **Sair do Telegram — WhatsApp, e-mail ou chatbot:**
+  [`docs/analise-canais-alem-do-telegram.md`](docs/analise-canais-alem-do-telegram.md).
+  A costura do gateway já existe; o que trava é `chat_id` ser `INTEGER`.
+  Recomendação: não trocar, acrescentar.
+- **Imagem e link como material de um fluxo:**
+  [`docs/analise-imagem-e-link-como-material.md`](docs/analise-imagem-e-link-como-material.md)
+
 ## Estrutura do código
 
 ```
