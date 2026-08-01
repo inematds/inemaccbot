@@ -41,6 +41,49 @@ separa de id de fluxo, e o sufixo diz de quem o job é.
 **`/pronto` sem referência** libera o fluxo quando só um está esperando. Com
 vários, ele lista quais. Com nenhum, diz isso.
 
+**Pontuação no fim dos campos é aparada.** `| sombra.` e `| alvos=a,b;` valem —
+ponto no fim é hábito de quem escreve frase, não erro de uso. O ASSUNTO não é
+aparado: a pontuação dele é conteúdo, e assunto que é pergunta ("isso é bom ou
+ruim?") depende dela.
+
+### Tirar um fluxo do `/status`
+
+O painel mostra `rodando` e `falhou` — os dois estados que ainda pedem algo de
+você. Um fluxo falhado que você não vai retomar sai assim:
+
+| quero | comando | o que acontece |
+|---|---|---|
+| só sumir da lista | `/cancelar A#9` | vira `cancelado`, que não aparece nem no `/status` nem no `/completos`. O fluxo continua existindo: `/status A#9` mostra tudo |
+| apagar de vez | `/limpar A#9` | remove o fluxo e os artefatos do disco. Mostra o que vai apagar e só executa com `confirmar` |
+
+`/cancelar` interrompe jobs pendentes e rodando — num fluxo já falhado não há
+nenhum, então "0 job(s) interrompido(s)" é o certo, não um erro. E o que já foi
+criado FORA (render no estúdio, arquivo entregue no canal) continua lá: cancelar
+é sobre o pipeline, não sobre o mundo.
+
+### `código 143` não é erro do agente — é restart
+
+`claude saiu com código 143` significa `128 + 15` = **SIGTERM**: o processo foi
+morto pelo desligamento do serviço, no meio do trabalho. Quase sempre a causa é
+um `systemctl --user restart inemaccbot` com job rodando.
+
+O que acontece com o job depende de quantas tentativas sobraram: com tentativa
+disponível ele é **requeued** e o boot seguinte o retoma sozinho; sem tentativa,
+vira `failed`. Um render de reel leva 10–15 min, então dois restarts seguidos
+esgotam as duas tentativas do mesmo job — foi assim que o `C#13/jovens-aut/reel`
+morreu, com os dois restarts do dia 2026-08-01.
+
+**Antes de reiniciar, confira a fila:**
+
+```bash
+sqlite3 inemaccbot.db \
+  "select id,fila,tarefa,status,flow_ref from jobs where status in ('queued','running');"
+```
+
+Vazio → reinicie à vontade. Com um render em voo → espere, ou aceite gastar uma
+tentativa dele. Depois é só `/refazer A#9 <alvo>`: SIGTERM não corrompe nada, o
+trabalho só não terminou.
+
 ### Skills (uma etapa, sem estado)
 
 ```
