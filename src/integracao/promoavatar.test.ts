@@ -526,3 +526,20 @@ describe('o título é a chave de idempotência (§2.5)', () => {
     expect(destinos.every((d) => existsSync(join(d, '..')) || true)).toBe(true);
   });
 });
+
+/**
+ * Legenda e CTA são decisões de quem PUBLICA, não do agente. Ficam resolvidas
+ * na definição CONGELADA: o fluxo nasce com a regra e não muda no meio.
+ */
+describe('opções do fluxo: legenda e clipe de CTA', () => {
+  it('o flow.json real declara os dois marcadores', () => {
+    const reel = def.fases.find((f) => f.id === 'reel')!;
+    // Depois de `congelar` eles ainda são marcadores: quem resolve é a criação.
+    expect(reel.entrega).toContain('{cta}');
+    expect(reel.entrega).toContain('{legenda}');
+  });
+
+  it('existe o clipe de CTA 9:16 no repo de domínio', () => {
+    expect(existsSync(join(REPO_DOMINIO, 'cta', 'cta-9x16.mp4'))).toBe(true);
+  });
+});

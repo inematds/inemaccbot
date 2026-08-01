@@ -5,7 +5,7 @@
 // `/status`, `/refazer` e `/cancelar` são os MESMOS verbos dos jobs — o que
 // muda é o argumento: `12` é job, `P#16` é fluxo. Ter dois verbos para a mesma
 // pergunta seria atrito puro.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { carregarFlow, congelar, hashDefinicao, parseRef, type FlowDef } from '../dominio/flow.js';
@@ -78,6 +78,7 @@ export function ajudaDoFluxo(
     'Campos (com "|" no fim, ou "--" em qualquer lugar):',
     '  | alvos=a,b   só esses públicos (ou --alvo=a --alvo=b)',
     '  | de=<fase>   começa nessa fase (as anteriores ficam puladas)',
+    '  | legenda      liga a legenda no reel (padrão: SEM legenda)',
     '  | versao=N    versão do assunto',
     '  | sombra      mostra o plano sem enfileirar nada',
     '',
@@ -87,6 +88,40 @@ export function ajudaDoFluxo(
     linhas.push(`Liberar o portão: /aprovar ${def.prefixo}#N`);
   }
   return linhas.join('\n');
+}
+
+/**
+ * Resolve as opções DO FLUXO dentro da definição congelada.
+ *
+ * Por que aqui e não numa coluna nova no banco: a definição já é congelada por
+ * fluxo — é exatamente o lugar onde "este fluxo foi criado com estas regras"
+ * mora. Um fluxo em andamento não muda de regra no meio (§3.4), e o `/status`
+ * continua contando a verdade sem tabela nova.
+ *
+ * `{legenda}` — default é SEM. Legenda é decisão de quem publica, e forçá-la em
+ * todo reel é decidir pelo dono do canal.
+ * `{cta}` — o clipe padrão do PRÓPRIO domínio (`<repo>/cta/cta-9x16.mp4`).
+ * Cada fluxo tem o seu, editável sem tocar no bot; sem arquivo, o CTA volta a
+ * ser desenhado pelo agente.
+ */
+function resolverOpcoes(def: FlowDef, repo: string, legenda: boolean): FlowDef {
+  const clipe = join(repo, 'cta', 'cta-9x16.mp4');
+  const temClipe = existsSync(clipe);
+  const textoCta = temClipe
+    ? `use o clipe pronto ${clipe} — 1080x1920, 3s, com áudio. Concatene-o no FIM, `
+      + 'sem re-desenhar CTA nenhum e sem recodificar o resto do reel'
+    : 'desenhe o CTA "Saiba mais no inema.club", fixo e legível';
+  const textoLegenda = legenda
+    ? 'palavra-a-palavra, com a palavra-chave destacada. A CAIXA da legenda encosta '
+      + 'na borda INFERIOR do vídeo — cerca de 1 mm acima dela, não no meio da tela '
+      + 'nem na altura do peito.'
+    : 'NÃO gere legenda neste reel. Sem texto de fala na tela.';
+  return {
+    ...def,
+    fases: def.fases.map((f) => (f.entrega
+      ? { ...f, entrega: f.entrega.replace('{cta}', textoCta).replace('{legenda}', textoLegenda) }
+      : f)),
+  };
 }
 
 /** Leitura tolerante: ajuda ausente é o caso NORMAL, não erro. */
@@ -116,12 +151,14 @@ interface ArgumentoFluxo {
   versao?: number;
   de?: string;
   sombra: boolean;
+  /** Legenda no reel. Default NÃO: quem quer, liga na criação. */
+  legenda: boolean;
 }
 
 /** Nomes de campo que o comando entende. Uma fonte só: a guarda de digitação
  * abaixo casa contra ESTA lista, senão ela envelhece sozinha quando alguém
  * acrescentar um campo. */
-const CAMPOS = ['alvos', 'alvo', 'versao', 'versão', 'de'] as const;
+const CAMPOS = ['alvos', 'alvo', 'versao', 'versão', 'de', 'legenda'] as const;
 
 /** `--alvo=x`, `--alvos=a,b`, `--sombra`. Repetível, e em qualquer posição. */
 const BANDEIRA = new RegExp(String.raw`--(${CAMPOS.join('|')}|sombra)(?:\s*=\s*([^\s|]+))?`, 'gi');
@@ -151,6 +188,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   let versao: number | undefined;
   let de: string | undefined;
   let sombra = false;
+  let legenda = false;
   let erro: string | undefined;
 
   const acrescentar = (nome: string, bruto: string | undefined): void => {
@@ -165,6 +203,10 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
       return;
     }
     if (chave === 'de') { de = valor; return; }
+    if (chave === 'legenda') {
+      legenda = !/^(n|não|nao|0|false)/i.test(valor);
+      return;
+    }
     const n = Number(valor);
     if (!Number.isInteger(n) || n <= 0) { erro ??= `versão inválida: "${valor}"`; return; }
     versao = n;
@@ -173,7 +215,8 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   // Bandeiras saem do texto ANTES do corte por `|`, para poderem aparecer em
   // qualquer posição sem que o pedaço vire assunto.
   const semBandeiras = argumento.replace(BANDEIRA, (_todo, nome: string, valor?: string) => {
-    acrescentar(nome, valor);
+    // `--legenda` sem valor LIGA: bandeira sem valor é "quero isto".
+    acrescentar(nome, nome.toLowerCase() === 'legenda' ? (valor ?? 'sim') : valor);
     return ' ';
   });
   if (erro) return { erro };
@@ -183,13 +226,14 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   if (!assunto) return { erro: 'sem-assunto' };
 
   for (const campo of partes.filter(Boolean)) {
-    const m = campo.match(/^(alvos|alvo|versao|versão|de)\s*=\s*(.+)$/i);
+    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda)\s*=\s*(.+)$/i);
     if (m) {
       acrescentar(m[1], m[2]);
       if (erro) return { erro };
       continue;
     }
     if (campo.toLowerCase() === 'sombra') { sombra = true; continue; }
+    if (campo.toLowerCase() === 'legenda') { legenda = true; continue; }
     return { erro: `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase> · sombra` };
   }
 
@@ -203,7 +247,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     };
   }
 
-  return { assunto, alvos, versao, de, sombra };
+  return { assunto, alvos, versao, de, sombra, legenda };
 }
 
 export function criarFluxo(
@@ -213,7 +257,7 @@ export function criarFluxo(
   if ('erro' in lido) return lido.erro === 'sem-assunto'
     ? `faltou o assunto — ex.: ${registrado.exemplo}`
     : lido.erro;
-  const { assunto, alvos, versao, de, sombra } = lido;
+  const { assunto, alvos, versao, de, sombra, legenda } = lido;
 
   // A definição é lida do disco AQUI e congelada na criação. Um `flow.json`
   // inválido é recusado agora, com o usuário na frente, e não no primeiro job.
@@ -224,7 +268,7 @@ export function criarFluxo(
     hash = hashDefinicao(doDisco, registrado.repo);
     // Congela AQUI: daqui para frente o fluxo não depende mais do disco do repo
     // de domínio, nem para o texto dos prompts.
-    definicao = congelar(doDisco, registrado.repo);
+    definicao = resolverOpcoes(congelar(doDisco, registrado.repo), registrado.repo, legenda);
   } catch (e) {
     return `não consegui ler a definição do fluxo: ${(e as Error).message}`;
   }

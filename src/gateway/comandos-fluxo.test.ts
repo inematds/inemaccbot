@@ -1,6 +1,6 @@
 // Os comandos de fluxo pelo caminho REAL do chat, com um repo de domínio de
 // brinquedo — nenhum teste toca Telegram nem `claude`.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -403,5 +403,67 @@ describe('liberar o portão sem atrito', () => {
 
   it('referência inválida ensina o formato certo', async () => {
     expect(await manda('/pronto xyz')).toContain('não entendi');
+  });
+});
+
+
+/**
+ * Legenda é decisão de quem publica: o default é NÃO, e quem quer liga na
+ * criação. O CTA vira um clipe pronto do próprio domínio, editável sem tocar
+ * no bot. Os dois ficam resolvidos na definição CONGELADA — o fluxo nasce com
+ * a regra e não muda no meio do caminho.
+ */
+describe('legenda e CTA como opções do fluxo', () => {
+  function entregaDoFluxo(id: number): string {
+    const bruto = fluxos.status(id)!.fluxo.definicao_json;
+    const def = JSON.parse(bruto) as { fases: { id: string; entrega?: string }[] };
+    return def.fases.find((f) => f.id === 'render')?.entrega ?? '';
+  }
+
+  beforeEach(() => {
+    // O domínio de brinquedo ganha os dois marcadores na fase `render`.
+    const flow = JSON.parse(readFileSync(join(repo, 'flow.json'), 'utf8')) as {
+      fases: { id: string; entrega?: string }[];
+    };
+    flow.fases[1]!.entrega = 'CTA: {cta} · LEGENDA: {legenda}';
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify(flow));
+  });
+
+  it('sem pedir, o reel sai SEM legenda', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    expect(entregaDoFluxo(1)).toContain('NÃO gere legenda');
+  });
+
+  it('| legenda=sim liga, e manda a caixa encostar embaixo', async () => {
+    await manda('/brinquedo Assunto | alvos=um | legenda=sim');
+    const e = entregaDoFluxo(1);
+    expect(e).toContain('palavra-a-palavra');
+    expect(e).toContain('borda INFERIOR');
+  });
+
+  it('--legenda sem valor também liga', async () => {
+    await manda('/brinquedo Assunto --alvo=um --legenda');
+    expect(entregaDoFluxo(1)).toContain('palavra-a-palavra');
+  });
+
+  it('| legenda=nao desliga explicitamente', async () => {
+    await manda('/brinquedo Assunto | alvos=um | legenda=nao');
+    expect(entregaDoFluxo(1)).toContain('NÃO gere legenda');
+  });
+
+  // Sem clipe no domínio, o CTA volta a ser desenhado — nunca aponta para um
+  // arquivo que não existe.
+  it('sem clipe no repo, o CTA é desenhado pelo agente', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    expect(entregaDoFluxo(1)).toContain('desenhe o CTA');
+  });
+
+  it('com clipe no repo, aponta para ELE e manda concatenar no fim', async () => {
+    mkdirSync(join(repo, 'cta'), { recursive: true });
+    writeFileSync(join(repo, 'cta', 'cta-9x16.mp4'), 'video');
+    await manda('/brinquedo Assunto | alvos=um');
+    const e = entregaDoFluxo(1);
+    expect(e).toContain(join(repo, 'cta', 'cta-9x16.mp4'));
+    expect(e).toContain('no FIM');
   });
 });
