@@ -191,6 +191,13 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       cwd: homedir(),
       logFile: cfg.logFile,
       redigir,
+      // Duas áreas, e a distinção não é cosmética: `state/artefatos` é do BOT
+      // (ele sabe o que é terminal e pode limpar); `~/projetos/output` é de
+      // vários projetos, e medir não é a mesma coisa que poder apagar.
+      areas: [
+        { rotulo: 'bot (artefatos)', caminho: join(cfg.stateDir, 'artefatos'), doBot: true },
+        { rotulo: 'skills (output)', caminho: dirname(cfg.publicoDir), doBot: false },
+      ],
       ...(fluxos ? { fluxos } : {}),
       fluxosRegistrados,
     });

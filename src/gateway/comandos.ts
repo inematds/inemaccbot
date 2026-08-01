@@ -3,6 +3,7 @@
 // `executar` só fala com o store; nunca imprime, nunca envia.
 import { resolverPerfil } from '../dominio/perfil.js';
 import type { SkillDef } from '../dominio/registry.js';
+import { humano, medirSubpastas, tamanhoDe } from '../dominio/espaco.js';
 import { FILAS } from '../fila/filas.js';
 import { analisar, textoSkills, type PedidoSkill } from './gramatica.js';
 import type { Agora, Fila, Job, Perfil } from '../fila/types.js';
@@ -11,6 +12,7 @@ import type { FilaSqlite } from '../fila/store.js';
 export type Comando =
   | { tipo: 'ping' }
   | { tipo: 'fila' }
+  | { tipo: 'espaco' }
   | { tipo: 'status'; id: number }
   /** `/status` sem id: a lista do que está na fila e do que terminou. */
   | { tipo: 'lista' }
@@ -32,6 +34,9 @@ export type Comando =
 
 export interface DepsComando {
   fila: FilaSqlite;
+  /** Raízes que o `/espaco` mede. Injetadas porque quem sabe onde ficam é o
+   * boot (`STATE_DIR`, `PUBLICO_DIR`), não este módulo. */
+  areas?: { rotulo: string; caminho: string; doBot: boolean }[];
   chatId: number;
   agora: Agora;
   /** Catálogo de skills. Vazio = só os comandos de serviço (é o que os testes
@@ -79,6 +84,9 @@ export function parseComando(texto: string, defs: SkillDef[] = [], projetosDir =
       return { tipo: 'ping' };
     case '/fila':
       return { tipo: 'fila' };
+    case '/espaco':
+    case '/espaço':
+      return { tipo: 'espaco' };
     case '/ajuda':
     case '/help':
       return { tipo: 'ajuda' };
@@ -135,6 +143,7 @@ const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
   { uso: 'http <url>', descricao: 'enfileira um GET' },
   { uso: 'thumb <caminho>', descricao: 'enfileira uma thumbnail' },
   { uso: '/refazer <id>', descricao: 'enfileira de novo um job já terminado' },
+  { uso: '/espaco', descricao: 'quanto disco cada área está ocupando' },
   { uso: '/skills', descricao: 'lista as skills do catálogo' },
   { uso: '/fluxos', descricao: 'lista os fluxos (pipelines com estado e retomada)' },
   { uso: '/aprovar <ref>', descricao: 'libera um fluxo parado esperando você' },
@@ -337,6 +346,26 @@ export function executar(cmd: Comando, deps: DepsComando): string {
 
     case 'ajuda':
       return respostaAjuda(deps.defs ?? []);
+
+    case 'espaco': {
+      const areas = deps.areas ?? [];
+      if (!areas.length) return 'não sei quais áreas medir (config sem PUBLICO_DIR/STATE_DIR?).';
+      const linhas: string[] = [];
+      for (const a of areas) {
+        const total = tamanhoDe(a.caminho);
+        linhas.push(
+          `${a.rotulo}: ${humano(total.bytes)} · ${total.arquivos} arquivo(s)`
+          + (a.doBot ? '' : '  (não é só do bot)'),
+        );
+        for (const p of medirSubpastas(a.caminho)) {
+          linhas.push(`   ${p.nome}: ${humano(p.bytes)} · ${p.arquivos}`);
+        }
+      }
+      // Dizer de quem é cada área importa: a limpeza automática só pode nascer
+      // onde o bot é dono. Varrer a pasta das skills seria apagar dado alheio.
+      linhas.push('', 'Só a área do bot é dele para limpar. A das skills é de vários projetos.');
+      return linhas.join('\n');
+    }
 
     case 'fila': {
       const agora = deps.agora();

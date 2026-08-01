@@ -38,6 +38,8 @@ export interface DepsMensagem {
   /** Motor de fluxos e o catálogo de repos de domínio. Ausentes = etapa 4. */
   fluxos?: Fluxos;
   fluxosRegistrados?: FluxoRegistrado[];
+  /** Áreas de disco que o `/espaco` mede. Vazio = o comando diz que não sabe. */
+  areas?: { rotulo: string; caminho: string; doBot: boolean }[];
   /**
    * Saneia o que entra no CONTEXTO da resposta. O log do serviço é lido do
    * disco e vai inteiro para o prompt; ele carrega caminhos, mensagens de erro
@@ -154,7 +156,10 @@ export async function tratarMensagem(
   if (doFluxo !== undefined) return doFluxo;
 
   const cmd = parseComando(texto, deps.defs, deps.projetosDir);
-  const depsCmd = { fila: deps.fila, chatId, agora: deps.agora, defs: deps.defs, perfilPadrao: deps.perfil };
+  const depsCmd = {
+    fila: deps.fila, chatId, agora: deps.agora, defs: deps.defs,
+    perfilPadrao: deps.perfil, ...(deps.areas ? { areas: deps.areas } : {}),
+  };
 
   if (cmd.tipo !== 'livre') return executar(cmd, depsCmd);
 
