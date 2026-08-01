@@ -59,7 +59,7 @@ export interface OpcoesRuntime {
    * a pasta servida e as bases de URL (`config.publicoDir`/`publicoUrls`).
    * Ausente = nenhum link vai ao chat, e o fluxo diz isso em vez de calar.
    */
-  publicar?: (origem: string, titulo: string) => Publicacao | undefined;
+  publicar?: (origem: string, titulo: string, tipo: string) => Publicacao | undefined;
 }
 
 export interface EventoFluxo {
@@ -115,7 +115,7 @@ export class Fluxos {
   private readonly aoEvento: (evento: EventoFluxo) => void;
   private readonly repoDe: (tipo: string) => string | undefined;
   private readonly lerRoteiro: (pasta: string, alvo: string) => string | null;
-  private readonly publicar?: (origem: string, titulo: string) => Publicacao | undefined;
+  private readonly publicar?: (origem: string, titulo: string, tipo: string) => Publicacao | undefined;
 
   constructor(opts: OpcoesRuntime) {
     this.estado = opts.estado;
@@ -414,7 +414,7 @@ export class Fluxos {
     for (const [alvo, fase] of ultima) {
       if (fase.estado !== 'feito' || !fase.dados) continue;
       const titulo = tituloEstudio(fluxo, alvo);
-      const pub = this.publicar?.(fase.dados, titulo);
+      const pub = this.publicar?.(fase.dados, titulo, fluxo.tipo);
       if (!pub) {
         // O vídeo existe no disco do bot; só não deu para publicar. Dizer o
         // caminho é melhor que omitir — sem isto o alvo simplesmente sumiria

@@ -343,8 +343,8 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // O link do vídeo final. A cópia acontece aqui, e não em `fluxos/`,
       // porque só o boot sabe qual pasta já é servida por HTTP e por quais
       // bases de URL ela responde.
-      publicar: (origem, titulo) =>
-        publicarVideo(origem, titulo, cfg.publicoDir, cfg.publicoUrls),
+      publicar: (origem, titulo, tipo) =>
+        publicarVideo(origem, titulo, cfg.publicoDir, cfg.publicoUrls, tipo),
     });
     fluxosRegistrados = (deps.carregarFluxos ?? carregarFluxosPadrao)(
       join(RAIZ_REPO, 'config', 'fluxos.json'),

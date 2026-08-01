@@ -39,17 +39,24 @@ export interface Publicacao {
  * não foi gerado.
  */
 export function publicarVideo(
-  origem: string, titulo: string, dir: string, bases: string[],
+  origem: string, titulo: string, dir: string, bases: string[], subpasta = '',
 ): Publicacao | undefined {
   if (!origem || !dir || !bases.length) return undefined;
   if (!existsSync(origem)) return undefined;
 
+  // Uma subpasta por FLUXO (`promoavatar`, `promoclub`). Duas razões, e as duas
+  // vieram do uso: dá para limpar um fluxo sem tocar no outro, e o servidor
+  // HTTP passa a expor só o que o bot publicou — servir a raiz `output/`
+  // colocaria 159 GB de outros projetos na rede local.
+  const pasta = nomeSeguro(subpasta);
+  const destino = pasta ? join(dir, pasta) : dir;
   const nome = `${nomeSeguro(titulo)}${extname(origem).toLowerCase() || '.mp4'}`;
-  mkdirSync(dir, { recursive: true });
-  const arquivo = join(dir, nome);
+  mkdirSync(destino, { recursive: true });
+  const arquivo = join(destino, nome);
   copyFileSync(origem, arquivo);
 
-  // `encodeURIComponent` no NOME, não na URL inteira: a base já vem pronta e
-  // escapá-la quebraria o `://`.
-  return { arquivo, links: bases.map((b) => `${b}/${encodeURIComponent(nome)}`) };
+  // `encodeURIComponent` só nas PARTES: a base já vem pronta e escapá-la
+  // quebraria o `://`.
+  const caminho = [pasta, nome].filter(Boolean).map(encodeURIComponent).join('/');
+  return { arquivo, links: bases.map((b) => `${b}/${caminho}`) };
 }
