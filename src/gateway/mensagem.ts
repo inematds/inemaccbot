@@ -82,10 +82,27 @@ function tratarComandoDeFluxo(
     return `não conheço "${nome}". Veja /skills e /fluxos.`;
   }
 
-  if (verbo === '/aprovar' || verbo === '/ok') {
+  // Quatro nomes para o mesmo ato, porque quatro foram digitados de verdade:
+  // quem acabou de gravar os avatares alcança "/pronto" antes de "/aprovar" —
+  // o verbo certo é o de quem TERMINOU a própria parte, não o de quem julga o
+  // trabalho de outro.
+  if (verbo === '/aprovar' || verbo === '/aprovado' || verbo === '/pronto' || verbo === '/ok') {
     const [ref] = resto;
-    if (!ref) return 'diga qual: /aprovar P#16';
-    return aprovarFluxo(ref, depsFluxo) ?? `não entendi "${ref}" — use /aprovar P#16`;
+    // Sem referência, o bot ADIVINHA quando não há ambiguidade. Aconteceu de
+    // verdade: `/aprovar` sem argumento respondia "diga qual: /aprovar P#16"
+    // com UM único fluxo esperando no portão — o bot sabia a resposta e mandava
+    // a pessoa procurar o número.
+    if (!ref) {
+      const esperando = depsFluxo.fluxos.aguardandoAprovacao();
+      if (esperando.length === 1) {
+        const f = esperando[0]!;
+        return aprovarFluxo(`${f.prefixo}#${f.id}`, depsFluxo) ?? '';
+      }
+      if (!esperando.length) return 'nenhum fluxo esperando aprovação agora.';
+      const quais = esperando.map((f) => `${f.prefixo}#${f.id}`).join(' · ');
+      return `mais de um fluxo esperando — diga qual: ${quais}`;
+    }
+    return aprovarFluxo(ref, depsFluxo) ?? `não entendi "${ref}" — use /aprovar A#9`;
   }
 
   if (verbo === '/status' || verbo === '/refazer' || verbo === '/cancelar') {

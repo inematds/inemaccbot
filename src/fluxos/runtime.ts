@@ -507,6 +507,18 @@ export class Fluxos {
   }
 
   /** Visão de `/status P#16`: fase × alvo × estado. */
+  /**
+   * Fluxos parados num portão, esperando uma pessoa.
+   *
+   * Existe para o comando SEM argumento poder adivinhar: quem acabou de gravar
+   * os avatares não deveria ter que lembrar do número. Se houver exatamente um,
+   * não há ambiguidade nenhuma.
+   */
+  aguardandoAprovacao(): Fluxo[] {
+    return this.estado.listar().filter((f) =>
+      this.estado.fases(f.id).some((fase) => fase.estado === 'aguardando-ok'));
+  }
+
   status(fluxoId: number): { fluxo: Fluxo; fases: Fase[] } | undefined {
     const fluxo = this.estado.obter(fluxoId);
     if (!fluxo) return undefined;

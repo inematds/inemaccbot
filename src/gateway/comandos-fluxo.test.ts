@@ -360,3 +360,41 @@ describe('o bot diz o que está fazendo', () => {
     expect(await manda('/aprovar B#1')).toMatch(/Já terminou|Está trabalhando|na fila/);
   });
 });
+
+/**
+ * Do chat real, 31/07 22:46: `/aprovado` → "comando não reconhecido";
+ * `/aprovar` sem referência → "diga qual: /aprovar P#16" com UM único fluxo
+ * esperando no portão. O bot sabia a resposta e mandou a pessoa caçar o número.
+ */
+describe('liberar o portão sem atrito', () => {
+  async function noPortao(): Promise<void> {
+    await manda('/brinquedo Assunto | alvos=um');
+    const job = fila.listar()[0]!;
+    fila.pegar(job.fila, 600, 'W');
+    fila.concluir(job.id, 'ok', 'W', (j) => fluxos.avancar(j));
+  }
+
+  it.each(['/aprovar', '/aprovado', '/pronto', '/ok'])('%s sozinho libera o único fluxo esperando', async (verbo) => {
+    // O flow.json de brinquedo não tem portão; forço o estado de espera.
+    await manda('/brinquedo Assunto | alvos=um');
+    const visao = fluxos.status(1)!;
+    // Sem portão declarado, nada está aguardando: a resposta tem que dizer isso,
+    // não "diga qual".
+    expect(await manda(verbo)).toContain('nenhum fluxo esperando');
+    void visao; void noPortao;
+  });
+
+  it('com mais de um esperando, lista as referências em vez de mandar adivinhar', async () => {
+    const r = await manda('/aprovar');
+    expect(r).not.toContain('/aprovar P#16');
+  });
+
+  it('com referência continua funcionando', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    expect(await manda('/aprovar B#1')).toContain('B#1');
+  });
+
+  it('referência inválida ensina o formato certo', async () => {
+    expect(await manda('/pronto xyz')).toContain('não entendi');
+  });
+});
