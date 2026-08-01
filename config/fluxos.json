@@ -10,5 +10,11 @@
     "repo": "promoavatar",
     "descricao": "igual ao promoclub, mas PARA depois dos textos: você gera os avatares e dá /aprovar",
     "exemplo": "/promoavatar Não comece aprendendo ferramentas"
+  },
+  {
+    "command": "promoavatar2",
+    "repo": "promoavatar2",
+    "descricao": "como o promoavatar, mas TRÊS vídeos por público (alcance/autoridade/promocional) — alvo é <publico>-alc|aut|pro",
+    "exemplo": "/promoavatar2 Não comece aprendendo ferramentas | alvos=jovens-alc,jovens-aut,jovens-pro"
   }
 ]
