@@ -145,7 +145,16 @@ Ou seja, os mesmos endpoints, com `Authorization: Bearer` (OAuth) em vez de
 dólar. Há dois caminhos prontos: a CLI (`heygen auth login --oauth`, instalada
 em `~/.local/bin/heygen`) e o MCP remoto do HeyGen.
 
-Três coisas antes de implementar:
+**PROVADA em 2026-08-02** (`TESTE-CREDITOS-v1`, 8,67s, `engine: avatar_iii`, via
+`heygen video create`): créditos premium 200 → **199**, add-on intacto, carteira
+**US$ 0,22 intacta**, `billing_type: subscription`. Rodou headless, com sessão
+salva e token `refreshable` (validade de 10 dias). E o `heygen.baixar`, que lista
+com a CHAVE DE API, achou pelo título o vídeo gerado por OAuth — as duas
+credenciais veem a mesma conta, então a fase `baixar` não muda.
+
+Extrapolando: 36 alvos ≈ **36 créditos** dos 500, contra ~US$ 26 pela API.
+
+Duas coisas antes de implementar:
 
 1. **A doc chama OAuth de "trial-scale only"** e recomenda API key *"for
    anything at scale — batches, pipelines, production traffic"*. Um fluxo de 36
@@ -153,13 +162,20 @@ Três coisas antes de implementar:
 2. **O token expira.** Não dá para colar no `.env` como a `HEYGEN_API_KEY`: quem
    renova é a CLI, que guarda a sessão em `~/.config/heygen`. O `.env` guardaria
    o caminho da CLI (`HEYGEN_CLI=…`), não um segredo.
-3. **Falta provar que roda headless.** Se a CLI pedir interação a cada uso, a
-   rota não serve para um bot sem ninguém no terminal. Um vídeo de 15s responde
-   isso e o custo real em créditos.
+
+O que o teste de UM vídeo não responde: se o lote de 36 esbarra no limite que a
+doc chama de "trial-scale". Falta o teste de um público inteiro (3 alvos).
 
 Existe ainda uma quarta forma: a fase `fluxo-navegador` do `promoclub` (agente
-dirigindo o estúdio na aba logada). Também gasta crédito, e também nunca rodou —
-zero jobs dessa tarefa no banco.
+dirigindo o estúdio na aba logada). Ela existia porque era o único jeito de
+chegar aos créditos sem a mão — o OAuth chega melhor, sem aba logada, sem
+quebrar com mudança de layout e sem tokens de LLM. Fica como legado: zero jobs
+dessa tarefa no banco até hoje.
+
+**Ressalva de conta:** nesta conta a rota manual (e a de navegação, que é o mesmo
+estúdio) é ILIMITADA, então não consome os 500 créditos. Em plano com crédito
+contado as duas passam a custar, e a comparação muda. O único débito medido aqui
+é o da rota OAuth.
 
 ## O que a API dá, e o que não dá
 
