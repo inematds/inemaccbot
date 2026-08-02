@@ -140,10 +140,12 @@ describe('ponta a ponta: chat -> job -> execução -> resposta', () => {
     // 4. o notificador manda ao chat certo uma mensagem com o id do job.
     await ate(() => mensagens.some((m) => m.chatId === 42 && new RegExp(`Job ${id} conclu`).test(m.texto)));
 
-    // 5. /fila não mostra mais nada pendente na fila `io`.
+    // 5. /fila não mostra mais nada pendente na fila `io` — e fila sem nada a
+    // dizer é colapsada em "ociosas:", não uma linha de zeros.
     await chegar(42, '/fila');
     const resumo = mensagens.at(-1)!.texto;
-    expect(resumo).toMatch(/io: rodando=0 pendentes=0/);
+    expect(resumo).toMatch(/ociosas:.*\bio\b/);
+    expect(resumo).not.toMatch(/^io: .*na fila/m);
 
     await svc.parar();
   });

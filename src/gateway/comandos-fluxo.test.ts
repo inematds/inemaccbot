@@ -12,6 +12,7 @@ import { FakeRunner } from '../fila/runner.js';
 import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
 import { Fluxos } from '../fluxos/runtime.js';
+import { tabelaFluxo } from './comandos-fluxo.js';
 import { tratarMensagem, type DepsMensagem } from './mensagem.js';
 
 let dir: string;
@@ -322,6 +323,87 @@ describe('/status P#N', () => {
 
     it('a lista de jobs continua viva em /jobs', async () => {
       expect(await manda('/jobs')).toMatch(/Nada na fila|Na fila agora/);
+    });
+
+    // O rodapé dizia `/status C#12` com o número CRAVADO no código, e o C#12 já
+    // nem estava aberto — o painel mandava agir num fluxo que não era o seu.
+    describe('o rodapé usa o ref REAL, não um número de exemplo', () => {
+      it('com um fluxo aberto, o atalho é o dele', async () => {
+        await manda('/brinquedo Assunto único');
+        const r = await manda('/status');
+        expect(r).toContain('/status B#1');
+        expect(r).not.toMatch(/C#12/);
+      });
+
+      it('com vários, usa <ref> em vez de eleger um', async () => {
+        await manda('/brinquedo Primeiro');
+        await manda('/brinquedo Segundo');
+        const r = await manda('/status');
+        expect(r).toContain('/status <ref>');
+        expect(r).not.toMatch(/C#12/);
+      });
+
+      it('/completos também não crava número', async () => {
+        expect(await manda('/completos')).not.toMatch(/C#12/);
+      });
+    });
+  });
+
+  // O C#15 tem 36 alvos: `baixar:` e `reel:` viravam duas paredes de
+  // `✅ nome ·` que o Telegram quebrava no meio das palavras
+  // (`pessoa-`/`comum-pro`). O que se lê de relance é a CONTAGEM; nome de alvo
+  // só interessa quando é exceção — o que falhou e o que espera você.
+  describe('fase com muitos alvos: conta, e nomeia só a exceção', () => {
+    const fase = (nome: string, alvo: string, estado: string) =>
+      ({ fase: nome, alvo, estado, erro: null } as never);
+    const visaoCom = (fases: unknown[]) => ({
+      fluxo: { prefixo: 'C', id: 15, tipo: 'promoavatar2', assunto: 'assunto', status: 'rodando', versao_def: 1 },
+      fases,
+    } as never);
+
+    const trinta = (estado: string, nome = 'reel') =>
+      Array.from({ length: 30 }, (_, i) => fase(nome, `alvo${i}`, estado));
+
+    it('todos no mesmo estado viram uma contagem, sem listar nome', () => {
+      const r = tabelaFluxo(visaoCom(trinta('feito')), false);
+      expect(r).toContain('30/30');
+      expect(r).not.toContain('alvo7');
+    });
+
+    it('mistura de estados vira contagem por estado', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'sobrou', 'pendente')]), false);
+      expect(r).toMatch(/30\/31/);
+      expect(r).toMatch(/1 .*(pendente|fila)/);
+    });
+
+    it('o que FALHOU é nomeado, mesmo no meio de 30', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'jovens-aut', 'falhou')]), false);
+      expect(r).toContain('jovens-aut');
+    });
+
+    it('o que espera VOCÊ é nomeado', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'mulheres-pro', 'aguardando-ok')]), false);
+      expect(r).toContain('mulheres-pro');
+    });
+
+    // Poucos alvos continuam nomeados: contar "2/2" esconderia QUAIS, e nesse
+    // tamanho a lista cabe na tela sem virar parede.
+    it('com poucos alvos, continua listando nome por nome', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', 'um', 'feito'), fase('render', 'dois', 'feito')]), false);
+      expect(r).toContain('um');
+      expect(r).toContain('dois');
+    });
+
+    // O cabeçalho da lista já corta o assunto em `…`; o detalhe despejava o
+    // parágrafo inteiro (posição, pergunta para os comentários) antes de
+    // qualquer estado.
+    it('o assunto do detalhe é cortado, não despejado inteiro', () => {
+      const gigante = 'A'.repeat(400);
+      const v = visaoCom([fase('texto', '', 'feito')]) as { fluxo: { assunto: string } };
+      v.fluxo.assunto = gigante;
+      const r = tabelaFluxo(v as never, false);
+      expect(r).not.toContain(gigante);
+      expect(r).toContain('…');
     });
   });
 

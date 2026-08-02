@@ -340,7 +340,10 @@ export function tabelaFluxo(
 ): string {
   const { fluxo, fases } = visao;
   const linhas = [
-    `${fluxo.prefixo}#${fluxo.id} — ${fluxo.tipo}: ${fluxo.assunto}`,
+    // O assunto é CORTADO aqui também, não só na lista de cima: o do C#15 tem
+    // posição e pergunta para os comentários, e despejá-lo inteiro empurra o
+    // estado — que é o que se veio ver — oito linhas para baixo.
+    `${fluxo.prefixo}#${fluxo.id} — ${fluxo.tipo}: ${resumoAssunto(fluxo.assunto, 140)}`,
     `status: ${fluxo.status} · versão da definição: ${fluxo.versao_def}`,
   ];
   const porFase = new Map<string, Fase[]>();
@@ -350,10 +353,7 @@ export function tabelaFluxo(
     porFase.set(f.fase, lista);
   }
   for (const [fase, lista] of porFase) {
-    const alvos = lista
-      .map((f) => `${ICONE[f.estado]} ${f.alvo || '(todos)'}`)
-      .join(' · ');
-    linhas.push(`${fase}: ${alvos}`);
+    linhas.push(...linhasDaFase(fase, lista));
   }
   const esperando = fases.filter((f) => f.estado === 'aguardando-ok');
   if (esperando.length) {
@@ -368,6 +368,59 @@ export function tabelaFluxo(
     if (comandos) linhas.push(`Retentar: /refazer ${fluxo.prefixo}#${fluxo.id} [alvo]`);
   }
   return linhas.join('\n');
+}
+
+/**
+ * Acima disto, a fase mostra CONTAGEM em vez de nome por nome.
+ *
+ * O C#15 tem 36 alvos: `baixar:` e `reel:` viravam duas paredes de `✅ nome ·`
+ * que o Telegram quebrava no meio das palavras (`pessoa-` numa linha,
+ * `comum-pro` na outra). Ninguém lê 36 nomes de relance — lê "6 de 36".
+ *
+ * Abaixo do limite a lista continua nome a nome, porque com 2 ou 3 alvos a
+ * contagem esconderia QUAIS, e cabe na tela sem virar parede.
+ */
+const ALVOS_ANTES_DE_CONTAR = 6;
+
+/** Como cada estado aparece na contagem. */
+const NOME_ESTADO: Record<Fase['estado'], string> = {
+  pendente: 'na fila', rodando: 'rodando', feito: 'feito', 'aguardando-ok': 'esperando você',
+  falhou: 'falhou', pulado: 'pulado',
+};
+
+/** Estados que EXIGEM o nome do alvo, mesmo no meio de 36: são os dois que
+ *  pedem uma decisão sua. O resto é contagem. */
+const NOMEAR_SEMPRE: Fase['estado'][] = ['falhou', 'aguardando-ok'];
+
+function linhasDaFase(fase: string, lista: Fase[]): string[] {
+  if (lista.length <= ALVOS_ANTES_DE_CONTAR) {
+    const alvos = lista.map((f) => `${ICONE[f.estado]} ${f.alvo || '(todos)'}`).join(' · ');
+    return [`${fase}: ${alvos}`];
+  }
+
+  const porEstado = new Map<Fase['estado'], Fase[]>();
+  for (const f of lista) porEstado.set(f.estado, [...(porEstado.get(f.estado) ?? []), f]);
+
+  const feitos = porEstado.get('feito')?.length ?? 0;
+  const partes = [`${feitos}/${lista.length} ✅`];
+  for (const [estado, fs] of porEstado) {
+    if (estado === 'feito') continue;
+    // `pendente` não leva ícone: o dele é `·`, o mesmo separador da linha, e
+    // "29 · na fila" se lê como duas colunas em vez de uma contagem.
+    const icone = estado === 'pendente' ? '' : `${ICONE[estado]} `;
+    partes.push(`${fs.length} ${icone}${NOME_ESTADO[estado]}`);
+  }
+  const linhas = [`${fase}: ${partes.join(' · ')}`];
+
+  // A exceção é nomeada: contar "2 ❌ falhou" sem dizer QUAIS obrigaria a pedir
+  // o detalhe de novo só para descobrir onde mexer.
+  for (const estado of NOMEAR_SEMPRE) {
+    const fs = porEstado.get(estado);
+    if (fs?.length) {
+      linhas.push(`  ${ICONE[estado]} ${fs.map((f) => f.alvo || '(todos)').join(', ')}`);
+    }
+  }
+  return linhas;
 }
 
 /** Quantos fluxos terminados o `/completos` mostra. O resto vira uma linha
@@ -423,9 +476,17 @@ export function painelFluxos(deps: DepsFluxo): string {
   for (const v of visoes) {
     linhas.push('', tabelaFluxo(v, false));
   }
+  // O ref do rodapé é o REAL, nunca um número de exemplo: `C#12` cravado no
+  // código mandava agir num fluxo que podia nem estar aberto (visto em
+  // produção com o C#15 na tela e o rodapé pedindo C#12). Com um fluxo só, o
+  // atalho é dele — dá para copiar e colar. Com vários, `<ref>`, porque eleger
+  // um seria escolher pelo leitor.
+  const ref = visoes.length === 1
+    ? `${visoes[0]!.fluxo.prefixo}#${visoes[0]!.fluxo.id}`
+    : '<ref>';
   linhas.push(
     '',
-    'Detalhe de um: /status C#12 · liberar: /aprovar C#12 · retentar: /refazer C#12',
+    `Detalhe de um: /status ${ref} · liberar: /aprovar ${ref} · retentar: /refazer ${ref}`,
     'Terminados: /completos · fila de jobs: /jobs',
   );
   return linhas.join('\n');
@@ -444,7 +505,7 @@ export function fluxosCompletos(deps: DepsFluxo): string {
   if (feitos.length > mostrar.length) {
     linhas.push(`  … e mais ${feitos.length - mostrar.length} mais antigo(s), fora desta lista.`);
   }
-  linhas.push('', 'Detalhe de um: /status C#12 · abertos: /status');
+  linhas.push('', `Detalhe de um: /status ${mostrar[0]!.prefixo}#${mostrar[0]!.id} · abertos: /status`);
   return linhas.join('\n');
 }
 

@@ -4,7 +4,7 @@
 import { resolverPerfil } from '../dominio/perfil.js';
 import type { SkillDef } from '../dominio/registry.js';
 import { humano, medirSubpastas, tamanhoDe } from '../dominio/espaco.js';
-import { FILAS } from '../fila/filas.js';
+import { CONCORRENCIAS, FILAS } from '../fila/filas.js';
 import { analisar, textoSkills, type PedidoSkill } from './gramatica.js';
 import type { Agora, Fila, Job, Perfil } from '../fila/types.js';
 import type { FilaSqlite } from '../fila/store.js';
@@ -133,34 +133,67 @@ export function parseComando(texto: string, defs: SkillDef[] = [], projetosDir =
   }
 }
 
-const AJUDA_LINHAS: Array<{ uso: string; descricao: string }> = [
-  { uso: '/ping', descricao: 'verifica se o bot está vivo' },
-  { uso: '/fila', descricao: 'resumo de cada fila (rodando, pendente, idade, erro 24h)' },
-  { uso: '/status', descricao: 'lista os jobs (ativos e os últimos terminados)' },
-  { uso: '/status', descricao: 'os fluxos ABERTOS: um por linha com a situação, e o detalhe de cada um' },
-  { uso: '/completos', descricao: 'os fluxos que já terminaram, do mais novo para o mais velho' },
-  { uso: '/jobs', descricao: 'a fila de jobs — o que está rodando e o que acabou' },
-  { uso: '/status <id>', descricao: 'detalhe de um job (jN) ou de um fluxo (/status A#9, ou A9)' },
-  { uso: '/cancelar <id>', descricao: 'cancela um job pendente ou em execução' },
-  { uso: '/furar <id>', descricao: 'põe um job pendente na frente da fila' },
-  { uso: 'http <url>', descricao: 'enfileira um GET' },
-  { uso: 'thumb <caminho>', descricao: 'enfileira uma thumbnail' },
-  { uso: '/refazer <id>', descricao: 'enfileira de novo um job já terminado' },
-  { uso: '/espaco', descricao: 'quanto disco cada área está ocupando' },
-  { uso: '/limpar <escopo>', descricao: 'A#8 · promoavatar · artefatos [dias] · tudo (mostra antes; some com "confirmar")' },
-  { uso: '/skills', descricao: 'lista as skills do catálogo' },
-  { uso: '/fluxos', descricao: 'lista os fluxos (pipelines com estado e retomada)' },
-  { uso: '/pronto [ref]', descricao: 'terminei minha parte — libera o fluxo parado (sem ref, se só um espera). Também: /aprovar, /aprovado, /ok' },
-  { uso: '/ajuda (ou /help)', descricao: 'esta lista' },
+/**
+ * A ajuda em SEÇÕES, não em lista corrida.
+ *
+ * Eram 18 linhas seguidas, e `/status` aparecia duas vezes com descrições que
+ * se contradiziam ("lista os jobs" e "os fluxos abertos") — sobra do dia em que
+ * `/status` deixou de ser a lista de jobs e virou o painel de fluxos, sem que a
+ * linha velha saísse. Uma lista desse tamanho sem agrupamento não é lida: quem
+ * chega no chat quer saber PRIMEIRO o que está acontecendo, depois como agir.
+ */
+const AJUDA_SECOES: Array<{ titulo: string; linhas: Array<{ uso: string; descricao: string }> }> = [
+  {
+    titulo: 'Ver o que está acontecendo',
+    linhas: [
+      { uso: '/status', descricao: 'o painel dos fluxos ABERTOS — um por linha, com o que cada um espera de você' },
+      { uso: '/completos', descricao: 'os fluxos que já terminaram, do mais novo para o mais velho' },
+      { uso: '/jobs', descricao: 'a fila de jobs — o que está rodando e o que acabou' },
+      { uso: '/fila', descricao: 'a saúde de cada fila: rodando, pendentes, idade, erro em 24h' },
+      { uso: '/status <ref>', descricao: 'detalhe de um job (j13) ou de um fluxo (A#9, ou a9)' },
+      { uso: '/ping', descricao: 'verifica se o bot está vivo' },
+    ],
+  },
+  {
+    titulo: 'Agir num fluxo ou num job',
+    linhas: [
+      { uso: '/pronto [ref]', descricao: 'terminei minha parte — libera o fluxo parado (sem ref, se só um espera). Também: /aprovar, /aprovado, /ok' },
+      { uso: '/refazer <ref>', descricao: 'retenta: no fluxo, retoma da fase que falhou; num alvo, só ele' },
+      { uso: '/cancelar <ref>', descricao: 'cancela um job ou um fluxo (o que já foi criado FORA continua lá)' },
+      { uso: '/furar <id>', descricao: 'põe um job pendente na frente da fila' },
+    ],
+  },
+  {
+    titulo: 'Catálogo',
+    linhas: [
+      { uso: '/skills', descricao: 'as skills (uma etapa, sem estado)' },
+      { uso: '/fluxos', descricao: 'os fluxos (várias fases, com estado e retomada)' },
+      { uso: '/ajuda <nome>', descricao: 'a ajuda de UMA skill ou fluxo (/ajuda promoavatar). Sozinho — /ajuda ou /help — mostra esta lista' },
+    ],
+  },
+  {
+    titulo: 'Manutenção e espaço',
+    linhas: [
+      { uso: '/espaco', descricao: 'quanto disco cada área está ocupando (bot × skills)' },
+      { uso: '/limpar <escopo>', descricao: 'A#8 · promoavatar · artefatos [dias] · tudo (mostra antes; só executa com "confirmar")' },
+      { uso: 'http <url>', descricao: 'enfileira um GET' },
+      { uso: 'thumb <caminho>', descricao: 'enfileira uma thumbnail' },
+    ],
+  },
 ];
 
 /** A ajuda mistura os comandos FIXOS (serviço) com as skills do REGISTRY — a
  * lista de skills nunca é escrita à mão aqui, senão ela envelhece calada. */
 function respostaAjuda(defs: SkillDef[]): string {
-  const linhas = ['Comandos:', ...AJUDA_LINHAS.map((l) => `${l.uso} — ${l.descricao}`)];
+  const linhas: string[] = [];
+  for (const secao of AJUDA_SECOES) {
+    if (linhas.length) linhas.push('');
+    linhas.push(`${secao.titulo}:`);
+    for (const l of secao.linhas) linhas.push(`  ${l.uso} — ${l.descricao}`);
+  }
   if (defs.length) {
     linhas.push('', 'Skills (formato `skill: entrada | campo`):');
-    for (const d of defs) linhas.push(`${d.command}: … — ${d.descricao}`);
+    for (const d of defs) linhas.push(`  ${d.command}: … — ${d.descricao}`);
     linhas.push('', 'Campos: livesN (destino) · modelo=opus · esforco=high');
     linhas.push('Ajuda de um comando específico: /ajuda <nome>');
   }
@@ -332,15 +365,69 @@ function resumoFila(fila: FilaSqlite, nome: Fila, agora: number): string {
   const retentados = jobs.filter((j) => j.tentativas > 1).length;
   const presos = jobsPresos(jobs, agora);
 
-  const linhas = [
-    `${nome}: rodando=${rodando} pendentes=${pendentes.length} ` +
-    `mais_antigo=${idadeMaisAntigo === undefined ? '—' : `${idadeMaisAntigo}s`} ` +
-    `erro_24h=${taxaErro} retentados=${retentados}`,
-  ];
+  // Uma fila sem NADA a dizer não merece uma linha: com três das cinco zeradas,
+  // elas ocupavam o mesmo espaço da única que importava e empurravam a manchete
+  // (30 pendentes há uma hora) para o meio da tela.
+  const temTaxa = falhas24h > 0;
+  if (!rodando && !pendentes.length && !temTaxa && !retentados && !presos.length) {
+    return '';
+  }
+
+  // Sem trabalho AGORA, mas com história (erro ou retentativa) na janela: a
+  // linha existe pelo histórico, então "0 rodando · 0 na fila" é ruído — o que
+  // se quer ler ali embaixo é a taxa de erro.
+  const partes = rodando === 0 && pendentes.length === 0
+    ? ['ocioso']
+    : [`${rodando} rodando`, `${pendentes.length} na fila`];
+  if (idadeMaisAntigo !== undefined) {
+    partes.push(`mais antigo ${duracao(0, idadeMaisAntigo) ?? `${idadeMaisAntigo}s`}`);
+  }
+  const eta = estimativaDeVazao(nome, pendentes, jobs);
+  if (eta) partes.push(`~${eta} para vazar`);
+
+  const alerta = presos.length || (temTaxa && terminados24h.length > 0) ? '⚠️ ' : '';
+  const linhas = [`${nome}: ${alerta}${partes.join(' · ')}`];
+
+  // Taxa de erro SEM denominador engana nos dois sentidos: "50%" pode ser 1 de
+  // 2 (ruído) ou 100 de 200 (incêndio), e quem lê não tem como saber qual.
+  const detalhe: string[] = [];
+  if (terminados24h.length) {
+    detalhe.push(`erro 24h: ${taxaErro} (${falhas24h} de ${terminados24h.length})`);
+  }
+  if (retentados) detalhe.push(`${retentados} retentado${retentados > 1 ? 's' : ''}`);
+  if (detalhe.length) linhas.push(`  ${detalhe.join(' · ')}`);
+
   if (presos.length) {
     linhas.push(`  ⚠️ possivelmente preso: ${presos.map((j) => `j${j.id}${j.flow_ref ? ` (${j.flow_ref})` : ''} ${duracao(j.iniciado_em, agora)}`).join(', ')}`);
   }
   return linhas.join('\n');
+}
+
+/**
+ * Quanto tempo a fila leva para vazar, pela média REAL das tarefas pendentes
+ * dividida pela concorrência da fila.
+ *
+ * Existe porque a conta estava sendo deixada para o leitor: o painel já
+ * mostrava "30 pendentes" e "reel: 16m (58x)" em blocos diferentes, e ninguém
+ * multiplica de cabeça. Sem média da tarefa não há estimativa — inventar um
+ * número seria pior que não ter, porque um ETA errado vira decisão errada
+ * ("dá tempo de reiniciar o serviço").
+ */
+function estimativaDeVazao(nome: Fila, pendentes: Job[], jobs: Job[]): string | undefined {
+  if (!pendentes.length) return undefined;
+  const duracoes = new Map<string, number[]>();
+  for (const j of jobs) {
+    if (j.status !== 'done' || j.iniciado_em === null || j.terminado_em === null) continue;
+    duracoes.set(j.tarefa, [...(duracoes.get(j.tarefa) ?? []), j.terminado_em - j.iniciado_em]);
+  }
+  let total = 0;
+  for (const p of pendentes) {
+    const ds = duracoes.get(p.tarefa);
+    if (!ds?.length) return undefined; // uma tarefa sem histórico já invalida a soma
+    total += ds.reduce((a, b) => a + b, 0) / ds.length;
+  }
+  const segundos = Math.round(total / Math.max(1, CONCORRENCIAS[nome]));
+  return duracao(0, segundos);
 }
 
 export function executar(cmd: Comando, deps: DepsComando): string {
@@ -373,7 +460,12 @@ export function executar(cmd: Comando, deps: DepsComando): string {
 
     case 'fila': {
       const agora = deps.agora();
-      const linhas = FILAS.map((f) => resumoFila(deps.fila, f, agora));
+      const porFila = FILAS.map((f) => ({ nome: f, texto: resumoFila(deps.fila, f, agora) }));
+      const linhas = porFila.filter((f) => f.texto).map((f) => f.texto);
+      // As ociosas não somem — some o espaço que ocupavam. Sumir de vez faria o
+      // painel esconder que a fila existe, e "não aparece" viraria "não sobe".
+      const ociosas = porFila.filter((f) => !f.texto).map((f) => f.nome);
+      if (ociosas.length) linhas.push(`ociosas: ${ociosas.join(', ')}`);
       const medias = mediasPorTarefa(
         deps.fila.listar({ desde: agora - JANELA_PAINEL_SEGUNDOS, limite: TETO_PAINEL }),
       );

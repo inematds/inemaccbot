@@ -114,6 +114,34 @@ describe('executar', () => {
     expect(r.length).toBeLessThan(60);
   });
 
+  // A ajuda era uma lista corrida de 18 linhas, e `/status` aparecia DUAS vezes
+  // com descrições que se contradiziam (uma dizendo que lista jobs — o que hoje
+  // é o `/jobs`). Agrupar é o que faz uma lista desse tamanho ser lida.
+  describe('/ajuda agrupada', () => {
+    const ajuda = () => executar(parseComando('/ajuda'), deps());
+
+    it('não descreve o mesmo comando duas vezes', () => {
+      const usos = ajuda().split('\n')
+        .filter((l) => l.trim().startsWith('/'))
+        .map((l) => l.split(' — ')[0]!.trim());
+      expect(new Set(usos).size).toBe(usos.length);
+    });
+
+    it('separa em seções em vez de despejar tudo junto', () => {
+      const r = ajuda();
+      expect(r).toMatch(/Ver o que está acontecendo/i);
+      expect(r).toMatch(/Agir/i);
+      expect(r).toMatch(/Manuten|Espaço|Limpeza/i);
+    });
+
+    it('descreve /status como o painel dos fluxos, e /jobs como a fila de jobs', () => {
+      const r = ajuda();
+      const linhaStatus = r.split('\n').find((l) => l.trim().startsWith('/status ')) ?? '';
+      expect(linhaStatus).toMatch(/fluxo/i);
+      expect(r.split('\n').find((l) => l.trim().startsWith('/jobs'))).toMatch(/job/i);
+    });
+  });
+
   it('/ajuda lista os comandos', () => {
     const r = executar(parseComando('/ajuda'), deps());
     expect(r).toMatch(/ping/);
@@ -130,8 +158,11 @@ describe('executar', () => {
   // nas métricas. Agora as duas leem `fila/filas.ts`, e este teste falha se
   // alguém reintroduzir uma lista local aqui.
   it('/fila cobre exatamente as filas declaradas em fila/filas.ts', () => {
-    const linhas = executar(parseComando('/fila'), deps()).split('\n');
-    expect(linhas.map((l) => l.split(':')[0])).toEqual(FILAS);
+    // Fila ociosa é COLAPSADA, não sumida: ou tem linha própria (tem trabalho)
+    // ou aparece em "ociosas:". Sumir de vez faria o painel esconder que ela
+    // existe, e "não aparece" viraria "não sobe".
+    const r = executar(parseComando('/fila'), deps());
+    for (const f of FILAS) expect(r).toContain(f);
     expect(FILAS).toEqual(Object.keys(CONCORRENCIAS));
   });
 
@@ -220,7 +251,7 @@ describe('executar', () => {
       fila.falhar(j.id, 'erro', 'w1', 1);
       t += 60;
       fila.pegar('io', 60, 'w1');
-      expect(executar(parseComando('/fila'), depsSkills())).toMatch(/io:.*retentados=1/);
+      expect(executar(parseComando('/fila'), depsSkills())).toMatch(/io:[\s\S]*1 retentado/);
     });
 
     // O alarme que importa com render de 2h: "rodando" sozinho não distingue
@@ -250,6 +281,68 @@ describe('executar', () => {
       fila.pegar('render', 6_000, 'w1');
       t += 100_000;
       expect(executar(parseComando('/fila'), depsSkills())).not.toContain('possivelmente preso');
+    });
+  });
+
+  // O painel estava escrito para máquina: `mais_antigo=3668s` (que é 1h01),
+  // três filas zeradas ocupando o mesmo espaço da única que importava, e a
+  // manchete real — 30 pendentes há uma hora — perdida no meio dos `key=value`.
+  describe('/fila legível por gente', () => {
+    /** Fecha jobs de uma tarefa na fila `render`, para haver média. */
+    function historico(tarefa: string, duracoes: number[]): void {
+      for (const d of duracoes) {
+        const j = fila.enfileirar({ fila: 'render', kind: 'agent', tarefa, input: '{}' });
+        fila.pegar('render', 600, 'w1');
+        t += d;
+        fila.concluir(j.id, '/tmp/v.mp4', 'w1');
+      }
+    }
+
+    it('idade em hora/minuto, não em segundos crus', () => {
+      fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'reel', input: '{}' });
+      t += 3_668;
+      const r = executar(parseComando('/fila'), depsSkills());
+      expect(r).toMatch(/1h1m/);
+      expect(r).not.toMatch(/3668s/);
+    });
+
+    it('fila sem nada a dizer é colapsada numa linha só', () => {
+      fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'reel', input: '{}' });
+      const r = executar(parseComando('/fila'), depsSkills());
+      expect(r).toMatch(/ociosas:/);
+      // A que tem trabalho continua com linha própria e detalhe.
+      expect(r).toMatch(/^render/m);
+    });
+
+    it('taxa de erro vem com o denominador — 50% de 2 não é 50% de 200', () => {
+      const a = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'x', input: '{}' });
+      const b = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'x', input: '{}' });
+      fila.pegar('io', 60, 'w1'); fila.concluir(a.id, 'ok', 'w1');
+      fila.pegar('io', 60, 'w1'); fila.falhar(b.id, 'erro', 'w1', 0);
+      expect(executar(parseComando('/fila'), depsSkills())).toMatch(/50%.*\(1 de 2\)/);
+    });
+
+    // A linha existe pelo histórico de erro; "0 rodando · 0 na fila" ali é ruído.
+    it('fila parada que só tem histórico diz "ocioso", não dois zeros', () => {
+      const j = fila.enfileirar({ fila: 'io', kind: 'function', tarefa: 'x', input: '{}' });
+      fila.pegar('io', 60, 'w1'); fila.falhar(j.id, 'erro', 'w1', 0);
+      const r = executar(parseComando('/fila'), depsSkills());
+      expect(r).toMatch(/io: .*ocioso/);
+      expect(r).not.toMatch(/0 rodando · 0 na fila/);
+    });
+
+    it('estima quanto a fila leva para vazar, usando a média da tarefa', () => {
+      historico('reel', [600, 600, 600]);
+      for (let i = 0; i < 6; i += 1) {
+        fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'reel', input: '{}' });
+      }
+      // 6 pendentes × 10m ÷ concorrência 1 = ~1h
+      expect(executar(parseComando('/fila'), depsSkills())).toMatch(/~1h/);
+    });
+
+    it('sem média da tarefa, não inventa estimativa', () => {
+      fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'novidade', input: '{}' });
+      expect(executar(parseComando('/fila'), depsSkills())).not.toMatch(/~\d/);
     });
   });
 
