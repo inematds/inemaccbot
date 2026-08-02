@@ -190,6 +190,50 @@ seletivo, retomada e definição congelada.
 O domínio diz para QUEM (canal por nome, `lives21`); o bot sabe ONDE (o caminho no disco).
 Nunca ponha caminho no `flow.json`.
 
+#### As TRÊS rotas de avatar, e de que bolso cada uma sai
+
+Quem decide de onde sai o custo **não é um parâmetro no corpo do POST — é a
+autenticação**. A doc da HeyGen é explícita: *"When you authenticate with an API
+Key (`x-api-key`), you are billed under the API tier. Usage is deducted from
+your prepaid USD wallet"*, e *"OAuth (MCP and CLI `--oauth`) authenticates as
+the user's web account and draws on subscription credits"*.
+
+| rota | como | de onde sai | estado |
+|---|---|---|---|
+| **estúdio** (padrão) | você grava no HeyGen; o bot para no portão | crédito da assinatura | **em produção** |
+| **`\| api`** | `heygen.gerar` → `POST /v3/videos` com `x-api-key` | carteira em US$ | **implementado, NÃO testado contra a API real** |
+| **`\| creditos`** | CLI `heygen` autenticada por OAuth | crédito da assinatura | **não implementado** |
+
+Saldos medidos em 2026-08-02: carteira **US$ 0,22**; assinatura **500 créditos**
+(`plan_credit: 200` + `generative_credit: 300`). Um fluxo de 36 alvos consome
+~26,5 min de vídeo — ~US$ 26 pela API (Avatar III) ou perto dos 500 créditos.
+
+**Sobre a rota de créditos, três coisas que decidem se ela vale:**
+
+1. A doc chama OAuth de **"trial-scale only"** e manda usar API key *"for
+   anything at scale — batches, pipelines, production traffic"*. Um fluxo de 36
+   alvos é exatamente o batch que eles desaconselham.
+2. **O token OAuth expira** — não é segredo estático que se cole no `.env` como
+   a `HEYGEN_API_KEY`. Quem renova é a CLI, que guarda a sessão em
+   `~/.config/heygen`. Por isso o `.env` guardaria o CAMINHO da CLI
+   (`HEYGEN_CLI=…`), não um token.
+3. **Falta provar que a CLI roda headless** com a sessão salva. Se exigir
+   interação a cada uso, a rota não serve para um bot sem ninguém na frente do
+   terminal. Um teste de 15s responde isso e o custo real.
+
+Existe ainda uma QUARTA forma, já declarada mas nunca exercitada: a fase
+`fluxo-navegador` do `promoclub`, um agente dirigindo o estúdio pela sua aba
+logada (crédito da assinatura, sem API). O banco não tem **nenhum** job dessa
+tarefa até hoje — está escrita, não provada.
+
+**Cuidado com o motor.** O `/v3/videos` usa **Avatar IV por padrão**, que custa
+US$ 0,05–0,0667/s contra **US$ 0,0167/s do Avatar III** — 3 a 4× mais caro pelo
+mesmo minuto. O campo `engine` tem que ser explícito; deixar no default é
+escolher o caro sem saber.
+
+Detalhe completo, com as travas de idempotência e de saldo:
+[`docs/fase-avatar-via-api.md`](docs/fase-avatar-via-api.md).
+
 #### `heygen.baixar`: **quem decide a legenda é o estúdio**
 
 O `video_status.get` devolve `video_url` (limpo), `video_url_caption` (com a

@@ -99,6 +99,11 @@ média **44,1s** (mín 21,9 · máx 187,2). Então 36 alvos ≈ **26,5 min de v�
 
 Qual dos dois depende do `avatar_id`/engine escolhido no `flow.json`.
 
+**O default do `/v3/videos` é o Avatar IV** — a doc de preços diz isso com todas
+as letras (`Avatar IV: Default v3 engine`), e o preço por segundo é
+US$ 0,05–0,0667 contra **US$ 0,0167 do Avatar III**. Não mandar `engine` é
+escolher o caro sem perceber: 36 alvos passam de ~US$ 26 para ~US$ 80–105.
+
 **A carteira é pré-paga e estava em US$ 0,22** (`GET /v3/users/me` →
 `billing_type: "wallet"`, `remaining_balance`).
 
@@ -125,6 +130,36 @@ que passa direto custa ~US$ 26.
 Por isso `| api` sozinho **mantém** o portão — ele só muda de significado, de
 "grave os avatares" para "revise os textos". Quem quiser a esteira inteira sem
 parar pede as duas flags, explicitamente.
+
+## A rota de CRÉDITOS (`| creditos`) — pesquisada, não implementada
+
+Descoberto depois da primeira versão deste documento, e muda o quadro: **a fonte
+de pagamento é escolhida pela AUTENTICAÇÃO, não por um campo do POST.**
+
+> *Two auth models. An **API key** … bills to API plans … **OAuth** (MCP and CLI
+> `--oauth`) authenticates as the user's web account and **draws on subscription
+> credits**.* — doc oficial
+
+Ou seja, os mesmos endpoints, com `Authorization: Bearer` (OAuth) em vez de
+`x-api-key`, debitam dos **500 créditos da assinatura** em vez da carteira em
+dólar. Há dois caminhos prontos: a CLI (`heygen auth login --oauth`, instalada
+em `~/.local/bin/heygen`) e o MCP remoto do HeyGen.
+
+Três coisas antes de implementar:
+
+1. **A doc chama OAuth de "trial-scale only"** e recomenda API key *"for
+   anything at scale — batches, pipelines, production traffic"*. Um fluxo de 36
+   alvos é o batch que eles desaconselham.
+2. **O token expira.** Não dá para colar no `.env` como a `HEYGEN_API_KEY`: quem
+   renova é a CLI, que guarda a sessão em `~/.config/heygen`. O `.env` guardaria
+   o caminho da CLI (`HEYGEN_CLI=…`), não um segredo.
+3. **Falta provar que roda headless.** Se a CLI pedir interação a cada uso, a
+   rota não serve para um bot sem ninguém no terminal. Um vídeo de 15s responde
+   isso e o custo real em créditos.
+
+Existe ainda uma quarta forma: a fase `fluxo-navegador` do `promoclub` (agente
+dirigindo o estúdio na aba logada). Também gasta crédito, e também nunca rodou —
+zero jobs dessa tarefa no banco.
 
 ## O que a API dá, e o que não dá
 
