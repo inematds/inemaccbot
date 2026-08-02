@@ -2,6 +2,10 @@
 
 Gateway Telegram + fila durável. Sucessor do `inemaccvbot`.
 
+## 📖 Guia de uso
+
+Guia completo (landing + passo a passo): **https://inematds.github.io/inemaccbot/guia/**
+
 **Estado: etapas 0 a 5 concluídas, mais os fluxos de domínio.** A fila é durável (SQLite em
 WAL, lease com heartbeat, drain, claim atômico), o gateway fala com o Telegram, as skills
 rodam como agente (`transcrever`, `dublar`, `explicativo`, `curso`, `demo`, `reel`,
