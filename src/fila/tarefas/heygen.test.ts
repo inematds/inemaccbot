@@ -237,6 +237,15 @@ describe('heygen.gerar', () => {
     expect(c.gerados).toHaveLength(0);
   });
 
+  // O caso REAL da conta em 2026-08-02: US$ 0,22 na carteira. `<= 0` deixaria
+  // passar, o vídeo custaria ~US$ 1 e a fase morreria no meio do fluxo — com os
+  // primeiros alvos já cobrados. O piso é por VÍDEO, não "maior que zero".
+  it('saldo que não cobre um vídeo NÃO gera', async () => {
+    const c = clienteGerador({ saldo: async () => 0.22 });
+    await expect(criarHeygenGerar(c)(ctx(entradaGerar()))).rejects.toThrow(/0\.22/);
+    expect(c.gerados).toHaveLength(0);
+  });
+
   it('com saldo, gera normalmente', async () => {
     const c = clienteGerador({ saldo: async () => 12.5 });
     await criarHeygenGerar(c)(ctx(entradaGerar())).catch(() => {});

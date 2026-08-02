@@ -262,6 +262,20 @@ export function criarHeygenBaixar(cliente: ClienteHeygen): Tarefa {
   };
 }
 
+/**
+ * Piso de saldo para começar UM vídeo, em US$.
+ *
+ * A doc da HeyGen cobra ~US$ 1 por minuto de avatar padrão, e a média medida na
+ * conta (39 vídeos, 2026-08-02) é 44s — então um vídeo fica perto de US$ 0,75.
+ * O piso é 1 para não começar o que não dá para terminar.
+ *
+ * Por que não `saldo > 0`: a carteira estava em **US$ 0,22** quando isto foi
+ * escrito. Um teto em zero passaria, o vídeo seria pedido, e a fase morreria no
+ * meio do fluxo — com os alvos anteriores já cobrados, que é o pior estado para
+ * refazer.
+ */
+const PISO_POR_VIDEO = 1;
+
 /** Entrada da fase `gerar` (opção `| api`). */
 export interface EntradaGerar {
   /** O mesmo título que a fase `baixar` procura depois. */
@@ -319,9 +333,10 @@ export function criarHeygenGerar(cliente: ClienteHeygen): Tarefa {
       // `null` (medidor indisponível) NÃO bloqueia: o pipeline pararia por
       // causa do medidor, não da conta.
       const saldo = await cliente.saldo(ctx.sinal);
-      if (saldo !== null && saldo <= 0) {
+      if (saldo !== null && saldo < PISO_POR_VIDEO) {
         throw new Error(
-          `heygen.gerar: carteira da HeyGen sem saldo (US$ ${saldo.toFixed(2)}) — recarregue antes de usar | api`,
+          `heygen.gerar: carteira da HeyGen com US$ ${saldo.toFixed(2)} — menos que o custo de um vídeo `
+          + `(~US$ ${PISO_POR_VIDEO.toFixed(2)}). Recarregue antes de usar | api.`,
         );
       }
       await cliente.gerar(

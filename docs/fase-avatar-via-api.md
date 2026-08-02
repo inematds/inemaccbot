@@ -34,10 +34,18 @@ existe:
 2. **Definição congelada na criação.** Os fluxos que já existem no banco (o
    `A#16`, o `C#15`) carregam a definição com que nasceram. Editar `flow.json`
    hoje não muda nenhum deles — isto já é lei do sistema (§3.4), não algo novo.
-3. **A fase `gerar` é REMOVIDA quando a flag está desligada**, no mesmo lugar em
-   que `legenda` e `cta` já são resolvidos (`resolverOpcoes`). Com isso o
-   `/status`, o `| sombra` e o `/refazer` de um fluxo normal ficam idênticos —
-   sem linha a mais dizendo "gerar: pulado".
+3. **A fase `gerar` é REMOVIDA quando a flag está desligada.** No `flow.json`
+   ela é declarada com `"opcional": "api"`, e quem a filtra é o RUNTIME
+   (`Fluxos.definicaoEfetiva`), não o gateway. Com isso o `/status`, o
+   `| sombra` e o `/refazer` de um fluxo normal ficam idênticos — sem linha a
+   mais dizendo "gerar: pulado".
+
+   *Isto mudou durante a implementação.* O desenho inicial punha o filtro no
+   `resolverOpcoes` do gateway, e os testes de integração — que criam fluxo
+   chamando `Fluxos.criar` direto — pegaram a fase aparecendo. Estava certo:
+   um filtro só no gateway deixaria import, teste e qualquer outro chamador
+   com a fase ligada por default. O seam certo é o runtime, que TODOS
+   atravessam. Foi a garantia 5 funcionando.
 4. **A fase `baixar` não muda uma linha.** A geração usa o mesmo título que o
    download procura (`A<N>-<publico>-v1`, `C<N>-<alvo>-v1`), então o download
    não sabe — nem precisa saber — se o vídeo veio da sua mão ou da API.
@@ -48,9 +56,13 @@ existe:
 
 ```jsonc
 { "id": "gerar", "escopo": "alvo", "fila": "io", "kind": "function",
-  "tarefa": "heygen.gerar", "max_tentativas": 2,
+  "tarefa": "heygen.gerar", "opcional": "api", "max_tentativas": 2,
   "espera": { "intervalo": 60, "timeout": 3600 } }
 ```
+
+`"opcional": "api"` é o contrato: a fase só entra quando a opção de mesmo nome
+vem ligada na criação. É genérico de propósito — uma fase opcional futura só
+precisa nomear a sua opção.
 
 Entra entre `texto` e `baixar`. Cria o vídeo, espera ficar `completed` e deixa
 que a fase `baixar` faça o resto pelo título — o `video_id` não precisa ser
@@ -88,13 +100,21 @@ média **44,1s** (mín 21,9 · máx 187,2). Então 36 alvos ≈ **26,5 min de v�
 Qual dos dois depende do `avatar_id`/engine escolhido no `flow.json`.
 
 **A carteira é pré-paga e estava em US$ 0,22** (`GET /v3/users/me` →
-`billing_type: "wallet"`, `remaining_balance`). Por isso a criação com `| api`
-**confere o saldo antes de enfileirar** e recusa com o número na mão ("a
-carteira tem US$ X e este fluxo precisa de ~US$ Y") — falhar na criação é muito
-melhor que gerar oito vídeos e morrer no nono, com os oito já cobrados.
+`billing_type: "wallet"`, `remaining_balance`).
 
-A estimativa usada na conferência é a média medida × número de alvos. É
-estimativa mesmo: a cobrança real é por segundo gerado.
+Por isso a tarefa `heygen.gerar` confere o saldo **antes de pedir cada vídeo** e
+recusa quando ele é menor que o custo de um (`PISO_POR_VIDEO`, US$ 1 — a doc
+cobra ~US$ 1/min e a média medida é 44s). A mensagem traz o número: "carteira
+com US$ 0,22 — menos que o custo de um vídeo".
+
+Duas honestidades sobre esta trava:
+
+- **Ela é por vídeo, não do fluxo inteiro.** Um saldo que cobre 10 vídeos e um
+  fluxo de 36 falham no 11º — com os 10 primeiros cobrados. Conferir o total na
+  CRIAÇÃO seria melhor, mas `criarFluxo` é síncrono e a consulta é de rede;
+  fica anotado como próximo passo, não como feito.
+- **Saldo indisponível não bloqueia.** Medidor fora do ar derrubando o pipeline
+  seria pior que não ter medidor.
 
 ## Sobre tirar o portão
 
@@ -117,3 +137,10 @@ Confirmado contra a conta real em 2026-08-02:
 - A legenda continua sendo decisão do estúdio/da chamada — ver a seção
   `heygen.baixar` no README: o download prefere `video_url_caption` quando ele
   vem preenchido.
+
+**O que NÃO foi verificado contra a API:** o corpo do POST de geração. Os
+campos `avatar_id`, `voice_id`, `script` e `title` são os documentados, mas o
+`type` foi escrito a partir de um exemplo com placeholder (`"type": "<string>"`)
+— nenhum teste toca a rede, de propósito. Antes de rodar 36 alvos, rode UM
+(`| alvos=jovens-alc | api`, ~US$ 0,75): só quando voltar um `video_id` real e a
+fase `baixar` achar o vídeo pelo título é que este caminho está provado.

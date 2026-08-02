@@ -640,3 +640,31 @@ describe('input da fase gerar', () => {
     expect(inputDoGerar('um').espera).toEqual({ intervalo: 60, timeout: 3600 });
   });
 });
+
+describe('o portão diz QUEM gera o avatar', () => {
+  it('com a fase gerar no fluxo, avisa que quem gera é o bot', () => {
+    const eventos: string[] = [];
+    const f2 = new Fluxos({
+      fila, estado, agora: () => t, repoDe: () => dominio,
+      aoEvento: (e) => eventos.push(e.texto),
+    });
+    writeFileSync(join(dominio, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 1,
+      avatar_id: 'av', voice_id: 'vo',
+      alvos: { um: { canal: 'lives1' } },
+      fases: [
+        { id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/texto.md', pausa_apos: true },
+        { id: 'gerar', escopo: 'alvo', fila: 'io', kind: 'function', tarefa: 'heygen.gerar', opcional: 'api' },
+      ],
+    }));
+    const d = congelar(carregarFlow(dominio, []), dominio);
+    const fl = f2.criar({
+      tipo: 'brinquedo', definicao: d, hash: hashDefinicao(d, dominio),
+      assunto: 'x', alvos: ['um'], chatId: 7, opcoes: { api: true },
+    });
+    const job = fila.listar().find((j) => j.flow_ref === `B#${fl.id}//texto`)!;
+    fila.pegar('texto', 600, 'W');
+    fila.concluir(job.id, 'ok', 'W', (j) => f2.avancar(j));
+    expect(eventos.find((e) => e.startsWith('⏸️'))).toMatch(/quem gera é o BOT/i);
+  });
+});

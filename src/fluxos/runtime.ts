@@ -336,9 +336,17 @@ export class Fluxos {
       this.estado.atualizarFase(fluxo.id, fase.fase, fase.alvo, { estado: 'aguardando-ok' });
       this.estado.recalcularStatus(fluxo.id);
       if (this.portaoCompleto(fluxo, def, fase.fase)) {
+        // Com `| api`, o portão continua existindo mas MUDA de significado: o
+        // que se espera de você é revisar os textos, não gravar avatar nenhum.
+        // Dizer isso importa porque as mensagens seguintes trazem os títulos de
+        // estúdio, e sem esta linha elas parecem um pedido para gravar.
+        const peloBot = def.fases.some((f) => f.tarefa === 'heygen.gerar');
         this.avisar(
           fluxo,
           `⏸️ ${fluxo.prefixo}#${fluxo.id} — fase ${fase.fase} concluída e AGUARDANDO você.\n`
+          + (peloBot
+            ? 'Revise os textos abaixo — os avatares quem gera é o BOT, e isso gasta da carteira.\n'
+            : '')
           + `Quando estiver pronto: /aprovar ${fluxo.prefixo}#${fluxo.id}`,
         );
         this.entregarRoteiros(fluxo);
