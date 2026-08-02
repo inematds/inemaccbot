@@ -8,10 +8,10 @@
 // Mora em `fila/` (e não em `dominio/`) porque devolve um `ContextoExecucao`,
 // que é contrato da fila. A política — catálogo, prompt, perfil, contrato de
 // saída — vem toda de `dominio/`.
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { extrairAlvo, extrairArtefato } from '../dominio/artefato.js';
+import { extrairAlvo, extrairArtefato, SemContrato } from '../dominio/artefato.js';
 import { renderizarPrompt } from '../dominio/prompt.js';
 import { resolverPerfil } from '../dominio/perfil.js';
 import { acharSkill, type SkillDef } from '../dominio/registry.js';
@@ -186,8 +186,58 @@ function contextoDeFase(job: Job, opts: OpcoesSkills, motorForcado?: string): Co
     // blob de prosa onde esperava um caminho de arquivo.
     //
     // `.txt` porque é o que `{{saida}}` promete ao prompt (ver `saida` acima).
-    interpretarSaida: (bruto: string) => extrairArtefato(bruto, ['txt']),
+    //
+    // …com UMA saída de emergência: o arquivo que o BOT nomeou já estar lá.
+    // Ver `aceitarPeloArquivo`.
+    interpretarSaida: (bruto: string) => {
+      try {
+        return extrairArtefato(bruto, ['txt']);
+      } catch (err) {
+        if (aceitarPeloArquivo(err, bruto, saida)) {
+          opts.log?.(`[job ${job.id}] sem "RESULT:", mas ${saida} existe — aceito pelo arquivo`);
+          return saida;
+        }
+        throw err;
+      }
+    },
   };
+}
+
+/**
+ * O trabalho terminou, o agente só não avisou.
+ *
+ * Custou o C#14: 36 roteiros escritos, o `{{saida}}` gravado no formato certo, e
+ * tudo descartado porque a última linha `RESULT:` não veio — provavelmente
+ * comida pelo teto de stdout (`LIMITE_SAIDA_BYTES`), que corta justamente o FIM.
+ * O `/refazer` reescreveu os 36 e tropeçou no mesmo lugar.
+ *
+ * O caminho não é informação que o agente detém: quem o inventou foi o bot, e
+ * ele o injetou no prompt como `{{saida}}`. Exigir que o agente o repita de
+ * volta é cerimônia — dá para simplesmente olhar se o arquivo está lá.
+ *
+ * Duas condições, e as duas importam:
+ *
+ * 1. **Nada de contrato no stdout.** `ERRO:` declarado é falha DE VERDADE e
+ *    segue falha: o A#3 já virou `done` por aceitar stdout qualquer, e o portão
+ *    abriu numa fase que tinha quebrado. Um `RESULT:` com extensão errada
+ *    também não cai aqui — é bug de quem escreveu, e mascarar atrasa o conserto.
+ * 2. **O arquivo existe e tem conteúdo.** Vazio é o agente tendo criado o
+ *    arquivo e morrido antes de escrever; aceitar isso entregaria um recibo em
+ *    branco para a fase seguinte.
+ */
+function aceitarPeloArquivo(err: unknown, bruto: string, saida: string): boolean {
+  if (!(err instanceof SemContrato)) return false;
+  // Só o caso "não declarou NADA". As outras mensagens de `SemContrato` são
+  // declarações erradas ou um `ERRO:` legítimo — nenhuma delas é silêncio.
+  if (!/terminou sem declarar/.test(err.message)) return false;
+  // Rede a mais: um `ERRO:` que o extrator não casou (enfeitado de um jeito
+  // novo) não pode virar sucesso por descuido.
+  if (/^[\s>*_`-]*ERRO\s*:/im.test(bruto)) return false;
+  try {
+    return statSync(saida).size > 0;
+  } catch {
+    return false;
+  }
 }
 
 /** Só as variáveis que o template cita — o resto seria erro em `renderizarPrompt`. */

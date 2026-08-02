@@ -104,6 +104,64 @@ describe('criarPromptDe', () => {
     expect(() => ctx.interpretarSaida!('sem contrato')).toThrow();
   });
 
+  // O C#14: 36 roteiros escritos, o {{saida}} gravado, e tudo descartado porque
+  // a última linha `RESULT:` não veio. O caminho é do BOT — dá para olhar se o
+  // arquivo está lá em vez de exigir que o agente o repita de volta.
+  describe('fase de fluxo: aceitar pelo arquivo quando falta o RESULT:', () => {
+    const entradaDeFase = JSON.stringify({
+      entrada: 'assunto',
+      prompt_texto: 'faz {{input}} e grava em {{saida}}',
+      fluxo: { ref: 'C#14', fase: 'texto', alvo: '' },
+    });
+    const jobDeFase = () => job({ tarefa: 'fluxo-agente', input: entradaDeFase });
+    const caminhoSaida = () => join(raiz, 'artefatos', 'fluxos', '7.txt');
+
+    it('sem contrato, mas com o arquivo escrito: aceita e devolve o caminho', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'jovens-alc: /textos/C14/jovens-alc.md\n');
+      expect(ctx.interpretarSaida!('escrevi tudo, até logo')).toBe(caminhoSaida());
+    });
+
+    it('sem contrato e SEM arquivo: continua falhando', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      expect(() => ctx.interpretarSaida!('escrevi tudo, até logo')).toThrow(/terminou sem declarar/);
+    });
+
+    it('arquivo VAZIO não conta como trabalho feito', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), '');
+      expect(() => ctx.interpretarSaida!('escrevi tudo, até logo')).toThrow(/terminou sem declarar/);
+    });
+
+    // O A#3 virou `done` por aceitar stdout qualquer, e o portão abriu numa fase
+    // quebrada. `ERRO:` declarado é falha, mesmo com arquivo no disco.
+    it('ERRO: declarado continua falha, mesmo com o arquivo lá', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'conteúdo qualquer\n');
+      expect(() => ctx.interpretarSaida!('ERRO: skill não encontrada')).toThrow(/reportou erro/);
+    });
+
+    it('ERRO: enfeitado de markdown também não vira sucesso', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'conteúdo qualquer\n');
+      expect(() => ctx.interpretarSaida!('- **ERRO:** deu ruim')).toThrow();
+    });
+
+    // Extensão errada é bug de quem escreveu o prompt; mascarar atrasa o
+    // conserto e o erro específico é mais informativo que "não achei nada".
+    it('RESULT: com extensão errada NÃO cai na saída de emergência', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'conteúdo qualquer\n');
+      expect(() => ctx.interpretarSaida!('RESULT: /tmp/coisa.md')).toThrow(/não termina em/);
+    });
+
+    it('com o RESULT: presente, o caminho declarado continua mandando', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'conteúdo qualquer\n');
+      expect(ctx.interpretarSaida!(`RESULT: ${caminhoSaida()}`)).toBe(caminhoSaida());
+    });
+  });
+
   // A entrada do usuário é DADO. Se ela pudesse fechar o bloco e abrir
   // instrução, o §9 ("nunca instrução crua") seria só um comentário.
   it('entrada com quebra de linha e controle entra saneada', async () => {
