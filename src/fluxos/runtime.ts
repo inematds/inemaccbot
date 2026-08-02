@@ -422,7 +422,13 @@ export class Fluxos {
         this.avisar(fluxo, `🎬 ${titulo} — pronto, mas sem link: ${fase.dados}`);
         continue;
       }
-      this.avisar(fluxo, `🎬 ${titulo}\n${pub.links.join('\n')}`);
+      // UM link, o primeiro — não os três. `PUBLICO_URLS` lista as bases porque
+      // a máquina responde por mais de um nome na rede local, mas isso é
+      // detalhe de infra: quem recebe clica na primeira de qualquer jeito, e
+      // três linhas por vídeo viram 108 num fluxo de 36 alvos, empurrando o
+      // título seguinte para fora da tela. As outras bases continuam existindo
+      // na config, para quem precisar montar a URL na mão.
+      this.avisar(fluxo, `🎬 ${titulo}\n${pub.links[0]}`);
     }
   }
 

@@ -323,6 +323,41 @@ describe('vídeo final: link e nome do título', () => {
     expect(msg).toContain('http://rede:8202/A1-mulheres-v1.mp4');
   });
 
+  // `PUBLICO_URLS` tem três bases (rede.club, rede1.club, rede2.club) porque a
+  // máquina responde por três nomes na rede local. Mandar as três por vídeo é
+  // 3 linhas × 36 alvos = 108 linhas de link no chat, e quem recebe clica na
+  // primeira mesmo — as outras só empurram o próximo título para fora da tela.
+  it('entrega UM link por vídeo, o primeiro da lista', () => {
+    const publicados: string[] = [];
+    const f = new Fluxos({
+      fila, estado, agora: () => t,
+      raizArtefatos: join(dir, 'artefatos'), projetosDir: join(dir, 'projetos'),
+      aoEvento: (e) => eventos.push(e),
+      repoDe: () => join(dir, 'dominio'),
+      publicar: (origem, titulo) => {
+        publicados.push(titulo);
+        return {
+          arquivo: `/servida/${titulo}.mp4`,
+          links: [
+            `http://rede.club:8202/${titulo}.mp4`,
+            `http://rede1.club:8202/${titulo}.mp4`,
+            `http://rede2.club:8202/${titulo}.mp4`,
+          ],
+        };
+      },
+    });
+    const id = f.criar({
+      tipo: 'promoavatar', definicao: def, hash: hashDefinicao(def, REPO_DOMINIO),
+      assunto: 'x', alvos: ['mulheres'], chatId: 55,
+    }).id;
+    rodarAteOFim(f, id);
+
+    const msg = eventos.filter((e) => e.texto.startsWith('🎬')).at(-1)!.texto;
+    expect(msg).toContain('http://rede.club:8202/A1-mulheres-v1.mp4');
+    expect(msg).not.toContain('rede1.club');
+    expect(msg).not.toContain('rede2.club');
+  });
+
   it('sem publicação configurada, diz o caminho em vez de omitir o alvo', () => {
     const id = criar(['mulheres']);
     rodarAteOFim(fluxos, id);
