@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AindaNao } from '../types.js';
-import { criarHeygenBaixar, lerChaveHeygen, type ClienteHeygen } from './heygen.js';
+import { criarHeygenBaixar, escolherUrl, lerChaveHeygen, type ClienteHeygen } from './heygen.js';
 import type { ContextoTarefa } from '../types.js';
 
 let dir: string;
@@ -32,6 +32,38 @@ function cliente(over: Partial<ClienteHeygen> = {}): ClienteHeygen {
 }
 
 const entrada = (destino: string) => JSON.stringify({ titulo: 'P16-mulheres-v1', destino });
+
+// Quem decide se o vídeo tem legenda é o ESTÚDIO, não o bot: se o render foi
+// feito com legenda, é esse vídeo que a gente quer. `video_url_caption` só vem
+// preenchido quando existe render com legenda queimada — nos 25 vídeos medidos
+// em 2026-08-01 (todos gravados sem legenda) ele veio nulo em todos.
+describe('escolherUrl: o estúdio decide se tem legenda', () => {
+  it('prefere o vídeo COM legenda quando o estúdio gravou com ela', () => {
+    expect(escolherUrl({ video_url: 'https://cdn/limpo.mp4', video_url_caption: 'https://cdn/legendado.mp4' }))
+      .toBe('https://cdn/legendado.mp4');
+  });
+
+  it('cai no limpo quando o estúdio gravou sem legenda', () => {
+    expect(escolherUrl({ video_url: 'https://cdn/limpo.mp4', video_url_caption: null }))
+      .toBe('https://cdn/limpo.mp4');
+  });
+
+  it('campo ausente também cai no limpo', () => {
+    expect(escolherUrl({ video_url: 'https://cdn/limpo.mp4' })).toBe('https://cdn/limpo.mp4');
+  });
+
+  // String vazia é o mesmo que não ter — baixar `""` viraria download HTTP
+  // inválido em vez de "ainda sem url", que é o estado honesto.
+  it('string vazia não conta como vídeo legendado', () => {
+    expect(escolherUrl({ video_url: 'https://cdn/limpo.mp4', video_url_caption: '' }))
+      .toBe('https://cdn/limpo.mp4');
+  });
+
+  it('sem nenhuma das duas: null, para a fase seguir esperando', () => {
+    expect(escolherUrl({})).toBe(null);
+    expect(escolherUrl(undefined)).toBe(null);
+  });
+});
 
 describe('heygen.baixar', () => {
   it('baixa quando o vídeo está completed', async () => {

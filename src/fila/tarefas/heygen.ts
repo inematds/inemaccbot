@@ -62,6 +62,40 @@ export function lerChaveHeygen(envPath: string, ler: (p: string) => string): str
   return chave;
 }
 
+/** O que o `video_status.get` devolve sobre o vídeo pronto. */
+export interface DadosDoVideo {
+  /** MP4 sem legenda queimada. */
+  video_url?: string | null;
+  /** O MESMO vídeo com a legenda QUEIMADA nos pixels — só vem preenchido
+   *  quando o render do estúdio foi feito com legenda. */
+  video_url_caption?: string | null;
+}
+
+/**
+ * Qual MP4 baixar — e a regra é: **quem decide sobre legenda é o estúdio.**
+ *
+ * Se o render foi feito COM legenda, `video_url_caption` vem preenchido e é ele
+ * que queremos: a legenda foi uma escolha de quem gravou. Se foi feito sem,
+ * esse campo vem nulo (ou vazio) e caímos no `video_url` limpo. Não há terceira
+ * opção a pedir da API: a URL é pronta, sem `?estilo=`/`?formato=`, e os seis
+ * endpoints de legenda (`video.caption`, `video/caption`, `video.subtitle`,
+ * `caption.list`, `caption_styles`, `v2/video/<id>`) dão 404 — estilo, fonte e
+ * posição se decidem no estúdio, antes de renderizar.
+ *
+ * Duas consequências que quem gravar precisa saber, e que nenhum código
+ * desfaz: legenda queimada vem enquadrada para 16:9, então no reel 9:16 ela
+ * pode ser cortada ou colidir com a base; e se o reel também for montado com
+ * `| legenda`, saem DUAS. Ligar uma é decidir desligar a outra.
+ *
+ * Medido em 2026-08-01, nos 25 vídeos completos mais recentes da conta (todos
+ * gravados sem legenda): `video_url_caption` nulo em todos — ou seja, hoje o
+ * caminho normal continua sendo o limpo, e este código só muda o dia em que
+ * alguém gravar com legenda ligada.
+ */
+export function escolherUrl(dados: DadosDoVideo | undefined): string | null {
+  return dados?.video_url_caption || dados?.video_url || null;
+}
+
 export function criarClienteHeygen(
   chaveDe: () => string, buscar: typeof fetch = fetch,
 ): ClienteHeygen {
@@ -91,27 +125,14 @@ export function criarClienteHeygen(
       }
       return saida;
     },
-    // `video_url` é o MP4 LIMPO, e a escolha é deliberada: a resposta traz
-    // também `video_url_caption` (o mesmo vídeo com a legenda QUEIMADA) e
-    // `caption_url` (a legenda solta). Queremos sempre o limpo — a legenda do
-    // reel é desenhada pelo nosso editor, sob a opção `legenda` do fluxo, e
-    // legenda queimada não tem como ser removida depois (vem enquadrada para
-    // 16:9 e estraga a faixa do meio no 9:16; com a opção ligada, sairiam
-    // duas). Não há como escolher estilo no download: a URL é pronta, e os
-    // endpoints de legenda da API (`video.caption`, `video/caption`,
-    // `video.subtitle`, `caption.list`, `caption_styles`) dão 404 — isso se
-    // decide no estúdio, antes de renderizar. Medido em 2026-08-01 nos 25
-    // vídeos completos mais recentes da conta: `video_url_caption` nulo e
-    // `caption_url` vazio em todos. NÃO testado: o que acontece com a legenda
-    // LIGADA no estúdio — não está provado que `video_url` continue limpo.
     async urlDe(videoId, sinal) {
       const r = await buscar(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
         headers: { 'X-Api-Key': chaveDe() },
         signal: sinal,
       });
       if (!r.ok) throw new Error(`video_status.get HTTP ${r.status}`);
-      const dados = (await r.json()) as { data?: { video_url?: string } };
-      return dados.data?.video_url ?? null;
+      const dados = (await r.json()) as { data?: DadosDoVideo };
+      return escolherUrl(dados.data);
     },
     async baixar(url, destino, sinal) {
       const r = await buscar(url, { signal: sinal });

@@ -190,21 +190,32 @@ seletivo, retomada e definição congelada.
 O domínio diz para QUEM (canal por nome, `lives21`); o bot sabe ONDE (o caminho no disco).
 Nunca ponha caminho no `flow.json`.
 
-#### `heygen.baixar` sempre pega o MP4 SEM legenda
+#### `heygen.baixar`: **quem decide a legenda é o estúdio**
 
 O `video_status.get` devolve `video_url` (limpo), `video_url_caption` (com a
-legenda **queimada**) e `caption_url` (legenda solta). A tarefa lê **só
-`video_url`** — a legenda do reel é desenhada pelo nosso editor, sob a opção
-`legenda` do fluxo, e legenda queimada não tem como ser removida depois.
+legenda **queimada** nos pixels) e `caption_url` (legenda solta). A tarefa lê
+`video_url_caption` **quando ele vem preenchido**, e cai no `video_url` quando
+não vem (`escolherUrl`, `src/fila/tarefas/heygen.ts`).
 
-Não há como escolher estilo no download: a URL é pronta, e os endpoints de
-legenda da API dão 404. Isso se decide no estúdio, antes de renderizar.
+Isso põe a decisão onde ela é tomada: **gravou com legenda no estúdio, o reel
+sai com ela; gravou sem, sai sem.** O bot não escolhe, e não há o que pedir à
+API — a URL é pronta (sem `?estilo=`/`?formato=`) e os seis endpoints de legenda
+dão 404. Estilo, fonte e posição se decidem no estúdio, antes de renderizar.
 
-Medido em 2026-08-01 nos 25 vídeos completos mais recentes da conta:
-`video_url_caption` nulo e `caption_url` vazio em todos. **NÃO testado:** o que
-acontece com a legenda **ligada** no estúdio — não está provado que `video_url`
-continue limpo. Até alguém testar, a garantia é gravar sem legenda. Detalhe:
-comentário em `src/fila/tarefas/heygen.ts` e o README do repo de domínio.
+Duas consequências que nenhum código desfaz, e que quem grava precisa saber:
+
+- legenda queimada vem enquadrada para **16:9** — no reel 9:16 ela pode ser
+  cortada ou colidir com a base;
+- se o reel também for montado com `| legenda`, saem **duas**. Ligar uma é
+  decidir desligar a outra.
+
+Medido em 2026-08-01 nos 25 vídeos completos mais recentes da conta (todos
+gravados sem legenda): `video_url_caption` nulo e `caption_url` vazio em todos —
+ou seja, o caminho normal hoje continua sendo o limpo, e esta regra só muda o
+dia em que alguém gravar com a legenda ligada. **NÃO testado:** o comportamento
+com a legenda ligada no estúdio — os nomes dos campos sugerem que `video_url`
+siga limpo e `video_url_caption` passe a vir preenchido, mas não há observação
+que prove. O teste custa um vídeo. Detalhe também no README do repo de domínio.
 
 ### Regra da documentação (verificada por teste)
 
