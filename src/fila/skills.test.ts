@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -102,6 +102,50 @@ describe('criarPromptDe', () => {
     const ctx = await criarPromptDe(opts())(job());
     expect(ctx.interpretarSaida!('log\nRESULT: /tmp/a.srt')).toBe('/tmp/a.srt');
     expect(() => ctx.interpretarSaida!('sem contrato')).toThrow();
+  });
+
+  // O C#15: o agente não escreveu NADA. A `pasta` (`textos/C15`) não existia, o
+  // `mkdir` dele foi bloqueado pelo sandbox do motor e cada Write virou pedido
+  // de permissão que ninguém pode conceder — o bot roda sem gente na frente.
+  // Quem inventou o caminho foi o BOT (ele injeta `{{pasta}}` no prompt), então
+  // é o bot que o cria, como já faz com `artefatos/fluxos`.
+  describe('fase de fluxo: a pasta do domínio é criada pelo BOT', () => {
+    const comPasta = (pasta: string) => JSON.stringify({
+      entrada: 'assunto',
+      prompt_texto: 'escreve {{input}} em {{pasta}} e resume em {{saida}}',
+      fluxo: { ref: 'C#15', fase: 'texto', alvo: '', repo: raiz, pasta },
+    });
+
+    it('cria a pasta declarada na fase antes de o agente rodar', async () => {
+      const pasta = join(raiz, 'textos', 'C15');
+      expect(existsSync(pasta)).toBe(false);
+      const ctx = await criarPromptDe(opts())(job({ tarefa: 'fluxo-agente', input: comPasta(pasta) }));
+      expect(existsSync(pasta)).toBe(true);
+      expect(ctx.prompt).toContain(pasta);
+    });
+
+    // Criar a pasta fora do repo materializaria a árvore de um repo que não
+    // está no disco — e o `cwd` da fase cai para o padrão justamente nesse caso.
+    it('não cria pasta nenhuma quando o repo de domínio não existe', async () => {
+      const repoFantasma = join(raiz, 'nao-existe');
+      const entrada = JSON.stringify({
+        entrada: 'assunto',
+        prompt_texto: 'escreve {{input}} em {{pasta}} e resume em {{saida}}',
+        fluxo: { ref: 'C#15', fase: 'texto', alvo: '', repo: repoFantasma, pasta: join(repoFantasma, 'textos', 'C15') },
+      });
+      const ctx = await criarPromptDe(opts())(job({ tarefa: 'fluxo-agente', input: entrada }));
+      expect(existsSync(repoFantasma)).toBe(false);
+      expect(ctx.cwd).toBe(raiz);
+    });
+
+    it('fase sem `pasta` continua funcionando', async () => {
+      const entrada = JSON.stringify({
+        entrada: 'assunto',
+        prompt_texto: 'faz {{input}} e grava em {{saida}}',
+        fluxo: { ref: 'C#15', fase: 'texto', alvo: '' },
+      });
+      await expect(criarPromptDe(opts())(job({ tarefa: 'fluxo-agente', input: entrada }))).resolves.toBeTruthy();
+    });
   });
 
   // O C#14: 36 roteiros escritos, o {{saida}} gravado, e tudo descartado porque

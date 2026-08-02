@@ -148,6 +148,24 @@ function contextoDeFase(job: Job, opts: OpcoesSkills, motorForcado?: string): Co
   const saida = join(opts.raizArtefatos, 'fluxos', `${job.id}.txt`);
   mkdirSync(join(opts.raizArtefatos, 'fluxos'), { recursive: true });
 
+  // A `pasta` do domínio (`textos/C15`) também é criada AQUI, e pelo mesmo
+  // motivo do `saida`: quem inventou o caminho foi o bot — ele o injeta no
+  // prompt como `{{pasta}}` —, então criá-lo é trabalho do bot.
+  //
+  // Custou o C#15: a pasta não existia, o `mkdir` do agente foi bloqueado pelo
+  // sandbox do motor ("may only create directories in the allowed working
+  // directories") e cada `Write` virou pedido de permissão. O bot roda sem
+  // ninguém na frente do terminal: pedido de permissão é fase perdida, e o
+  // agente terminou sem escrever um arquivo sequer. Nem o resgate pelo arquivo
+  // (`aceitarPeloArquivo`) salva isso — ali não há trabalho nenhum a resgatar.
+  //
+  // Só criamos a pasta se o repo de domínio EXISTE: criá-la fora dele faria o
+  // bot materializar a árvore de um repo que não está no disco, e ainda mudaria
+  // por efeito colateral o `cwd` resolvido logo abaixo (que cai para
+  // `opts.cwd` justamente quando o repo não existe).
+  const repo = existsSync(e.fluxo?.repo ?? '') ? e.fluxo.repo : undefined;
+  if (repo && e.fluxo?.pasta) mkdirSync(e.fluxo.pasta, { recursive: true });
+
   const vars: Record<string, string> = { input: e.entrada, saida };
   // Campos do topo que o prompt pode citar. `titulo` é o caso que importa: a
   // fase de avatar TEM que nomear o vídeo exatamente como a fase de download
@@ -172,7 +190,7 @@ function contextoDeFase(job: Job, opts: OpcoesSkills, motorForcado?: string): Co
     // valor vem do registry validado no boot (§9 exige `cwd` conferido contra
     // a lista de repos registrados), e cai para `opts.cwd` se a fase não
     // declarou repo — fluxo criado por versão anterior a isto.
-    cwd: existsSync(e.fluxo?.repo ?? '') ? e.fluxo.repo : opts.cwd,
+    cwd: repo ?? opts.cwd,
     perfil,
     vars: {},
     timeoutMs: TIMEOUT_FASE_SEGUNDOS * 1_000,
