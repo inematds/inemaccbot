@@ -127,11 +127,22 @@ describe('executar', () => {
       expect(new Set(usos).size).toBe(usos.length);
     });
 
+    // O celular quebra por volta de 40 colunas: linha mais larga que isso volta
+    // pela metade e a lista vira um bloco. Cada item tem que caber em UMA linha.
+    it('cabe na largura do chat, sem quebrar em duas', () => {
+      for (const l of ajuda().split('\n')) expect(l.length).toBeLessThanOrEqual(42);
+    });
+
+    it('a descrição da skill também é cortada na largura', () => {
+      const r = executar(parseComando('/ajuda'), depsSkills());
+      for (const l of r.split('\n')) expect(l.length).toBeLessThanOrEqual(42);
+    });
+
     it('separa em seções em vez de despejar tudo junto', () => {
       const r = ajuda();
-      expect(r).toMatch(/Ver o que está acontecendo/i);
-      expect(r).toMatch(/Agir/i);
-      expect(r).toMatch(/Manuten|Espaço|Limpeza/i);
+      expect(r).toMatch(/^Ver:/m);
+      expect(r).toMatch(/^Agir:/m);
+      expect(r).toMatch(/^Manutenção:/m);
     });
 
     it('descreve /status como o painel dos fluxos, e /jobs como a fila de jobs', () => {
@@ -297,6 +308,22 @@ describe('executar', () => {
         fila.concluir(j.id, '/tmp/v.mp4', 'w1');
       }
     }
+
+    // Mesma régua do /ajuda: linha de painel que passa de ~40 colunas volta pela
+    // metade no celular, e aí o alinhamento que faz o painel ser varrido com o
+    // olho some. Caminho de arquivo e URL ficam de fora — esses não dá para
+    // encurtar sem mentir.
+    it('cada linha cabe na largura do chat', () => {
+      historico('reel', [600, 600, 600]);
+      for (let i = 0; i < 30; i += 1) {
+        fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'reel', input: '{}' });
+      }
+      fila.pegar('render', 3_600, 'w1');
+      t += 3_668;
+      const linhas = executar(parseComando('/fila'), depsSkills()).split('\n')
+        .filter((l) => !l.includes('http') && !l.includes('/'));
+      for (const l of linhas) expect(l.length).toBeLessThanOrEqual(42);
+    });
 
     it('idade em hora/minuto, não em segundos crus', () => {
       fila.enfileirar({ fila: 'render', kind: 'agent', tarefa: 'reel', input: '{}' });

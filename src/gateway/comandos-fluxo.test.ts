@@ -270,7 +270,7 @@ describe('/status P#N', () => {
     const r = await manda('/status B#1');
     expect(r).toContain('B#1');
     expect(r).toContain('texto');
-    expect(r).toContain('versão da definição: 3');
+    expect(r).toContain('def v3');
   });
 
   // `P#16` e `B#16` são fluxos diferentes: agir no errado seria pior que não agir.
@@ -316,7 +316,7 @@ describe('/status P#N', () => {
       await manda('/brinquedo Primeiro assunto');
       await manda('/brinquedo Segundo assunto');
       const r = await manda('/status');
-      expect(r).toContain('versão da definição:');
+      expect(r).toContain('def v');
       // O atalho aparece UMA vez, no rodapé — não uma vez por fluxo.
       expect(r.match(/\/refazer/g)?.length).toBe(1);
     });
@@ -357,7 +357,7 @@ describe('/status P#N', () => {
     const fase = (nome: string, alvo: string, estado: string) =>
       ({ fase: nome, alvo, estado, erro: null } as never);
     const visaoCom = (fases: unknown[]) => ({
-      fluxo: { prefixo: 'C', id: 15, tipo: 'promoavatar2', assunto: 'assunto', status: 'rodando', versao_def: 1 },
+      fluxo: { prefixo: 'C', id: 15, tipo: 'promoavatar3', assunto: 'assunto', status: 'rodando', versao_def: 1 },
       fases,
     } as never);
 
@@ -392,6 +392,22 @@ describe('/status P#N', () => {
       const r = tabelaFluxo(visaoCom([fase('render', 'um', 'feito'), fase('render', 'dois', 'feito')]), false);
       expect(r).toContain('um');
       expect(r).toContain('dois');
+    });
+
+    // O celular quebra por volta de 40 colunas. O assunto tem uma linha só para
+    // ele (cortado), e as linhas de estado não passam da largura — senão o
+    // painel volta pela metade e deixa de ser varrível com o olho.
+    it('cada linha cabe na largura do chat', () => {
+      const fases = [
+        fase('texto', '', 'feito'),
+        ...Array.from({ length: 36 }, (_, i) => fase('reel', `publico-longo-${i}-pro`, i < 6 ? 'feito' : 'pendente')),
+      ];
+      const v = visaoCom(fases) as { fluxo: { assunto: string } };
+      v.fluxo.assunto = 'KIMI K3 mal saiu detonando todos e agora ja vem o K4. '
+        + 'A China está entregando IA de ponta em código aberto. MINHA POSIÇÃO: '
+        + 'aberto hoje não é garantia de aberto amanhã.';
+      const linhas = tabelaFluxo(v as never, false).split('\n');
+      for (const l of linhas) expect(l.length).toBeLessThanOrEqual(42);
     });
 
     // O cabeçalho da lista já corta o assunto em `…`; o detalhe despejava o

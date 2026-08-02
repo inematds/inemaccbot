@@ -339,12 +339,15 @@ export function tabelaFluxo(
   comandos: boolean,
 ): string {
   const { fluxo, fases } = visao;
+  // Três linhas curtas em vez de duas longas: o celular quebra por volta de 40
+  // colunas, e `C#15 — promoavatar3: KIMI K3 mal saiu…` com o assunto junto
+  // voltava em quatro. O assunto ganha linha própria e é CORTADO — o do C#15
+  // tem posição e pergunta para os comentários, e despejá-lo inteiro empurrava
+  // o estado (o que se veio ver) para o fim da mensagem.
   const linhas = [
-    // O assunto é CORTADO aqui também, não só na lista de cima: o do C#15 tem
-    // posição e pergunta para os comentários, e despejá-lo inteiro empurra o
-    // estado — que é o que se veio ver — oito linhas para baixo.
-    `${fluxo.prefixo}#${fluxo.id} — ${fluxo.tipo}: ${resumoAssunto(fluxo.assunto, 140)}`,
-    `status: ${fluxo.status} · versão da definição: ${fluxo.versao_def}`,
+    `${fluxo.prefixo}#${fluxo.id} — ${fluxo.tipo}`,
+    `  ${resumoAssunto(fluxo.assunto, LARGURA_CHAT - 2)}`,
+    `status: ${fluxo.status} · def v${fluxo.versao_def}`,
   ];
   const porFase = new Map<string, Fase[]>();
   for (const f of fases) {
@@ -381,6 +384,11 @@ export function tabelaFluxo(
  * contagem esconderia QUAIS, e cabe na tela sem virar parede.
  */
 const ALVOS_ANTES_DE_CONTAR = 6;
+
+/** Largura útil do chat no celular — a mesma régua do `/ajuda`. Linha maior
+ *  que isto o Telegram quebra no meio da palavra, e o painel deixa de ser
+ *  varrível com o olho. */
+const LARGURA_CHAT = 42;
 
 /** Como cada estado aparece na contagem. */
 const NOME_ESTADO: Record<Fase['estado'], string> = {

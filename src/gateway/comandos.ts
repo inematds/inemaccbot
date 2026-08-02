@@ -144,43 +144,61 @@ export function parseComando(texto: string, defs: SkillDef[] = [], projetosDir =
  */
 const AJUDA_SECOES: Array<{ titulo: string; linhas: Array<{ uso: string; descricao: string }> }> = [
   {
-    titulo: 'Ver o que está acontecendo',
+    titulo: 'Ver',
     linhas: [
-      { uso: '/status', descricao: 'o painel dos fluxos ABERTOS — um por linha, com o que cada um espera de você' },
-      { uso: '/completos', descricao: 'os fluxos que já terminaram, do mais novo para o mais velho' },
-      { uso: '/jobs', descricao: 'a fila de jobs — o que está rodando e o que acabou' },
-      { uso: '/fila', descricao: 'a saúde de cada fila: rodando, pendentes, idade, erro em 24h' },
-      { uso: '/status <ref>', descricao: 'detalhe de um job (j13) ou de um fluxo (A#9, ou a9)' },
-      { uso: '/ping', descricao: 'verifica se o bot está vivo' },
+      { uso: '/status', descricao: 'os fluxos abertos' },
+      { uso: '/status <ref>', descricao: 'um job ou um fluxo' },
+      { uso: '/completos', descricao: 'os fluxos terminados' },
+      { uso: '/jobs', descricao: 'a fila de jobs' },
+      { uso: '/fila', descricao: 'saúde das filas' },
+      { uso: '/ping', descricao: 'o bot está vivo?' },
     ],
   },
   {
-    titulo: 'Agir num fluxo ou num job',
+    titulo: 'Agir',
     linhas: [
-      { uso: '/pronto [ref]', descricao: 'terminei minha parte — libera o fluxo parado (sem ref, se só um espera). Também: /aprovar, /aprovado, /ok' },
-      { uso: '/refazer <ref>', descricao: 'retenta: no fluxo, retoma da fase que falhou; num alvo, só ele' },
-      { uso: '/cancelar <ref>', descricao: 'cancela um job ou um fluxo (o que já foi criado FORA continua lá)' },
-      { uso: '/furar <id>', descricao: 'põe um job pendente na frente da fila' },
+      { uso: '/pronto [ref]', descricao: 'libera o portão' },
+      { uso: '/refazer <ref>', descricao: 'retenta o que falhou' },
+      { uso: '/cancelar <ref>', descricao: 'cancela job ou fluxo' },
+      { uso: '/furar <id>', descricao: 'fura a fila' },
     ],
   },
   {
     titulo: 'Catálogo',
     linhas: [
-      { uso: '/skills', descricao: 'as skills (uma etapa, sem estado)' },
-      { uso: '/fluxos', descricao: 'os fluxos (várias fases, com estado e retomada)' },
-      { uso: '/ajuda <nome>', descricao: 'a ajuda de UMA skill ou fluxo (/ajuda promoavatar). Sozinho — /ajuda ou /help — mostra esta lista' },
+      { uso: '/skills', descricao: 'uma etapa, sem estado' },
+      { uso: '/fluxos', descricao: 'várias fases, com estado' },
+      { uso: '/ajuda <nome>', descricao: 'ajuda de uma delas' },
     ],
   },
   {
-    titulo: 'Manutenção e espaço',
+    titulo: 'Manutenção',
     linhas: [
-      { uso: '/espaco', descricao: 'quanto disco cada área está ocupando (bot × skills)' },
-      { uso: '/limpar <escopo>', descricao: 'A#8 · promoavatar · artefatos [dias] · tudo (mostra antes; só executa com "confirmar")' },
+      { uso: '/espaco', descricao: 'disco por área' },
+      { uso: '/limpar <escopo>', descricao: 'A#8 · tudo · artefatos' },
       { uso: 'http <url>', descricao: 'enfileira um GET' },
-      { uso: 'thumb <caminho>', descricao: 'enfileira uma thumbnail' },
+      { uso: 'thumb <arquivo>', descricao: 'enfileira uma thumb' },
     ],
   },
 ];
+
+/**
+ * Largura útil do chat no celular.
+ *
+ * Passou disto, o Telegram quebra a linha — e quebra no meio da palavra, o que
+ * transforma uma lista alinhada num bloco de texto. Foi o que aconteceu com a
+ * ajuda antiga: `/pronto [ref] — terminei minha parte — libera o fluxo parado
+ * (sem ref, se só um espera). Também: /aprovar…` tinha 120 colunas e voltava em
+ * quatro linhas. Descrição que não cabe aqui é descrição comprida demais: o
+ * detalhe mora no `/ajuda <nome>`, não nesta lista.
+ */
+const LARGURA_CHAT = 42;
+
+/** Corta na largura, com reticências — nunca no meio calado. */
+function naLargura(texto: string, limite = LARGURA_CHAT): string {
+  const l = texto.replace(/\s+/g, ' ').trim();
+  return l.length <= limite ? l : `${l.slice(0, limite - 1)}…`;
+}
 
 /** A ajuda mistura os comandos FIXOS (serviço) com as skills do REGISTRY — a
  * lista de skills nunca é escrita à mão aqui, senão ela envelhece calada. */
@@ -189,13 +207,19 @@ function respostaAjuda(defs: SkillDef[]): string {
   for (const secao of AJUDA_SECOES) {
     if (linhas.length) linhas.push('');
     linhas.push(`${secao.titulo}:`);
-    for (const l of secao.linhas) linhas.push(`  ${l.uso} — ${l.descricao}`);
+    // `naLargura` aqui é cinto e suspensório: a descrição já é escrita curta,
+    // mas uma linha nova comprida não pode desalinhar a lista inteira sem que
+    // ninguém perceba.
+    for (const l of secao.linhas) linhas.push(naLargura(`  ${l.uso} — ${l.descricao}`));
   }
+  linhas.push('', 'Esta lista: /ajuda ou /help');
   if (defs.length) {
-    linhas.push('', 'Skills (formato `skill: entrada | campo`):');
-    for (const d of defs) linhas.push(`  ${d.command}: … — ${d.descricao}`);
-    linhas.push('', 'Campos: livesN (destino) · modelo=opus · esforco=high');
-    linhas.push('Ajuda de um comando específico: /ajuda <nome>');
+    linhas.push('', 'Skills (skill: entrada | campo):');
+    // A descrição vem do registry e pode ter qualquer tamanho — cortar aqui é
+    // o que impede uma skill nova de desalinhar a lista inteira.
+    for (const d of defs) linhas.push(naLargura(`  ${d.command} — ${d.descricao}`));
+    linhas.push('', 'Campos: livesN · modelo= · esforco=');
+    linhas.push('Detalhe de uma: /ajuda <nome>');
   }
   return linhas.join('\n');
 }
@@ -379,14 +403,20 @@ function resumoFila(fila: FilaSqlite, nome: Fila, agora: number): string {
   const partes = rodando === 0 && pendentes.length === 0
     ? ['ocioso']
     : [`${rodando} rodando`, `${pendentes.length} na fila`];
-  if (idadeMaisAntigo !== undefined) {
-    partes.push(`mais antigo ${duracao(0, idadeMaisAntigo) ?? `${idadeMaisAntigo}s`}`);
-  }
-  const eta = estimativaDeVazao(nome, pendentes, jobs);
-  if (eta) partes.push(`~${eta} para vazar`);
 
   const alerta = presos.length || (temTaxa && terminados24h.length > 0) ? '⚠️ ' : '';
   const linhas = [`${nome}: ${alerta}${partes.join(' · ')}`];
+
+  // Idade e estimativa em linha PRÓPRIA: juntas com o resto passavam de 70
+  // colunas e o celular quebrava no meio ("~7h44m para va|zar"), que é
+  // exatamente onde o número deixa de ser lido.
+  const tempo: string[] = [];
+  if (idadeMaisAntigo !== undefined) {
+    tempo.push(`mais antigo ${duracao(0, idadeMaisAntigo) ?? `${idadeMaisAntigo}s`}`);
+  }
+  const eta = estimativaDeVazao(nome, pendentes, jobs);
+  if (eta) tempo.push(`~${eta} para vazar`);
+  if (tempo.length) linhas.push(`  ${tempo.join(' · ')}`);
 
   // Taxa de erro SEM denominador engana nos dois sentidos: "50%" pode ser 1 de
   // 2 (ruído) ou 100 de 200 (incêndio), e quem lê não tem como saber qual.
