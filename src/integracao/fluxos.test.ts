@@ -58,7 +58,9 @@ beforeEach(() => {
   aplicarMigrations(db, () => t, MIGRATIONS);
   fila = new FilaSqlite(db, () => t);
   estado = new EstadoFluxos(db, () => t);
-  fluxos = new Fluxos({ fila, estado, agora: () => t });
+  // `repoDe` porque a fase `gerar` lê a FALA do roteiro no repo de domínio —
+  // o mesmo arquivo que o portão manda no chat.
+  fluxos = new Fluxos({ fila, estado, agora: () => t, repoDe: () => dominio });
   def = carregarFlow(dominio);
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -571,5 +573,70 @@ describe('modo sombra (§7.5)', () => {
     });
     expect(fila.listar()).toHaveLength(0);
     expect(estado.listar()).toHaveLength(0);
+  });
+});
+
+/**
+ * A fase `gerar` (opção `| api`): o input dela é montado pelo BOT, e é o que
+ * decide o que o avatar diz, com que rosto e com que voz.
+ *
+ * O título é o mesmo da fase `baixar` de propósito — é o que dispensa carregar
+ * `video_id` de uma fase para a outra e o que faz `baixar` não precisar saber
+ * se o vídeo veio da API ou da mão de alguém.
+ */
+describe('input da fase gerar', () => {
+  function dominioComGerar(): FlowDef {
+    mkdirSync(join(dominio, 'prompts'), { recursive: true });
+    writeFileSync(join(dominio, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 1,
+      avatar_id: 'avatar-do-dominio', voice_id: 'voz-do-dominio',
+      alvos: { um: { canal: 'lives1' }, dois: { canal: 'lives2', voice_id: 'voz-do-alvo' } },
+      fases: [
+        { id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/texto.md' },
+        { id: 'gerar', escopo: 'alvo', fila: 'io', kind: 'function', tarefa: 'heygen.gerar', opcional: 'api', espera: { intervalo: 60, timeout: 3600 } },
+      ],
+    }));
+    return congelar(carregarFlow(dominio, []), dominio);
+  }
+
+  function inputDoGerar(alvo: string): Record<string, unknown> {
+    const d = dominioComGerar();
+    const f = fluxos.criar({
+      tipo: 'brinquedo', definicao: d, hash: hashDefinicao(d, dominio),
+      assunto: 'assunto', alvos: ['um', 'dois'], chatId: 1,
+      opcoes: { api: true },
+    });
+    // A fase de texto grava a FALA no arquivo que o portão já lê.
+    const pasta = join(dominio, 'textos', `B${f.id}`);
+    mkdirSync(pasta, { recursive: true });
+    for (const a of ['um', 'dois']) {
+      writeFileSync(join(pasta, `${a}.md`), `### FALA\nfala do ${a}\n\n### SOBREPOSIÇÕES\n- x\n`);
+    }
+    const job = fila.listar().find((j) => j.flow_ref === `B#${f.id}//texto`)!;
+    fila.pegar('texto', 600, 'W');
+    fila.concluir(job.id, join(pasta, 'resumo.txt'), 'W', (j) => fluxos.avancar(j));
+    const gerar = fila.listar().find((j) => j.flow_ref === `B#${f.id}/${alvo}/gerar`)!;
+    return JSON.parse(gerar.input) as Record<string, unknown>;
+  }
+
+  it('leva o MESMO título que a fase baixar procura', () => {
+    expect(inputDoGerar('um').titulo).toBe('B1-um-v1');
+  });
+
+  it('leva a FALA do roteiro daquele alvo, não o assunto', () => {
+    expect(inputDoGerar('um').texto).toBe('fala do um');
+  });
+
+  it('avatar e voz vêm do domínio', () => {
+    expect(inputDoGerar('um')).toMatchObject({ avatarId: 'avatar-do-dominio', voiceId: 'voz-do-dominio' });
+  });
+
+  // Um público pode pedir outra voz sem mudar a do fluxo inteiro.
+  it('o alvo pode sobrescrever a voz', () => {
+    expect(inputDoGerar('dois')).toMatchObject({ avatarId: 'avatar-do-dominio', voiceId: 'voz-do-alvo' });
+  });
+
+  it('leva a janela de poll da definição congelada', () => {
+    expect(inputDoGerar('um').espera).toEqual({ intervalo: 60, timeout: 3600 });
   });
 });

@@ -9,7 +9,11 @@
 // (`lives21`); quem resolve isso para um caminho no disco é o registry de
 // destinos do bot. Um `flow.json` com caminho embutido seria uma cópia
 // divergente da lista de canais esperando para envelhecer.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { resolverDestino } from '../dominio/destinos.js';
+import { primeiraFala } from '../dominio/roteiro.js';
 import type { FaseDef, FlowDef } from '../dominio/flow.js';
 import type { Fluxo } from './estado.js';
 
@@ -82,6 +86,26 @@ export function montarInput(ctx: ContextoEntrada): string {
     });
   }
 
+  // A fase `gerar` (opção `| api`): o bot manda O QUE falar, com que rosto e
+  // com que voz. O TÍTULO é o mesmo que a fase `baixar` vai procurar — é o que
+  // dispensa carregar `video_id` de uma fase para a outra, e o que faz a fase
+  // seguinte não precisar saber se o vídeo veio da API ou da mão de alguém.
+  if (fase.tarefa === 'heygen.gerar') {
+    return JSON.stringify({
+      ...base,
+      titulo: tituloEstudio(fluxo, alvo),
+      // A FALA sai do MESMO arquivo que o portão manda no chat — se o texto que
+      // a pessoa revisaria e o que o avatar fala pudessem divergir, o portão
+      // deixaria de ser revisão de nada.
+      texto: falaDoAlvo(ctx.repoDominio, fluxo, alvo),
+      // O alvo pode sobrescrever avatar e voz (um público com outra voz não
+      // deveria obrigar a criar outro fluxo).
+      avatarId: dadosAlvo.avatar_id ?? def.avatar_id ?? '',
+      voiceId: dadosAlvo.voice_id ?? def.voice_id ?? '',
+      ...(fase.espera ? { espera: fase.espera } : {}),
+    });
+  }
+
   // Skill do catálogo (a última fase do promoclub é a MESMA skill `reel` que o
   // usuário dispara no chat — fluxo é cliente da fila como qualquer um, §3.2).
   if (fase.kind === 'agent' && !fase.prompt_texto) {
@@ -129,4 +153,24 @@ export function montarInput(ctx: ContextoEntrada): string {
 function instrucaoExtra(fase: FaseDef, dadosAlvo: Record<string, string | undefined>): string {
   if (!fase.entrega) return '';
   return fase.entrega.replace(/\{(\w+)\}/g, (bruto, chave: string) => dadosAlvo[chave] ?? bruto);
+}
+
+/**
+ * A FALA do roteiro daquele alvo — o que o avatar vai dizer.
+ *
+ * Lê o MESMO arquivo que o portão manda no chat (`<pasta>/<alvo>.md`), e extrai
+ * a mesma seção. Se o texto revisado no portão e o texto falado pudessem
+ * divergir, o portão deixaria de ser revisão de coisa nenhuma.
+ *
+ * Vazio quando o arquivo não existe ou não tem `### FALA`: quem reclama é a
+ * tarefa `heygen.gerar`, com o título no erro — melhor que um vídeo mudo, e
+ * melhor que uma exceção sem contexto na montagem do input.
+ */
+function falaDoAlvo(repo: string | undefined, fluxo: Fluxo, alvo: string): string {
+  if (!repo || !alvo) return '';
+  try {
+    return primeiraFala(readFileSync(join(pastaTextos(repo, fluxo), `${alvo}.md`), 'utf8')) ?? '';
+  } catch {
+    return '';
+  }
 }

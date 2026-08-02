@@ -43,6 +43,16 @@ export interface FaseDef {
    * avatares no estúdio): o fluxo espera, e o `/aprovar` é o "terminei".
    */
   pausa_apos?: boolean;
+  /**
+   * Fase OPCIONAL: só entra no fluxo quando a opção de mesmo nome foi pedida na
+   * criação (hoje, `api`).
+   *
+   * O default é a fase NÃO existir. É isso que faz um fluxo criado sem a opção
+   * ficar idêntico ao de antes da fase ser declarada — mesmo `/status`, mesmo
+   * `| sombra`, sem uma linha a mais dizendo "pulado" para explicar algo que
+   * não vai acontecer.
+   */
+  opcional?: string;
 }
 
 export interface AlvoDef {
@@ -58,6 +68,11 @@ export interface FlowDef {
   versao_def: number;
   alvos: Record<string, AlvoDef>;
   fases: FaseDef[];
+  /** Quem fala, quando a fase de avatar é feita pela API (`| api`). Fica no
+   *  DOMÍNIO porque é decisão dele — o bot só sabe chamar a HeyGen. Um alvo
+   *  pode sobrescrever qualquer um dos dois (ver `AlvoDef`). */
+  avatar_id?: string;
+  voice_id?: string;
 }
 
 const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
@@ -86,7 +101,9 @@ function texto(v: unknown, campo: string): string {
  * repo de domínio — e um `flow.json` que referencie skill inexistente tem que
  * ser recusado na CARGA, não no primeiro job.
  */
-export const TAREFAS_DE_FASE = new Set(['fluxo-agente', 'fluxo-navegador', 'heygen.baixar']);
+export const TAREFAS_DE_FASE = new Set([
+  'fluxo-agente', 'fluxo-navegador', 'heygen.baixar', 'heygen.gerar',
+]);
 
 export function validarFlow(dados: unknown, raiz: string, skills: string[] = []): FlowDef {
   if (typeof dados !== 'object' || dados === null || Array.isArray(dados)) {
@@ -99,6 +116,11 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
 
   const prefixo = texto(d.prefixo, 'prefixo');
   if (!/^[A-Z]{1,3}$/.test(prefixo)) erro('prefixo', `"${prefixo}" — 1 a 3 letras maiúsculas (vira o "P" de P#16)`);
+
+  // `avatar_id`/`voice_id` são opcionais: só o fluxo que usa `| api` precisa
+  // deles, e a fase `gerar` recusa com mensagem própria quando faltam.
+  const avatar_id = typeof d.avatar_id === 'string' ? d.avatar_id.trim() : undefined;
+  const voice_id = typeof d.voice_id === 'string' ? d.voice_id.trim() : undefined;
 
   const versao_def = d.versao_def;
   if (typeof versao_def !== 'number' || !Number.isInteger(versao_def) || versao_def <= 0) {
@@ -133,6 +155,9 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
     if (!NOME_SIMPLES.test(id)) erro(`fases[${i}].id`, `"${id}" — nome inválido`);
     if (vistas.has(id)) erro(`fases[${i}].id`, `"${id}" duplicado`);
     vistas.add(id);
+
+    const opcional = typeof f.opcional === 'string' && f.opcional.trim()
+      ? f.opcional.trim() : undefined;
 
     const escopo = texto(f.escopo, `fases[${i}].escopo`);
     if (escopo !== 'fluxo' && escopo !== 'alvo') erro(`fases[${i}].escopo`, '"fluxo" ou "alvo"');
@@ -199,10 +224,15 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       ...(espera ? { espera } : {}),
       ...(typeof f.entrega === 'string' ? { entrega: f.entrega } : {}),
       ...(f.pausa_apos === true ? { pausa_apos: true } : {}),
+      ...(opcional ? { opcional } : {}),
     };
   });
 
-  return { nome, prefixo, versao_def, alvos, fases };
+  return {
+    nome, prefixo, versao_def, alvos, fases,
+    ...(avatar_id ? { avatar_id } : {}),
+    ...(voice_id ? { voice_id } : {}),
+  };
 }
 
 export function carregarFlow(raiz: string, skills: string[] = []): FlowDef {

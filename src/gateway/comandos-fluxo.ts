@@ -66,11 +66,13 @@ export function ajudaDoFluxo(
     'Fases:',
     ...def.fases.map((f, i) => {
       const quem = f.tarefa === 'fluxo-navegador' ? 'bot, navegador'
+        : f.tarefa === 'heygen.gerar' ? 'bot, API'
         : f.tarefa === 'heygen.baixar' ? 'bot, automático'
           : f.kind === 'agent' && !f.prompt_texto && !f.prompt ? `skill ${f.tarefa}` : 'bot';
       const escopo = f.escopo === 'fluxo' ? 'um job para todos' : 'um job por público';
       const pausa = f.pausa_apos ? ' → PARA e espera /aprovar' : '';
-      return `  ${i + 1}. ${f.id} (${quem} · ${escopo} · fila ${f.fila})${pausa}`;
+      const so = f.opcional ? ` · SÓ com | ${f.opcional}` : '';
+      return `  ${i + 1}. ${f.id} (${quem} · ${escopo} · fila ${f.fila}${so})${pausa}`;
     }),
     '',
     `Públicos (${alvos.length}): ${alvos.join(', ')}`,
@@ -78,9 +80,13 @@ export function ajudaDoFluxo(
     'Campos (com "|" no fim, ou "--" em qualquer lugar):',
     '  | alvos=a,b   só esses públicos (ou --alvo=a --alvo=b)',
     '  | de=<fase>   começa nessa fase (as anteriores ficam puladas)',
-    '  | legenda      liga a legenda no reel (padrão: SEM legenda)',
+    '  | legenda     liga a legenda no reel (padrão: SEM legenda)',
     '  | versao=N    versão do assunto',
     '  | sombra      mostra o plano sem enfileirar nada',
+    ...(def.fases.some((f) => f.opcional === 'api')
+      ? ['  | api        o BOT gera os avatares (custa da carteira HeyGen)'] : []),
+    ...(def.fases.some((f) => f.pausa_apos)
+      ? ['  | sem-portao  não para para você aprovar'] : []),
     '',
     `Acompanhar: /status ${def.prefixo}#N · /refazer ${def.prefixo}#N [público] · /cancelar ${def.prefixo}#N`,
   ];
@@ -103,8 +109,29 @@ export function ajudaDoFluxo(
  * `{cta}` — o clipe padrão do PRÓPRIO domínio (`<repo>/cta/cta-9x16.mp4`).
  * Cada fluxo tem o seu, editável sem tocar no bot; sem arquivo, o CTA volta a
  * ser desenhado pelo agente.
+ *
+ * `api` — a fase de avatar é feita pela API em vez de uma pessoa no estúdio.
+ * DESLIGADA, a fase `gerar` é REMOVIDA da definição congelada, e não apenas
+ * marcada como pulada: um fluxo normal tem que ficar idêntico ao de antes desta
+ * opção existir — mesmo `/status`, mesmo `| sombra`, sem uma linha a mais
+ * dizendo "gerar: pulado" para explicar algo que não vai acontecer.
+ *
+ * `semPortao` — tira o `pausa_apos` de todas as fases. Default NÃO: o portão é
+ * onde discordar de um roteiro custa um texto em vez de um render, e com a API
+ * ele fica MAIS barato de manter, não menos (um texto ruim que passa direto
+ * vira dinheiro gasto).
  */
-function resolverOpcoes(def: FlowDef, repo: string, legenda: boolean): FlowDef {
+interface OpcoesDoFluxo {
+  legenda: boolean;
+  /** Ligada, mantém no fluxo as fases marcadas `opcional: "api"` no
+   *  `flow.json`. Quem REMOVE as não pedidas é o runtime (`definicaoEfetiva`),
+   *  para que import e teste passem pelo mesmo ponto. */
+  api: boolean;
+  semPortao: boolean;
+}
+
+function resolverOpcoes(def: FlowDef, repo: string, opcoes: OpcoesDoFluxo): FlowDef {
+  const { legenda, semPortao } = opcoes;
   const clipe = join(repo, 'cta', 'cta-9x16.mp4');
   const temClipe = existsSync(clipe);
   const textoCta = temClipe
@@ -116,12 +143,21 @@ function resolverOpcoes(def: FlowDef, repo: string, legenda: boolean): FlowDef {
       + 'na borda INFERIOR do vídeo — cerca de 1 mm acima dela, não no meio da tela '
       + 'nem na altura do peito.'
     : 'NÃO gere legenda neste reel. Sem texto de fala na tela.';
-  return {
-    ...def,
-    fases: def.fases.map((f) => (f.entrega
+  const fases = def.fases
+    .map((f) => (f.entrega
       ? { ...f, entrega: f.entrega.replace('{cta}', textoCta).replace('{legenda}', textoLegenda) }
-      : f)),
-  };
+      : f))
+    // `pausa_apos` sai da definição inteira, não só da fase de texto: se um dia
+    // um domínio tiver dois portões, "sem portão" tem que valer para os dois.
+    .map((f) => {
+      if (!semPortao || !f.pausa_apos) return f;
+      // O campo é REMOVIDO, não posto em `false`: a definição congelada é lida
+      // por gente (`/status`, diff de fluxo) e um `pausa_apos: false` gravado
+      // parece portão desligado por engano, em vez de fluxo pedido sem portão.
+      const { pausa_apos: _, ...semPausa } = f;
+      return semPausa;
+    });
+  return { ...def, fases };
 }
 
 /** Leitura tolerante: ajuda ausente é o caso NORMAL, não erro. */
@@ -153,12 +189,20 @@ interface ArgumentoFluxo {
   sombra: boolean;
   /** Legenda no reel. Default NÃO: quem quer, liga na criação. */
   legenda: boolean;
+  /** A fase de avatar é feita pela API, não por uma pessoa no estúdio.
+   *  Default NÃO — sem isto o fluxo é exatamente o de hoje. */
+  api: boolean;
+  /** Tira o portão humano. Default NÃO: o fluxo continua parando. */
+  semPortao: boolean;
 }
 
 /** Nomes de campo que o comando entende. Uma fonte só: a guarda de digitação
  * abaixo casa contra ESTA lista, senão ela envelhece sozinha quando alguém
  * acrescentar um campo. */
-const CAMPOS = ['alvos', 'alvo', 'versao', 'versão', 'de', 'legenda'] as const;
+const CAMPOS = ['alvos', 'alvo', 'versao', 'versão', 'de', 'legenda', 'api', 'sem-portao', 'sem-portão'] as const;
+
+/** Campos que são BANDEIRA: existir já é ligar, valor é opcional. */
+const BANDEIRAS = new Set(['legenda', 'api', 'sem-portao', 'sem-portão']);
 
 /** `--alvo=x`, `--alvos=a,b`, `--sombra`. Repetível, e em qualquer posição. */
 const BANDEIRA = new RegExp(String.raw`--(${CAMPOS.join('|')}|sombra)(?:\s*=\s*([^\s|]+))?`, 'gi');
@@ -189,6 +233,8 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   let de: string | undefined;
   let sombra = false;
   let legenda = false;
+  let api = false;
+  let semPortao = false;
   let erro: string | undefined;
 
   const acrescentar = (nome: string, bruto: string | undefined): void => {
@@ -203,10 +249,12 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
       return;
     }
     if (chave === 'de') { de = valor; return; }
-    if (chave === 'legenda') {
-      legenda = !/^(n|não|nao|0|false)/i.test(valor);
-      return;
-    }
+    // As três bandeiras aceitam `=nao` para desligar explicitamente — quem
+    // escreve `| api=nao` está dizendo o que quer, não errando.
+    const ligado = !/^(n|não|nao|0|false)/i.test(valor);
+    if (chave === 'legenda') { legenda = ligado; return; }
+    if (chave === 'api') { api = ligado; return; }
+    if (chave === 'sem-portao' || chave === 'sem-portão') { semPortao = ligado; return; }
     const n = Number(valor);
     if (!Number.isInteger(n) || n <= 0) { erro ??= `versão inválida: "${valor}"`; return; }
     versao = n;
@@ -215,8 +263,8 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   // Bandeiras saem do texto ANTES do corte por `|`, para poderem aparecer em
   // qualquer posição sem que o pedaço vire assunto.
   const semBandeiras = argumento.replace(BANDEIRA, (_todo, nome: string, valor?: string) => {
-    // `--legenda` sem valor LIGA: bandeira sem valor é "quero isto".
-    acrescentar(nome, nome.toLowerCase() === 'legenda' ? (valor ?? 'sim') : valor);
+    // `--legenda`/`--api` sem valor LIGAM: bandeira sem valor é "quero isto".
+    acrescentar(nome, BANDEIRAS.has(nome.toLowerCase()) ? (valor ?? 'sim') : valor);
     return ' ';
   });
   if (erro) return { erro };
@@ -232,15 +280,18 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     // fica intacta — só os campos depois do `|` são aparados.
     const campo = bruto.replace(/[.;,!?]+$/, '').trim();
     if (!campo) continue;
-    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda)\s*=\s*(.+)$/i);
+    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda|api|sem-porta[oõ])\s*=\s*(.+)$/i);
     if (m) {
       acrescentar(m[1], m[2]);
       if (erro) return { erro };
       continue;
     }
     if (campo.toLowerCase() === 'sombra') { sombra = true; continue; }
-    if (campo.toLowerCase() === 'legenda') { legenda = true; continue; }
-    return { erro: `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase> · sombra` };
+    if (BANDEIRAS.has(campo.toLowerCase())) { acrescentar(campo, 'sim'); continue; }
+    return {
+      erro: `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase>`
+        + ' · legenda · api · sem-portao · sombra',
+    };
   }
 
   const solto = assunto.match(CAMPO_SOLTO);
@@ -253,7 +304,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     };
   }
 
-  return { assunto, alvos, versao, de, sombra, legenda };
+  return { assunto, alvos, versao, de, sombra, legenda, api, semPortao };
 }
 
 export function criarFluxo(
@@ -263,7 +314,7 @@ export function criarFluxo(
   if ('erro' in lido) return lido.erro === 'sem-assunto'
     ? `faltou o assunto — ex.: ${registrado.exemplo}`
     : lido.erro;
-  const { assunto, alvos, versao, de, sombra, legenda } = lido;
+  const { assunto, alvos, versao, de, sombra, legenda, api, semPortao } = lido;
 
   // A definição é lida do disco AQUI e congelada na criação. Um `flow.json`
   // inválido é recusado agora, com o usuário na frente, e não no primeiro job.
@@ -274,7 +325,9 @@ export function criarFluxo(
     hash = hashDefinicao(doDisco, registrado.repo);
     // Congela AQUI: daqui para frente o fluxo não depende mais do disco do repo
     // de domínio, nem para o texto dos prompts.
-    definicao = resolverOpcoes(congelar(doDisco, registrado.repo), registrado.repo, legenda);
+    definicao = resolverOpcoes(
+      congelar(doDisco, registrado.repo), registrado.repo, { legenda, api, semPortao },
+    );
   } catch (e) {
     return `não consegui ler a definição do fluxo: ${(e as Error).message}`;
   }
@@ -282,6 +335,7 @@ export function criarFluxo(
   const pedido = {
     tipo: registrado.command, definicao, hash, assunto, alvos, versao, de,
     chatId: deps.chatId,
+    opcoes: { api, semPortao },
   };
 
   try {

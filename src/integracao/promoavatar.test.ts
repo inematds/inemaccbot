@@ -71,11 +71,17 @@ function ackar(flowRef: string, resultado: string): void {
 }
 
 describe('flow.json real do promoavatar', () => {
+  // A fase `gerar` está declarada no arquivo mas é OPCIONAL (`opcional: "api"`):
+  // ela só entra num fluxo criado com `| api`. Sem a opção, o fluxo continua
+  // sendo texto → baixar → reel, que é o que os testes abaixo exercitam.
   it('tem as três fases na ordem certa, com o portão depois do texto', () => {
-    expect(def.fases.map((f) => f.id)).toEqual(['texto', 'baixar', 'reel']);
-    expect(def.fases[0]!.pausa_apos).toBe(true);
-    expect(def.fases[1]!.espera).toEqual({ intervalo: 120, timeout: 5400 });
-    expect(def.fases[2]!.tarefa).toBe('reel');
+    expect(def.fases.filter((f) => !f.opcional).map((f) => f.id))
+      .toEqual(['texto', 'baixar', 'reel']);
+    expect(def.fases.find((f) => f.id === 'gerar')?.opcional).toBe('api');
+    const porId = (id: string) => def.fases.find((f) => f.id === id)!;
+    expect(porId('texto').pausa_apos).toBe(true);
+    expect(porId('baixar').espera).toEqual({ intervalo: 120, timeout: 5400 });
+    expect(porId('reel').tarefa).toBe('reel');
   });
 
   it('tem os 12 públicos, cada um com canal e gatilho', () => {
@@ -524,6 +530,8 @@ describe('a janela de poll vem do flow.json, não de um default', () => {
     const { criarHeygenBaixar } = await import('../fila/tarefas/heygen.js');
     const tarefa = criarHeygenBaixar({
       porTitulo: async () => new Map(), urlDe: async () => null, baixar: async () => {},
+      gerar: async () => { throw new Error('não deve gerar'); },
+      saldo: async () => null,
     });
     const ctx = {
       job: {

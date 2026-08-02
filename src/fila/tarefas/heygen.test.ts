@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AindaNao } from '../types.js';
-import { criarHeygenBaixar, escolherUrl, lerChaveHeygen, type ClienteHeygen } from './heygen.js';
+import { criarHeygenBaixar, criarHeygenGerar, escolherUrl, lerChaveHeygen, type ClienteHeygen } from './heygen.js';
 import type { ContextoTarefa } from '../types.js';
 
 let dir: string;
@@ -27,6 +27,10 @@ function cliente(over: Partial<ClienteHeygen> = {}): ClienteHeygen {
     porTitulo: async () => new Map(),
     urlDe: async () => 'https://cdn/video.mp4',
     baixar: async (_u, destino) => writeFileSync(destino, 'bytes-do-video'),
+    // O fluxo manual nunca gera: se esta fase chamar a API, é bug — e o teste
+    // tem que explodir, não passar em silêncio.
+    gerar: async () => { throw new Error('o caminho manual não deve gerar vídeo'); },
+    saldo: async () => null,
     ...over,
   };
 }
@@ -138,5 +142,119 @@ describe('lerChaveHeygen', () => {
 
   it('erro claro quando a chave não está lá', () => {
     expect(() => lerChaveHeygen('/x/.env', () => 'NADA=1')).toThrow(/HEYGEN_API_KEY/);
+  });
+});
+
+/**
+ * `heygen.gerar` — a alternativa por API à gravação manual no estúdio.
+ *
+ * A trava que mais importa aqui é a de NÃO cobrar duas vezes: `max_tentativas`
+ * é 2 e um `systemctl restart` no meio (o `código 143`, que já matou o
+ * `C#13/jovens-aut`) faria uma versão ingênua regerar — e recobrar — os 36
+ * vídeos do fluxo.
+ */
+describe('heygen.gerar', () => {
+  const entradaGerar = (over: Record<string, unknown> = {}) => JSON.stringify({
+    titulo: 'C15-jovens-alc-v1',
+    texto: 'A China está entregando IA de ponta em código aberto.',
+    avatarId: 'av-1',
+    voiceId: 'vo-1',
+    espera: { intervalo: 60, timeout: 3600 },
+    ...over,
+  });
+
+  function clienteGerador(over: Partial<ClienteHeygen> = {}): ClienteHeygen & { gerados: unknown[] } {
+    const gerados: unknown[] = [];
+    return {
+      porTitulo: async () => new Map(),
+      urlDe: async () => null,
+      baixar: async () => {},
+      gerar: async (pedido) => { gerados.push(pedido); return 'video-novo'; },
+      saldo: async () => 10,
+      gerados,
+      ...over,
+    } as ClienteHeygen & { gerados: unknown[] };
+  }
+
+  it('gera quando o título ainda não existe no estúdio', async () => {
+    const c = clienteGerador();
+    await expect(criarHeygenGerar(c)(ctx(entradaGerar()))).rejects.toThrow(AindaNao);
+    expect(c.gerados).toHaveLength(1);
+    expect(c.gerados[0]).toMatchObject({
+      titulo: 'C15-jovens-alc-v1', avatarId: 'av-1', voiceId: 'vo-1',
+    });
+  });
+
+  // §2.5, e aqui vale DINHEIRO: o título já estar no estúdio significa que a
+  // tentativa anterior já gerou (e já cobrou).
+  it('NÃO gera de novo quando o título já existe — em qualquer status', async () => {
+    for (const status of ['processing', 'pending', 'completed', 'failed']) {
+      const c = clienteGerador({
+        porTitulo: async () => new Map([['C15-jovens-alc-v1', { videoId: 'v1', status }]]),
+      });
+      await criarHeygenGerar(c)(ctx(entradaGerar())).catch(() => {});
+      expect(c.gerados, `status ${status}`).toHaveLength(0);
+    }
+  });
+
+  it('a chave de idempotência vem do TÍTULO, não é sorteada', async () => {
+    const c = clienteGerador();
+    await criarHeygenGerar(c)(ctx(entradaGerar())).catch(() => {});
+    const c2 = clienteGerador();
+    await criarHeygenGerar(c2)(ctx(entradaGerar())).catch(() => {});
+    expect((c.gerados[0] as { chave: string }).chave)
+      .toBe((c2.gerados[0] as { chave: string }).chave);
+  });
+
+  it('terminou de gerar: devolve o título, e quem baixa é a fase seguinte', async () => {
+    const c = clienteGerador({
+      porTitulo: async () => new Map([['C15-jovens-alc-v1', { videoId: 'v1', status: 'completed' }]]),
+    });
+    await expect(criarHeygenGerar(c)(ctx(entradaGerar()))).resolves.toBe('C15-jovens-alc-v1');
+  });
+
+  it('ainda processando: pede para voltar depois, sem falhar', async () => {
+    const c = clienteGerador({
+      porTitulo: async () => new Map([['C15-jovens-alc-v1', { videoId: 'v1', status: 'processing' }]]),
+    });
+    await expect(criarHeygenGerar(c)(ctx(entradaGerar()))).rejects.toThrow(AindaNao);
+  });
+
+  // `failed` no estúdio é falha de verdade: insistir no poll gastaria a janela
+  // inteira esperando um vídeo que não vem.
+  it('vídeo que falhou no estúdio falha a fase, não fica em poll', async () => {
+    const c = clienteGerador({
+      porTitulo: async () => new Map([['C15-jovens-alc-v1', { videoId: 'v1', status: 'failed' }]]),
+    });
+    await expect(criarHeygenGerar(c)(ctx(entradaGerar()))).rejects.toThrow(/falhou no estúdio/);
+  });
+
+  // A carteira é PRÉ-PAGA. Sem esta trava, o fluxo de 36 alvos gera até o saldo
+  // acabar e falha no meio — com os já gerados cobrados e o resto não.
+  it('carteira zerada: falha antes de gerar, dizendo o saldo', async () => {
+    const c = clienteGerador({ saldo: async () => 0 });
+    await expect(criarHeygenGerar(c)(ctx(entradaGerar()))).rejects.toThrow(/carteira|saldo/i);
+    expect(c.gerados).toHaveLength(0);
+  });
+
+  it('com saldo, gera normalmente', async () => {
+    const c = clienteGerador({ saldo: async () => 12.5 });
+    await criarHeygenGerar(c)(ctx(entradaGerar())).catch(() => {});
+    expect(c.gerados).toHaveLength(1);
+  });
+
+  // Saldo indisponível (endpoint fora do ar) não pode virar bloqueio: o
+  // pipeline pararia por causa do medidor, não da conta.
+  it('saldo indisponível não bloqueia', async () => {
+    const c = clienteGerador({ saldo: async () => null });
+    await criarHeygenGerar(c)(ctx(entradaGerar())).catch(() => {});
+    expect(c.gerados).toHaveLength(1);
+  });
+
+  it('input sem texto, avatar ou voz é recusado antes de gastar', async () => {
+    const c = clienteGerador();
+    await expect(criarHeygenGerar(c)(ctx(entradaGerar({ texto: '' })))).rejects.toThrow(/texto/);
+    await expect(criarHeygenGerar(c)(ctx(entradaGerar({ avatarId: '' })))).rejects.toThrow(/avatar/);
+    expect(c.gerados).toHaveLength(0);
   });
 });

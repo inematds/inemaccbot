@@ -28,6 +28,23 @@ export interface ClienteHeygen {
   porTitulo(titulos: string[], sinal?: AbortSignal): Promise<Map<string, VideoHeygen>>;
   urlDe(videoId: string, sinal?: AbortSignal): Promise<string | null>;
   baixar(url: string, destino: string, sinal?: AbortSignal): Promise<void>;
+  /** Cria o vídeo no estúdio e devolve o `video_id`. Só é chamado pela fase
+   *  `gerar` (a opção `| api`); o fluxo manual nunca passa por aqui. */
+  gerar(pedido: PedidoDeGeracao, sinal?: AbortSignal): Promise<string>;
+  /** Saldo da carteira em US$. `null` quando não deu para saber — medidor
+   *  quebrado não pode virar bloqueio do pipeline. */
+  saldo(sinal?: AbortSignal): Promise<number | null>;
+}
+
+export interface PedidoDeGeracao {
+  /** O MESMO título que a fase `baixar` vai procurar. É o que dispensa carregar
+   *  `video_id` de uma fase para a outra. */
+  titulo: string;
+  texto: string;
+  avatarId: string;
+  voiceId: string;
+  /** `Idempotency-Key`: derivada do título, nunca sorteada — ver `criarHeygenGerar`. */
+  chave: string;
 }
 
 export interface EntradaHeygen {
@@ -134,6 +151,59 @@ export function criarClienteHeygen(
       const dados = (await r.json()) as { data?: DadosDoVideo };
       return escolherUrl(dados.data);
     },
+    // `/v3/videos` porque é o endpoint vivo (o `/v2/video/generate` é o legado)
+    // e é ele que aceita o `Idempotency-Key` — a trava que impede um restart no
+    // meio de gerar (e cobrar) o mesmo vídeo duas vezes.
+    async gerar(pedido, sinal) {
+      const r = await buscar('https://api.heygen.com/v3/videos', {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': chaveDe(),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': pedido.chave,
+        },
+        // O TÍTULO é o contrato com a fase `baixar`: ela procura por igualdade
+        // exata desta string.
+        body: JSON.stringify({
+          type: 'avatar',
+          avatar_id: pedido.avatarId,
+          voice_id: pedido.voiceId,
+          script: pedido.texto,
+          title: pedido.titulo,
+          aspect_ratio: '16:9',
+          output_format: 'mp4',
+        }),
+        signal: sinal,
+      });
+      if (!r.ok) {
+        // O corpo do erro entra na mensagem: sem saldo, avatar inexistente e
+        // texto longo demais são três causas diferentes com o mesmo HTTP 400, e
+        // sem o corpo o operador fica adivinhando.
+        const corpo = await r.text().catch(() => '');
+        throw new Error(`video.generate HTTP ${r.status}${corpo ? `: ${corpo.slice(0, 300)}` : ''}`);
+      }
+      const dados = (await r.json()) as { data?: { video_id?: string; id?: string } };
+      const id = dados.data?.video_id ?? dados.data?.id;
+      if (!id) throw new Error('video.generate: resposta sem video_id');
+      return id;
+    },
+    async saldo(sinal) {
+      // `/v3/users/me` é o endpoint vivo do saldo (`wallet.remaining_balance`).
+      // Qualquer falha vira `null`, nunca exceção: este número é um guarda-
+      // -corpo, e um guarda-corpo que derruba a fase é pior que nenhum.
+      try {
+        const r = await buscar('https://api.heygen.com/v3/users/me', {
+          headers: { 'X-Api-Key': chaveDe() },
+          signal: sinal,
+        });
+        if (!r.ok) return null;
+        const d = (await r.json()) as { data?: { wallet?: { remaining_balance?: number } } };
+        const v = d.data?.wallet?.remaining_balance;
+        return typeof v === 'number' ? v : null;
+      } catch {
+        return null;
+      }
+    },
     async baixar(url, destino, sinal) {
       const r = await buscar(url, { signal: sinal });
       if (!r.ok) throw new Error(`download HTTP ${r.status}`);
@@ -190,4 +260,101 @@ export function criarHeygenBaixar(cliente: ClienteHeygen): Tarefa {
     ctx.log(`heygen.baixar: ${titulo} → ${destino}`);
     return destino;
   };
+}
+
+/** Entrada da fase `gerar` (opção `| api`). */
+export interface EntradaGerar {
+  /** O mesmo título que a fase `baixar` procura depois. */
+  titulo: string;
+  /** A FALA do roteiro — o que o avatar diz. */
+  texto: string;
+  avatarId: string;
+  voiceId: string;
+  espera?: { intervalo: number; timeout: number };
+}
+
+/**
+ * `heygen.gerar` — a fase de avatar feita pela API, alternativa a gravar no
+ * estúdio. Só existe no fluxo quando `| api` foi pedida na criação.
+ *
+ * Duas travas contra COBRAR DUAS VEZES, e as duas são obrigatórias:
+ *
+ * 1. **Procure antes de criar (§2.5).** Se o título já está no estúdio — em
+ *    QUALQUER status — a tentativa anterior já gerou e já cobrou. Não se gera
+ *    outro. É o mesmo idioma do `heygen.baixar`, que confere o arquivo no disco
+ *    antes de baixar.
+ * 2. **`Idempotency-Key` derivada do título.** A API replica a resposta
+ *    original quando a mesma chave chega em até 24h. Sorteá-la não serviria de
+ *    nada justamente no caso que interessa: o `código 143` (SIGTERM de restart)
+ *    mata o processo e a retentativa sorteia outra chave.
+ *
+ * Não baixa nada: quem baixa é a fase `baixar`, pelo título, sem saber se o
+ * vídeo veio da API ou da mão de alguém.
+ */
+export function criarHeygenGerar(cliente: ClienteHeygen): Tarefa {
+  return async (ctx: ContextoTarefa): Promise<string> => {
+    if (ctx.sinal.aborted) {
+      throw ctx.sinal.reason instanceof Error
+        ? ctx.sinal.reason
+        : new Error(`heygen.gerar: abortado (${String(ctx.sinal.reason)})`);
+    }
+    const { titulo, texto, avatarId, voiceId, espera } =
+      JSON.parse(ctx.job.input || '{}') as Partial<EntradaGerar>;
+    if (!titulo) throw new Error('heygen.gerar: input precisa de { titulo }');
+    if (!texto?.trim()) throw new Error(`heygen.gerar: ${titulo} sem texto para falar`);
+    if (!avatarId) throw new Error(`heygen.gerar: ${titulo} sem avatar (avatar_id no flow.json)`);
+    if (!voiceId) throw new Error(`heygen.gerar: ${titulo} sem voz (voice_id no flow.json)`);
+
+    if (espera && ctx.agora() - ctx.job.criado_em > espera.timeout) {
+      throw new Error(
+        `heygen.gerar: "${titulo}" não ficou pronto em ${Math.round(espera.timeout / 60)} min`,
+      );
+    }
+
+    const jaEsta = (await cliente.porTitulo([titulo], ctx.sinal)).get(titulo);
+    if (!jaEsta) {
+      // A carteira da HeyGen é PRÉ-PAGA. Sem esta conferência, um fluxo de 36
+      // alvos geraria até o saldo acabar e falharia no meio — com os primeiros
+      // já cobrados e o resto não, que é o pior dos dois mundos para refazer.
+      // `null` (medidor indisponível) NÃO bloqueia: o pipeline pararia por
+      // causa do medidor, não da conta.
+      const saldo = await cliente.saldo(ctx.sinal);
+      if (saldo !== null && saldo <= 0) {
+        throw new Error(
+          `heygen.gerar: carteira da HeyGen sem saldo (US$ ${saldo.toFixed(2)}) — recarregue antes de usar | api`,
+        );
+      }
+      await cliente.gerar(
+        { titulo, texto, avatarId, voiceId, chave: chaveIdempotente(titulo) },
+        ctx.sinal,
+      );
+      ctx.log(`heygen.gerar: ${titulo} enviado para o estúdio`);
+      ctx.aindaNao(`"${titulo}" foi enviado e está sendo gerado`, espera?.intervalo);
+    }
+
+    // `failed` no estúdio não é "ainda não": insistir no poll gastaria a janela
+    // inteira esperando um vídeo que não vem. Falhar aqui deixa o `/refazer`
+    // seletivo fazer o que ele existe para fazer.
+    if (jaEsta.status === 'failed') {
+      throw new Error(`heygen.gerar: "${titulo}" falhou no estúdio`);
+    }
+    if (jaEsta.status !== 'completed') {
+      ctx.aindaNao(`"${titulo}" está ${jaEsta.status}`, espera?.intervalo);
+    }
+    ctx.log(`heygen.gerar: ${titulo} pronto`);
+    // O TÍTULO é o resultado, não o caminho: a fase seguinte procura por ele.
+    return titulo;
+  };
+}
+
+/**
+ * A chave de idempotência. O título já é único por fluxo × alvo × versão
+ * (`C15-jovens-alc-v1`) — é exatamente a identidade que se quer, e ela
+ * sobrevive a restart, que é o caso todo.
+ *
+ * `[A-Za-z0-9_:.-]` é o alfabeto que a API aceita; o título já cabe nele, mas a
+ * limpeza fica aqui para um alvo com acento não virar 400 no meio de um fluxo.
+ */
+function chaveIdempotente(titulo: string): string {
+  return `gerar-${titulo.normalize('NFD').replace(/[^A-Za-z0-9_:.-]/g, '-')}`.slice(0, 255);
 }

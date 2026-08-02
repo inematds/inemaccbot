@@ -161,6 +161,7 @@ describe('aborto', () => {
 describe('catálogo', () => {
   it('expõe exatamente as tarefas conhecidas', () => {
     const tarefas = criarTarefas({ raizMidia: raiz });
-    expect(Object.keys(tarefas).sort()).toEqual(['ffmpeg.thumb', 'heygen.baixar', 'http.get']);
+    expect(Object.keys(tarefas).sort())
+      .toEqual(['ffmpeg.thumb', 'heygen.baixar', 'heygen.gerar', 'http.get']);
   });
 });

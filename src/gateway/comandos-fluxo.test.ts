@@ -171,6 +171,98 @@ describe('campo escrito sem o separador', () => {
   });
 });
 
+/**
+ * As duas flags novas. A regra que rege as duas: DESLIGADAS, o fluxo é byte por
+ * byte o de hoje — nem a fase `gerar` entra na definição, nem o portão sai.
+ */
+describe('| api e | sem-portao', () => {
+  /** Repo de brinquedo com a fase `gerar` declarada e um portão depois do texto. */
+  function comGerarEPortao(): void {
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+      avatar_id: 'av-1', voice_id: 'vo-1',
+      alvos: { um: { canal: 'lives1' }, dois: { canal: 'lives2' } },
+      fases: [
+        { id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md', pausa_apos: true },
+        { id: 'gerar', escopo: 'alvo', fila: 'io', kind: 'function', tarefa: 'heygen.gerar', opcional: 'api', espera: { intervalo: 60, timeout: 3600 } },
+        { id: 'render', escopo: 'alvo', fila: 'render', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md' },
+      ],
+    }));
+  }
+
+  const fasesDe = (id: number): string[] =>
+    [...new Set(fluxos.status(id)!.fases.map((f) => f.fase))];
+
+  beforeEach(() => { comGerarEPortao(); });
+
+  describe('sem flag nenhuma: o comportamento de hoje', () => {
+    it('a fase `gerar` NÃO entra no fluxo', async () => {
+      await manda('/brinquedo Assunto');
+      expect(fasesDe(1)).not.toContain('gerar');
+      expect(fasesDe(1)).toContain('texto');
+    });
+
+    it('o | sombra também não mostra a fase gerar', async () => {
+      expect(await manda('/brinquedo Assunto | sombra')).not.toContain('gerar');
+    });
+
+    it('o portão continua de pé', async () => {
+      await manda('/brinquedo Assunto');
+      const fase = fluxos.status(1)!.fases.find((f) => f.fase === 'texto')!;
+      expect(fluxos.status(1)!.fluxo.definicao_json).toContain('pausa_apos');
+      expect(fase).toBeTruthy();
+    });
+  });
+
+  describe('| api', () => {
+    it('põe a fase gerar no fluxo', async () => {
+      await manda('/brinquedo Assunto | api');
+      expect(fasesDe(1)).toContain('gerar');
+    });
+
+    it('aparece no | sombra antes de gastar', async () => {
+      const r = await manda('/brinquedo Assunto | api | sombra');
+      expect(r).toContain('gerar');
+      expect(r).toContain('NADA foi enfileirado');
+    });
+
+    it('--api é a mesma coisa', async () => {
+      await manda('/brinquedo Assunto --api');
+      expect(fasesDe(1)).toContain('gerar');
+    });
+
+    // O portão fica: com a API, um texto ruim que passa direto custa dinheiro.
+    it('NÃO tira o portão sozinho', async () => {
+      await manda('/brinquedo Assunto | api');
+      expect(fluxos.status(1)!.fluxo.definicao_json).toContain('pausa_apos');
+    });
+  });
+
+  describe('| sem-portao', () => {
+    it('tira a pausa da definição congelada', async () => {
+      await manda('/brinquedo Assunto | sem-portao');
+      expect(fluxos.status(1)!.fluxo.definicao_json).not.toContain('pausa_apos');
+    });
+
+    it('não liga a API por tabela', async () => {
+      await manda('/brinquedo Assunto | sem-portao');
+      expect(fasesDe(1)).not.toContain('gerar');
+    });
+
+    it('as duas juntas: gera e não para', async () => {
+      await manda('/brinquedo Assunto | api | sem-portao');
+      expect(fasesDe(1)).toContain('gerar');
+      expect(fluxos.status(1)!.fluxo.definicao_json).not.toContain('pausa_apos');
+    });
+  });
+
+  it('o campo desconhecido continua listando o que existe, agora com as duas', async () => {
+    const r = await manda('/brinquedo Assunto | inventado');
+    expect(r).toContain('api');
+    expect(r).toContain('sem-portao');
+  });
+});
+
 describe('--alvo=x, a forma de bandeira', () => {
   it('--alvo=um filtra igual a | alvos=um', async () => {
     await manda('/brinquedo Assunto --alvo=um');

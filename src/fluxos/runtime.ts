@@ -85,6 +85,13 @@ export interface PedidoFluxo {
    * o `/status` não pode dizer que o bot fez um trabalho que ele não fez.
    */
   de?: string;
+  /**
+   * Opções pedidas na criação (`| api`, `| sem-portao`). Ficam AQUI, e não só
+   * no gateway, porque é o runtime que monta as fases: uma fase `opcional`
+   * declarada no `flow.json` só entra se a opção correspondente veio ligada, e
+   * isso vale para qualquer chamador — gateway, teste ou import.
+   */
+  opcoes?: Record<string, boolean>;
 }
 
 /** Uma linha do plano: o que SERIA enfileirado. É o que o modo sombra imprime. */
@@ -130,6 +137,25 @@ export class Fluxos {
     this.publicar = opts.publicar;
   }
 
+  /**
+   * A definição REALMENTE usada por este fluxo.
+   *
+   * Uma fase marcada `opcional: "api"` no `flow.json` só entra se a opção `api`
+   * veio ligada na criação. Sem a opção, ela é REMOVIDA — não marcada como
+   * pulada: um fluxo criado sem a opção tem que ficar idêntico ao de antes de a
+   * fase existir, e "gerar: pulado" no `/status` explicaria algo que não vai
+   * acontecer.
+   *
+   * Fica aqui, e não no gateway, porque é o runtime que monta as fases: import,
+   * teste e qualquer outro chamador passam por este mesmo ponto.
+   */
+  private definicaoEfetiva(pedido: PedidoFluxo): FlowDef {
+    const opcoes = pedido.opcoes ?? {};
+    const fases = pedido.definicao.fases.filter((f) => !f.opcional || opcoes[f.opcional]);
+    if (fases.length === pedido.definicao.fases.length) return pedido.definicao;
+    return { ...pedido.definicao, fases };
+  }
+
   private avisar(fluxo: Fluxo, texto: string): void {
     if (fluxo.chat_id === null) return;
     this.aoEvento({ chatId: fluxo.chat_id, texto });
@@ -140,10 +166,11 @@ export class Fluxos {
    * `flow.json` novo antes de gastar GPU e antes de tocar em serviço externo.
    */
   sombra(pedido: PedidoFluxo): ItemPlano[] {
+    const definicao = this.definicaoEfetiva(pedido);
     const alvos = this.alvosDe(pedido);
     const partida = this.indiceDePartida(pedido);
     const plano: ItemPlano[] = [];
-    for (const fase of pedido.definicao.fases.slice(partida)) {
+    for (const fase of definicao.fases.slice(partida)) {
       for (const alvo of fase.escopo === 'fluxo' ? [''] : alvos) {
         plano.push({
           fase: fase.id, alvo: alvo || '(todos)', fila: fase.fila,
@@ -167,10 +194,11 @@ export class Fluxos {
   /** Índice da fase de partida; erro claro quando o nome não existe. */
   private indiceDePartida(pedido: PedidoFluxo): number {
     if (!pedido.de) return 0;
-    const i = pedido.definicao.fases.findIndex((f) => f.id === pedido.de);
+    const fases = this.definicaoEfetiva(pedido).fases;
+    const i = fases.findIndex((f) => f.id === pedido.de);
     if (i < 0) {
       throw new Error(
-        `fase "${pedido.de}" não existe neste fluxo — fases: ${pedido.definicao.fases.map((f) => f.id).join(', ')}`,
+        `fase "${pedido.de}" não existe neste fluxo — fases: ${fases.map((f) => f.id).join(', ')}`,
       );
     }
     return i;
@@ -178,22 +206,25 @@ export class Fluxos {
 
   /** Cria o fluxo com a definição CONGELADA e enfileira a primeira fase. */
   criar(pedido: PedidoFluxo): Fluxo {
+    // A definição GRAVADA é a efetiva: é ela que o `/status`, o `/refazer` e a
+    // retomada vão ler daqui para frente.
+    const definicao = this.definicaoEfetiva(pedido);
     const alvos = this.alvosDe(pedido);
     const partida = this.indiceDePartida(pedido);
     const fluxo = this.estado.criar({
       tipo: pedido.tipo,
-      prefixo: pedido.definicao.prefixo,
+      prefixo: definicao.prefixo,
       slug: slugificar(pedido.assunto),
       assunto: pedido.assunto,
       versao: pedido.versao ?? 1,
       chatId: pedido.chatId ?? null,
-      definicao: pedido.definicao,
+      definicao,
       hash: pedido.hash,
     });
 
     this.estado.criarFases(
       fluxo.id,
-      pedido.definicao.fases.flatMap((fase, ordem) =>
+      definicao.fases.flatMap((fase, ordem) =>
         (fase.escopo === 'fluxo' ? [''] : alvos).map((alvo) => ({
           fase: fase.id, alvo, escopo: fase.escopo, ordem,
         })),
@@ -202,20 +233,20 @@ export class Fluxos {
 
     // Fases anteriores à partida: `pulado`, e ditas como tal. Marcar como
     // `feito` seria mentir sobre quem fez o trabalho.
-    for (const fase of pedido.definicao.fases.slice(0, partida)) {
+    for (const fase of definicao.fases.slice(0, partida)) {
       for (const alvo of fase.escopo === 'fluxo' ? [''] : alvos) {
         this.estado.atualizarFase(fluxo.id, fase.id, alvo, { estado: 'pulado' });
       }
     }
 
     // A fase de partida entra agora; as demais nascem do avanço.
-    const primeira = pedido.definicao.fases[partida]!;
+    const primeira = definicao.fases[partida]!;
     for (const alvo of primeira.escopo === 'fluxo' ? [''] : alvos) {
       this.enfileirarFase(fluxo, primeira, alvo);
     }
     this.log(
       `${fluxo.prefixo}#${fluxo.id} criado (${alvos.length} alvo(s), `
-      + `${pedido.definicao.fases.length} fase(s)${partida ? `, começando em "${primeira.id}"` : ''})`,
+      + `${definicao.fases.length} fase(s)${partida ? `, começando em "${primeira.id}"` : ''})`,
     );
     return fluxo;
   }
