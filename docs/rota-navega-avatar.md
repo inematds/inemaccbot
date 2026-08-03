@@ -94,12 +94,29 @@ O §7.2 do doc marcava como "a fazer no código": reiniciar
 `stack99.service` antes de cada fase de navegador, para o Chromium voltar a UMA
 aba e o editor não nascer em segundo plano. Agora está em
 `src/fila/runner-chrome.ts` (`resetarStack99`), rodando antes do spawn do
-`claude --chrome`. É seguro porque a fila `navegador` tem concorrência 1.
+`claude --chrome`.
+
+**Reiniciar não basta.** `systemctl restart` volta quando o *serviço* subiu, não
+quando o Chromium pintou a janela, carregou `app.heygen.com/projects` e repareou
+com a extensão. Soltar o agente nesse intervalo cai no mesmo buraco por outro
+caminho: `list_connected_browsers` não acha o navegador local, ou acha uma janela
+não mapeada e volta ao `hidden`. Por isso o reset só termina quando
+`~/stack99/stack99-check.sh` sai 0 — e esse script verifica **janela MAPEADA**,
+não só processo de pé (o bug original era tela preta com tudo rodando).
 
 É **best-effort de propósito**: numa máquina sem `stack99` (dev, CI), falhar ali
 derrubaria um job que talvez rodasse bem no navegador do desktop. Quem decide de
 verdade se a aba está utilizável é o prompt da fase, que confere
 `visibilityState` antes de digitar e para se estiver `hidden`.
+
+**Caveat honesto — isto bloqueia o event loop.** `iniciar()` é síncrono e roda no
+worker que serve TODAS as filas, não só a `navegador`. A concorrência 1 protege o
+*navegador*; não protege o event loop. Enquanto o reset espera, nenhum outro job
+começa e o heartbeat não renova lease nenhum — e o lease é de 60s
+(`LEASE_PADRAO_SEGUNDOS`). Por isso o reset inteiro tem orçamento de parede de
+**25s**, menos da metade do lease: atrasa outras filas, mas não faz job saudável
+perder o lease. Se um dia precisar de mais tempo, a saída **não** é aumentar o
+teto — é tirar o reset do caminho síncrono.
 
 ## Como usar
 
