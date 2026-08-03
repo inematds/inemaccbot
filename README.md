@@ -190,7 +190,7 @@ seletivo, retomada e definição congelada.
 O domínio diz para QUEM (canal por nome, `lives21`); o bot sabe ONDE (o caminho no disco).
 Nunca ponha caminho no `flow.json`.
 
-#### As QUATRO rotas de avatar, e de que bolso cada uma sai
+#### As CINCO rotas de avatar, e de que bolso cada uma sai
 
 Quem decide de onde sai o custo **não é um parâmetro no corpo do POST — é a
 autenticação**. A doc da HeyGen é explícita: *"When you authenticate with an API
@@ -203,7 +203,14 @@ the user's web account and draws on subscription credits"*.
 | **normal** (padrão) | **você**, no estúdio | **ilimitado nesta conta** (ver ressalva) · seu tempo: 36 colagens | **em produção** |
 | **`\| creditos`** | o bot, pela CLI autenticada por OAuth | **~1 crédito por vídeo** | **implementado**; rota provada à mão em 2026-08-02, ainda não em fluxo |
 | **`\| api`** | o bot, pela chave de API | **~US$ 0,73/vídeo** (Avatar III) | implementado, **nunca fez chamada real** |
-| **navegação** (`fluxo-navegador`) | um agente dirigindo o estúdio | igual à normal, **mais tokens de LLM** | escrito no promoclub, **nunca rodou** |
+| **navegação** (`fluxo-navegador`) | um agente dirigindo o estúdio, montando a cena do zero | igual à normal, **mais tokens de LLM** | escrito no promoclub, **nunca rodou** |
+| **`\| navega`** | um agente CLONANDO um template no estúdio (`Edit as New`) | igual à normal, **menos tokens que a de navegação** | implementado no promoavatar 2026-08-03, **nunca rodou ponta a ponta** |
+
+A `| navega` é a rota de navegação **sem montar cena**: em vez de escolher
+avatar, voz, cenário e proporção a cada vídeo, ela clona um projeto-template do
+estúdio e só troca duas coisas — o título e a fala. O barato não é cada passo
+ficar mais barato: é haver menos passos. Detalhes, e o que o reconhecimento no
+estúdio provou, em [`docs/rota-navega-avatar.md`](docs/rota-navega-avatar.md).
 
 **Ressalva que muda a conta de quem for copiar isto:** nesta conta a rota
 *normal* é ilimitada, então ela não consome os 500 créditos — e a de *navegação*,

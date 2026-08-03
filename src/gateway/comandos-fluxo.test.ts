@@ -239,7 +239,7 @@ describe('| api e | sem-portao', () => {
   });
 
   describe('| creditos', () => {
-    /** O mesmo repo de brinquedo, com as DUAS fases opcionais declaradas. */
+    /** O mesmo repo de brinquedo, com as TRÊS fases opcionais declaradas. */
     function comAsDuasRotas(): void {
       writeFileSync(join(repo, 'flow.json'), JSON.stringify({
         nome: 'brinquedo', prefixo: 'B', versao_def: 3,
@@ -249,6 +249,7 @@ describe('| api e | sem-portao', () => {
           { id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md', pausa_apos: true },
           { id: 'gerar', escopo: 'alvo', fila: 'io', kind: 'function', tarefa: 'heygen.gerar', opcional: 'api' },
           { id: 'gerar-creditos', escopo: 'alvo', fila: 'io', kind: 'function', tarefa: 'heygen.gerar-creditos', opcional: 'creditos' },
+          { id: 'navega-avatar', escopo: 'alvo', fila: 'navegador', kind: 'agent', tarefa: 'fluxo-navegador', prompt: 'prompts/a.md', opcional: 'navega' },
         ],
       }));
     }
@@ -267,10 +268,29 @@ describe('| api e | sem-portao', () => {
       expect(fasesDe(1)).not.toContain('gerar-creditos');
     });
 
-    it('sem flag, nenhuma das duas entra', async () => {
+    it('sem flag, nenhuma das três entra', async () => {
       await manda('/brinquedo Assunto');
       expect(fasesDe(1)).not.toContain('gerar');
       expect(fasesDe(1)).not.toContain('gerar-creditos');
+      expect(fasesDe(1)).not.toContain('navega-avatar');
+    });
+
+    it('| navega põe SÓ a fase de navegador', async () => {
+      await manda('/brinquedo Assunto | navega');
+      expect(fasesDe(1)).toContain('navega-avatar');
+      expect(fasesDe(1)).not.toContain('gerar');
+      expect(fasesDe(1)).not.toContain('gerar-creditos');
+    });
+
+    // A fase de navegador dirige o Chromium EXCLUSIVO do display `:99`; a fila
+    // `navegador` tem concorrência 1 por causa disso. Se ela caísse na fila
+    // errada, dois jobs disputariam o mesmo navegador.
+    it('| navega deixa a fase na fila `navegador` na definição congelada', async () => {
+      await manda('/brinquedo Assunto | navega');
+      const def = JSON.parse(fluxos.status(1)!.fluxo.definicao_json) as {
+        fases: { id: string; fila: string }[];
+      };
+      expect(def.fases.find((f) => f.id === 'navega-avatar')?.fila).toBe('navegador');
     });
 
     // As duas juntas gerariam o MESMO vídeo duas vezes, cobrando dos dois
@@ -279,6 +299,19 @@ describe('| api e | sem-portao', () => {
       const r = await manda('/brinquedo Assunto | api | creditos');
       expect(r).toMatch(/api.*creditos|creditos.*api/i);
       expect(r).toMatch(/uma|duas|só/i);
+      expect(fila.listar()).toHaveLength(0);
+      expect(fluxos.status(1)).toBeUndefined();
+    });
+
+    // A exclusão é por CONTAGEM, não par a par: com três rotas, testar só
+    // `api+creditos` deixaria os outros dois pares passarem calados.
+    it.each([
+      ['| api | navega'],
+      ['| creditos | navega'],
+      ['| api | creditos | navega'],
+    ])('%s também é RECUSADO', async (flags) => {
+      const r = await manda(`/brinquedo Assunto ${flags}`);
+      expect(r).toMatch(/uma|só/i);
       expect(fila.listar()).toHaveLength(0);
       expect(fluxos.status(1)).toBeUndefined();
     });
