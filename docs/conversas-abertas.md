@@ -66,18 +66,38 @@ steps`, lado a lado. Minutos de GPU, zero dinheiro.
 
 ## Assunto 2 — A fase de navegação do promoclub gasta muito token
 
-### O que foi MEDIDO (logs de sessão, 01–02/08)
+### O que foi MEDIDO (logs de sessão)
 
-Consumo por execução de agente, agrupado pelo diretório onde o job rodou:
+Classificado por marcador duro — a skill de fato invocada (`Launching skill: …`)
+e as tools de navegador (`mcp__claude-in-chrome__*`), não por palavra no texto.
 
-| fase | sessões | total | **média por execução** |
-|---|---|---|---|
-| **reel** | 77 | 883,7 mi tokens | **11,5 milhões** |
-| **texto** (domínio) | 14 | 75,1 mi tokens | **5,4 milhões** |
+| fluxo | fase | sess | entrada | saída | cache escrito | cache lido | TOTAL | mediana/sessão |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| promoclub | **avatar (NAVEGAÇÃO)** | 50 | 24.601 | 5.416.187 | 40.429.831 | 2.435.630.775 | **2.481.501.394** | 25.477.568 |
+| promoclub | reel* | 2 | 2.780 | 1.223.544 | 15.996.458 | 616.901.675 | 634.124.457 | 317.062.228 |
+| promoclub | texto | 39 | 2.833 | 1.605.167 | 8.656.371 | 59.685.985 | 69.950.356 | 1.465.738 |
+| nossos | **reel** | 93 | 18.294 | 5.666.321 | 29.633.492 | 1.048.000.315 | **1.083.318.422** | 10.973.546 |
+| promoavatar | texto | 10 | 432 | 104.929 | 1.873.736 | 14.554.369 | 16.533.466 | 1.910.659 |
+| promoavatar3 | texto | 6 | 265 | 179.961 | 1.158.348 | 9.956.421 | 11.294.995 | 1.356.910 |
 
-Ordem de grandeza: um fluxo C# de 36 alvos gasta ~**400 milhões de tokens** só
-na fase de reel. O texto, que parece o trabalho "grande", é menos da metade de
-UM reel.
+**Cache é quase tudo:** 98% do total na navegação, 96% no reel. Cache lido é
+~10× mais barato que token novo, então o custo em dinheiro é bem menor que o
+bruto — mas o número também é sintoma: contexto enorme relido a cada passo.
+
+**\* Cuidado com a linha do reel do promoclub: unidade diferente.** São 2
+sessões porque uma delas ficou **75 horas viva, com 1.404 mensagens** — uma
+conversa de três dias, não um vídeo. Ali o custo por mensagem cresceu de 57 mil
+para 778 mil tokens (13,6×) conforme o contexto acumulava. Não é comparável com
+as nossas.
+
+**A unidade dos NOSSOS reels é o vídeo:** 91 pastas distintas em
+`~/projetos/output/reels/<slug>` para 93 sessões — mediana de 1 sessão por
+vídeo, ~11 milhões de tokens cada, 98 mensagens, 12 min. Um fluxo C# de 36
+alvos gasta ~**400 milhões** só na fase de reel.
+
+**O desenho "um job = uma sessão" é o que nos protege** da bola de neve que
+custou 632 milhões no promoclub. Não foi escolhido pensando em token, mas é o
+efeito — vale registrar como propriedade, não como sorte.
 
 ### O que NÃO foi medido, e é o ponto da conversa
 
@@ -103,9 +123,49 @@ pela rota de créditos — mas vale medir uma execução antes de sepultar a fas
   um avatar já gerado quando o texto não muda, em vez de pedir um novo. Encaixa
   na trava que já existe na rota de API ("procure antes de criar"), e valeria
   também para créditos.
-- Vale perguntar: **o reel precisa mesmo de 11,5 mi de tokens por vídeo?** É o
+- Vale perguntar: **o reel precisa mesmo de 11 mi de tokens por vídeo?** É o
   maior consumo do pipeline por uma margem enorme, e ninguém olhou para ele
   ainda — o custo estava escondido atrás de "é o agente que faz".
+
+### PROPOSTA PRINCIPAL do reel: template parametrizado + QC determinístico
+
+O custo não é o que o modelo escreve (0,5% do total) — é o contexto **relido a
+cada uma das 98 mensagens**. Então o alvo é cortar idas e voltas, não texto.
+
+1. **Template parametrizado.** O agente emite um JSON pequeno (beats, textos,
+   caminhos de imagem, tempos) e um script determinístico monta o HTML do
+   Hyperframes. Some do contexto a timeline inteira E o loop
+   `lint → corrige → lint`. Template versionado não tem erro de sintaxe a
+   corrigir toda execução. De brinde: "mais de um template" vira escolha por
+   público, e o determinismo que a skill exige (sem `Math.random`, seed fixo)
+   deixa de depender da disciplina do agente.
+2. **QC determinístico primeiro.** `lint-timeline` + `verify-cut` + `ffprobe`
+   custam ~zero; `/watch` traz frames como imagem, e imagem é cara. Olhar com os
+   olhos só quando o determinístico acusar.
+3. Carregar só a receita escolhida (hoje são 12 arquivos de referência, e o que
+   entra no contexto fica lá até o fim).
+4. Revisor recebe só os artefatos (transcript + lint do render final), não o
+   histórico da montagem.
+5. Agrupar passos de shell num script: cada chamada é uma mensagem, e cada
+   mensagem custa ~113 mil tokens.
+
+**O contra-argumento, para não vender fácil:** a skill hoje manda "não repita
+molde" e "que não pareça feito por IA". Template padrão empurra na direção
+oposta — o contrapeso é ter 3–5 templates com variação real dentro deles
+(imagem, headline, ritmo vindo da fala), em vez de um só.
+
+**O que NÃO some com template:** sincronizar com a fala (mas isso é conta sobre
+o transcript word-level, não julgamento), gerar as imagens, e um QC mínimo.
+
+**Como medir sem apostar:** refazer UM reel já feito com template fixo e QC
+determinístico, e comparar contra a linha de base medida — 98 mensagens · 113
+mil tokens/mensagem · 11 milhões no total. Se as mensagens caírem para 40–50, a
+conta se resolve sozinha. Nenhuma dessas mudanças toca o bot: todas são a skill
+`reel-edita-inema`.
+
+**Modelo:** assunto encerrado por ora. Fica só o dado, porque muda a intuição —
+o reel já roda em **`sonnet`/esforço `low`** (a skill não declara modelo, cai no
+padrão), então não há gordura de "está usando opus à toa".
 
 ---
 
