@@ -14,8 +14,12 @@ A `| navega` faz outra coisa: acha um projeto-template no HeyGen, usa **`Edit as
 New`** e troca **só duas coisas** — o título e a fala. Avatar, voz, cenário,
 motor e proporção vêm prontos do template.
 
-O ganho não é cada passo ficar mais barato. É **haver menos passos**. Isso ainda
-não foi medido contra a linha de base de `docs/amostra-a4-custo-e-tempo.md`.
+O ganho não é cada passo ficar mais barato. É **haver menos passos**.
+
+**Medido em 2026-08-03** (A#18, 1 público): a fase gasta **7,76 M de tokens em
+5 min 37 s** (~US$ 3,87 em `claude-sonnet-5`/`low`), contra 884 mil da fase de
+texto. Números, o antes-e-depois do conserto da aba oculta e as armadilhas da
+rota estão em [`amostra-a18-navega-custo-e-tempo.md`](./amostra-a18-navega-custo-e-tempo.md).
 
 ## Um template só, fixo
 
