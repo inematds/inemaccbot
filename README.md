@@ -317,6 +317,7 @@ No chat: `/ajuda <nome>` para qualquer um, ou `/<fluxo> help`.
 
 - **Comece por aqui se está retomando o projeto:** `docs/HANDOFF.md`
 - Avatar pela API (`| api`) e portão opcional (`| sem-portao`): `docs/fase-avatar-via-api.md`
+- **Conversas abertas (retomar):** `docs/conversas-abertas.md` — layout/templates do reel, imagens, e o custo em tokens da fase de navegação
 - Arquitetura: `docs/superpowers/specs/2026-07-30-inemaccbot-design.md`
 - Perfil de execução (motor/modelo/esforço): `docs/perfil-de-execucao.md`
 - Planos: `docs/superpowers/plans/` (uma etapa por arquivo, 0 a 5 + promoclub)
