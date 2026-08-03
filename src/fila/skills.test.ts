@@ -191,6 +191,32 @@ describe('criarPromptDe', () => {
       expect(() => ctx.interpretarSaida!('- **ERRO:** deu ruim')).toThrow();
     });
 
+    // O A#17: o agente do navegador falhou, escreveu `ERRO:` DENTRO do arquivo
+    // (o prompt manda gravar o resultado ali) e contou a falha no stdout em
+    // prosa — "reportado em 231.txt com ERRO: como última linha". Nenhum `ERRO:`
+    // começava linha no stdout, então o guarda de cima não casou, o arquivo
+    // existia e não estava vazio: o job virou `done` e o portão abriu a fase de
+    // download, que ficou procurando um vídeo que nunca foi gerado.
+    it('ERRO: DENTRO do arquivo é falha, mesmo com o stdout em prosa', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'ERRO: aba do editor abriu oculta\n');
+      expect(() => ctx.interpretarSaida!('falhei, reportei no arquivo, até logo'))
+        .toThrow(/terminou sem declarar/);
+    });
+
+    it('ERRO: no fim do arquivo (depois de log) também não passa', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'tentei isto\ntentei aquilo\nERRO: não deu\n');
+      expect(() => ctx.interpretarSaida!('falhei, reportei no arquivo'))
+        .toThrow(/terminou sem declarar/);
+    });
+
+    it('arquivo que só MENCIONA erro no meio da linha continua válido', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'A17-jovens-v1 (gerado após um ERRO: de rede)\n');
+      expect(ctx.interpretarSaida!('escrevi tudo, até logo')).toBe(caminhoSaida());
+    });
+
     // Extensão errada é bug de quem escreveu o prompt; mascarar atrasa o
     // conserto e o erro específico é mais informativo que "não achei nada".
     it('RESULT: com extensão errada NÃO cai na saída de emergência', async () => {

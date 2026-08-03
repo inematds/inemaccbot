@@ -252,7 +252,26 @@ function aceitarPeloArquivo(err: unknown, bruto: string, saida: string): boolean
   // novo) não pode virar sucesso por descuido.
   if (/^[\s>*_`-]*ERRO\s*:/im.test(bruto)) return false;
   try {
-    return statSync(saida).size > 0;
+    if (statSync(saida).size <= 0) return false;
+  } catch {
+    return false;
+  }
+  // ...e o mesmo teste NO ARQUIVO, que é o furo que o A#17 encontrou.
+  //
+  // O prompt manda o agente gravar o resultado em `{{saida}}` E declarar
+  // `ERRO:` na última linha quando falha. O agente do navegador fez metade
+  // disso: escreveu `ERRO: aba do editor abriu oculta` DENTRO do arquivo e, no
+  // stdout, contou a falha em prosa ("reportado em 231.txt com ERRO: como
+  // última linha"). Nenhum `ERRO:` começava linha no stdout, então o guarda
+  // acima não casou; o arquivo existia e não estava vazio, e o job virou
+  // `done`. O portão abriu a fase de download, que foi procurar no HeyGen um
+  // vídeo que nunca tinha sido gerado.
+  //
+  // Um recibo que começa anunciando erro não é recibo. Só olhamos INÍCIO DE
+  // LINHA de propósito: um artefato legítimo pode citar a palavra no meio de
+  // uma frase, e recusar isso transformaria o conserto num novo bug.
+  try {
+    return !/^[\s>*_`-]*ERRO\s*:/im.test(readFileSync(saida, 'utf8'));
   } catch {
     return false;
   }
