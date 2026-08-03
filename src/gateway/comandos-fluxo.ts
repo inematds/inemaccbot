@@ -84,7 +84,9 @@ export function ajudaDoFluxo(
     '  | versao=N    versão do assunto',
     '  | sombra      mostra o plano sem enfileirar nada',
     ...(def.fases.some((f) => f.opcional === 'api')
-      ? ['  | api        o BOT gera os avatares (custa da carteira HeyGen)'] : []),
+      ? ['  | api        o BOT gera (carteira em US$)'] : []),
+    ...(def.fases.some((f) => f.opcional === 'creditos')
+      ? ['  | creditos   o BOT gera (créditos da assinatura)'] : []),
     ...(def.fases.some((f) => f.pausa_apos)
       ? ['  | sem-portao  não para para você aprovar'] : []),
     '',
@@ -192,6 +194,9 @@ interface ArgumentoFluxo {
   /** A fase de avatar é feita pela API, não por uma pessoa no estúdio.
    *  Default NÃO — sem isto o fluxo é exatamente o de hoje. */
   api: boolean;
+  /** A fase de avatar é feita pela CLI (OAuth), debitando dos CRÉDITOS da
+   *  assinatura em vez da carteira em dólar. Exclusiva com `api`. */
+  creditos: boolean;
   /** Tira o portão humano. Default NÃO: o fluxo continua parando. */
   semPortao: boolean;
 }
@@ -199,10 +204,15 @@ interface ArgumentoFluxo {
 /** Nomes de campo que o comando entende. Uma fonte só: a guarda de digitação
  * abaixo casa contra ESTA lista, senão ela envelhece sozinha quando alguém
  * acrescentar um campo. */
-const CAMPOS = ['alvos', 'alvo', 'versao', 'versão', 'de', 'legenda', 'api', 'sem-portao', 'sem-portão'] as const;
+const CAMPOS = [
+  'alvos', 'alvo', 'versao', 'versão', 'de', 'legenda',
+  'api', 'creditos', 'créditos', 'sem-portao', 'sem-portão',
+] as const;
 
 /** Campos que são BANDEIRA: existir já é ligar, valor é opcional. */
-const BANDEIRAS = new Set(['legenda', 'api', 'sem-portao', 'sem-portão']);
+const BANDEIRAS = new Set([
+  'legenda', 'api', 'creditos', 'créditos', 'sem-portao', 'sem-portão',
+]);
 
 /** `--alvo=x`, `--alvos=a,b`, `--sombra`. Repetível, e em qualquer posição. */
 const BANDEIRA = new RegExp(String.raw`--(${CAMPOS.join('|')}|sombra)(?:\s*=\s*([^\s|]+))?`, 'gi');
@@ -234,6 +244,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   let sombra = false;
   let legenda = false;
   let api = false;
+  let creditos = false;
   let semPortao = false;
   let erro: string | undefined;
 
@@ -254,6 +265,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     const ligado = !/^(n|não|nao|0|false)/i.test(valor);
     if (chave === 'legenda') { legenda = ligado; return; }
     if (chave === 'api') { api = ligado; return; }
+    if (chave === 'creditos' || chave === 'créditos') { creditos = ligado; return; }
     if (chave === 'sem-portao' || chave === 'sem-portão') { semPortao = ligado; return; }
     const n = Number(valor);
     if (!Number.isInteger(n) || n <= 0) { erro ??= `versão inválida: "${valor}"`; return; }
@@ -280,7 +292,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     // fica intacta — só os campos depois do `|` são aparados.
     const campo = bruto.replace(/[.;,!?]+$/, '').trim();
     if (!campo) continue;
-    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda|api|sem-porta[oõ])\s*=\s*(.+)$/i);
+    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda|api|cr[eé]ditos|sem-porta[oõ])\s*=\s*(.+)$/i);
     if (m) {
       acrescentar(m[1], m[2]);
       if (erro) return { erro };
@@ -290,7 +302,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     if (BANDEIRAS.has(campo.toLowerCase())) { acrescentar(campo, 'sim'); continue; }
     return {
       erro: `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase>`
-        + ' · legenda · api · sem-portao · sombra',
+        + ' · legenda · api · creditos · sem-portao · sombra',
     };
   }
 
@@ -304,7 +316,17 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     };
   }
 
-  return { assunto, alvos, versao, de, sombra, legenda, api, semPortao };
+  // As duas rotas juntas gerariam o MESMO vídeo duas vezes — uma cobrando da
+  // carteira em dólar, outra dos créditos. Escolher por conta própria qual vale
+  // seria decidir onde gastar o dinheiro de alguém.
+  if (api && creditos) {
+    return {
+      erro: 'peça só UMA rota de avatar: "| api" (carteira em US$) ou '
+        + '"| creditos" (créditos da assinatura). As duas juntas gerariam o mesmo vídeo duas vezes.',
+    };
+  }
+
+  return { assunto, alvos, versao, de, sombra, legenda, api, creditos, semPortao };
 }
 
 export function criarFluxo(
@@ -314,7 +336,7 @@ export function criarFluxo(
   if ('erro' in lido) return lido.erro === 'sem-assunto'
     ? `faltou o assunto — ex.: ${registrado.exemplo}`
     : lido.erro;
-  const { assunto, alvos, versao, de, sombra, legenda, api, semPortao } = lido;
+  const { assunto, alvos, versao, de, sombra, legenda, api, creditos, semPortao } = lido;
 
   // A definição é lida do disco AQUI e congelada na criação. Um `flow.json`
   // inválido é recusado agora, com o usuário na frente, e não no primeiro job.
@@ -335,7 +357,7 @@ export function criarFluxo(
   const pedido = {
     tipo: registrado.command, definicao, hash, assunto, alvos, versao, de,
     chatId: deps.chatId,
-    opcoes: { api, semPortao },
+    opcoes: { api, creditos, semPortao },
   };
 
   try {

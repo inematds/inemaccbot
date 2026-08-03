@@ -197,6 +197,21 @@ describe('heygen.gerar', () => {
     }
   });
 
+  // O `/v3/videos` cai no Avatar IV quando `engine` é omitido, e Avatar IV custa
+  // US$ 0,05–0,0667/s contra US$ 0,0167/s do Avatar III: 3 a 4× pelo mesmo
+  // minuto. Default implícito aqui é escolher o caro sem perceber.
+  it('manda o motor explícito, e o padrão é o barato (avatar_iii)', async () => {
+    const c = clienteGerador();
+    await criarHeygenGerar(c)(ctx(entradaGerar())).catch(() => {});
+    expect(c.gerados[0]).toMatchObject({ engine: 'avatar_iii' });
+  });
+
+  it('o domínio pode escolher outro motor', async () => {
+    const c = clienteGerador();
+    await criarHeygenGerar(c)(ctx(entradaGerar({ engine: 'avatar_iv' }))).catch(() => {});
+    expect(c.gerados[0]).toMatchObject({ engine: 'avatar_iv' });
+  });
+
   it('a chave de idempotência vem do TÍTULO, não é sorteada', async () => {
     const c = clienteGerador();
     await criarHeygenGerar(c)(ctx(entradaGerar())).catch(() => {});

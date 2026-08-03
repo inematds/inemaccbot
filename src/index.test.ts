@@ -41,7 +41,7 @@ function criarCfg(): Config {
     modeloPadrao: 'sonnet',
     esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
     projetosDir: '/tmp/projetos-inexistente',
-    heygenEnvPath: '/tmp/heygen-inexistente.env',
+    heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen',
   };
 }
 

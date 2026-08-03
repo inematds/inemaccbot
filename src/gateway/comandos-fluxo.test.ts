@@ -238,6 +238,52 @@ describe('| api e | sem-portao', () => {
     });
   });
 
+  describe('| creditos', () => {
+    /** O mesmo repo de brinquedo, com as DUAS fases opcionais declaradas. */
+    function comAsDuasRotas(): void {
+      writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+        nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+        avatar_id: 'av-1', voice_id: 'vo-1',
+        alvos: { um: { canal: 'lives1' } },
+        fases: [
+          { id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md', pausa_apos: true },
+          { id: 'gerar', escopo: 'alvo', fila: 'io', kind: 'function', tarefa: 'heygen.gerar', opcional: 'api' },
+          { id: 'gerar-creditos', escopo: 'alvo', fila: 'io', kind: 'function', tarefa: 'heygen.gerar-creditos', opcional: 'creditos' },
+        ],
+      }));
+    }
+
+    beforeEach(() => { comAsDuasRotas(); });
+
+    it('põe a fase de créditos, e NÃO a de api', async () => {
+      await manda('/brinquedo Assunto | creditos');
+      expect(fasesDe(1)).toContain('gerar-creditos');
+      expect(fasesDe(1)).not.toContain('gerar');
+    });
+
+    it('| api põe a de api, e não a de créditos', async () => {
+      await manda('/brinquedo Assunto | api');
+      expect(fasesDe(1)).toContain('gerar');
+      expect(fasesDe(1)).not.toContain('gerar-creditos');
+    });
+
+    it('sem flag, nenhuma das duas entra', async () => {
+      await manda('/brinquedo Assunto');
+      expect(fasesDe(1)).not.toContain('gerar');
+      expect(fasesDe(1)).not.toContain('gerar-creditos');
+    });
+
+    // As duas juntas gerariam o MESMO vídeo duas vezes, cobrando dos dois
+    // bolsos. Recusar é melhor que escolher por conta própria qual vale.
+    it('as duas rotas juntas é RECUSADO, sem enfileirar nada', async () => {
+      const r = await manda('/brinquedo Assunto | api | creditos');
+      expect(r).toMatch(/api.*creditos|creditos.*api/i);
+      expect(r).toMatch(/uma|duas|só/i);
+      expect(fila.listar()).toHaveLength(0);
+      expect(fluxos.status(1)).toBeUndefined();
+    });
+  });
+
   describe('| sem-portao', () => {
     it('tira a pausa da definição congelada', async () => {
       await manda('/brinquedo Assunto | sem-portao');

@@ -201,7 +201,7 @@ the user's web account and draws on subscription credits"*.
 | rota | quem faz o trabalho | custo | estado |
 |---|---|---|---|
 | **normal** (padrão) | **você**, no estúdio | **ilimitado nesta conta** (ver ressalva) · seu tempo: 36 colagens | **em produção** |
-| **`\| creditos`** | o bot, pela CLI autenticada por OAuth | **~1 crédito por vídeo** | **provado em 2026-08-02**, não implementado |
+| **`\| creditos`** | o bot, pela CLI autenticada por OAuth | **~1 crédito por vídeo** | **implementado**; rota provada à mão em 2026-08-02, ainda não em fluxo |
 | **`\| api`** | o bot, pela chave de API | **~US$ 0,73/vídeo** (Avatar III) | implementado, **nunca fez chamada real** |
 | **navegação** (`fluxo-navegador`) | um agente dirigindo o estúdio | igual à normal, **mais tokens de LLM** | escrito no promoclub, **nunca rodou** |
 
@@ -245,14 +245,24 @@ US$ 0,05–0,0667/s contra **US$ 0,0167/s do Avatar III** — 3 a 4× mais caro 
 mesmo minuto. O campo `engine` tem que ser explícito; deixar no default é
 escolher o caro sem saber.
 
+**Como as duas rotas do bot são declaradas.** Cada uma é uma fase OPCIONAL no
+`flow.json`, e só entra no fluxo quando a flag dela vem na criação:
+
+```
+texto → gerar(só |api) → gerar-creditos(só |creditos) → baixar → reel
+```
+
+Pedir as duas juntas é **recusado** — gerariam o mesmo vídeo duas vezes,
+cobrando dos dois bolsos. O motor é do domínio (`"engine": "avatar_iii"` no
+`flow.json`), nunca o default da API.
+
 **O que falta fazer** (ordem sugerida):
 
-1. **Mandar `engine` explícito na rota `| api`** — hoje o POST omite o campo e
-   cai no Avatar IV. É conserto de custo, não feature.
-2. **Implementar a `| creditos`**: tarefa irmã da `heygen.gerar` chamando a CLI
-   (`HEYGEN_CLI` no `.env` — caminho, não segredo: o token expira e quem o
-   renova é a própria CLI, em `~/.config/heygen`), com a mesma trava de
-   "procure antes de criar".
+1. ~~`engine` explícito~~ — **feito**: o domínio declara `avatar_iii`, e a
+   tarefa nunca deixa o campo em branco.
+2. ~~Implementar a `| creditos`~~ — **feito**: `heygen.gerar-creditos`, mesma
+   tarefa com a autenticação trocada (CLI por OAuth, `HEYGEN_CLI` no `.env` —
+   caminho, não segredo: o token expira e quem renova é a CLI).
 3. **Teste de lote**: um público inteiro (`| alvos=jovens-alc,jovens-aut,`
    `jovens-pro | creditos`), 3 créditos, para saber se o "trial-scale" da doc
    vira rate limit no meio.

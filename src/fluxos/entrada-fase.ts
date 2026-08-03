@@ -90,7 +90,7 @@ export function montarInput(ctx: ContextoEntrada): string {
   // com que voz. O TÍTULO é o mesmo que a fase `baixar` vai procurar — é o que
   // dispensa carregar `video_id` de uma fase para a outra, e o que faz a fase
   // seguinte não precisar saber se o vídeo veio da API ou da mão de alguém.
-  if (fase.tarefa === 'heygen.gerar') {
+  if (fase.tarefa === 'heygen.gerar' || fase.tarefa === 'heygen.gerar-creditos') {
     return JSON.stringify({
       ...base,
       titulo: tituloEstudio(fluxo, alvo),
@@ -102,6 +102,9 @@ export function montarInput(ctx: ContextoEntrada): string {
       // deveria obrigar a criar outro fluxo).
       avatarId: dadosAlvo.avatar_id ?? def.avatar_id ?? '',
       voiceId: dadosAlvo.voice_id ?? def.voice_id ?? '',
+      // Motor: do alvo, do fluxo, ou o padrão barato da tarefa. Nunca o default
+      // da API (Avatar IV), que custa 3 a 4× mais pelo mesmo minuto.
+      ...(dadosAlvo.engine ?? def.engine ? { engine: dadosAlvo.engine ?? def.engine } : {}),
       ...(fase.espera ? { espera: fase.espera } : {}),
     });
   }

@@ -43,9 +43,23 @@ export interface PedidoDeGeracao {
   texto: string;
   avatarId: string;
   voiceId: string;
+  /** Motor: `avatar_iii` | `avatar_iv` | `avatar_v`. SEMPRE explícito — ver
+   *  `MOTOR_PADRAO`. */
+  engine: string;
   /** `Idempotency-Key`: derivada do título, nunca sorteada — ver `criarHeygenGerar`. */
   chave: string;
 }
+
+/**
+ * Motor quando o domínio não escolhe.
+ *
+ * `avatar_iii` porque é o barato: US$ 0,0167/s contra US$ 0,05–0,0667/s do
+ * Avatar IV — 3 a 4× pelo mesmo minuto. E o `/v3/videos` usa **Avatar IV por
+ * padrão** quando o campo é omitido ("Avatar IV is used by default when 'engine'
+ * is omitted", doc da própria CLI), então omitir não é neutro: é escolher o caro
+ * sem perceber. Num fluxo de 36 alvos a diferença é ~US$ 26 contra ~US$ 80–105.
+ */
+export const MOTOR_PADRAO = 'avatar_iii';
 
 export interface EntradaHeygen {
   /** Título exato no estúdio: `P16-mulheres-v1`. */
@@ -170,6 +184,7 @@ export function criarClienteHeygen(
           voice_id: pedido.voiceId,
           script: pedido.texto,
           title: pedido.titulo,
+          engine: { type: pedido.engine },
           aspect_ratio: '16:9',
           output_format: 'mp4',
         }),
@@ -284,6 +299,8 @@ export interface EntradaGerar {
   texto: string;
   avatarId: string;
   voiceId: string;
+  /** Motor do `flow.json`; sem ele, `MOTOR_PADRAO`. */
+  engine?: string;
   espera?: { intervalo: number; timeout: number };
 }
 
@@ -312,7 +329,7 @@ export function criarHeygenGerar(cliente: ClienteHeygen): Tarefa {
         ? ctx.sinal.reason
         : new Error(`heygen.gerar: abortado (${String(ctx.sinal.reason)})`);
     }
-    const { titulo, texto, avatarId, voiceId, espera } =
+    const { titulo, texto, avatarId, voiceId, engine, espera } =
       JSON.parse(ctx.job.input || '{}') as Partial<EntradaGerar>;
     if (!titulo) throw new Error('heygen.gerar: input precisa de { titulo }');
     if (!texto?.trim()) throw new Error(`heygen.gerar: ${titulo} sem texto para falar`);
@@ -340,7 +357,11 @@ export function criarHeygenGerar(cliente: ClienteHeygen): Tarefa {
         );
       }
       await cliente.gerar(
-        { titulo, texto, avatarId, voiceId, chave: chaveIdempotente(titulo) },
+        {
+          titulo, texto, avatarId, voiceId,
+          engine: engine || MOTOR_PADRAO,
+          chave: chaveIdempotente(titulo),
+        },
         ctx.sinal,
       );
       ctx.log(`heygen.gerar: ${titulo} enviado para o estúdio`);

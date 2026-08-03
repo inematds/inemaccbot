@@ -14,6 +14,9 @@ export interface Config {
   chatsPermitidos: number[];
   /** Arquivo com a HEYGEN_API_KEY (lida em runtime). */
   heygenEnvPath: string;
+  /** Binário da CLI `heygen` — a rota de créditos (OAuth). CAMINHO, não
+   *  segredo: o token expira e quem renova é a própria CLI. */
+  heygenCli: string;
   motorPadrao: string;
   modeloPadrao: string;
   esforcoPadrao: string;
@@ -60,6 +63,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     chatsPermitidos,
     heygenEnvPath: env.HEYGEN_ENV_PATH?.trim()
       || join(env.HOME ?? homedir(), 'projetos', 'openpcbotv2', '.env'),
+    heygenCli: env.HEYGEN_CLI?.trim() || 'heygen',
     motorPadrao: env.MOTOR_PADRAO?.trim() || 'claude',
     modeloPadrao: env.MODELO_PADRAO?.trim() || 'sonnet',
     esforcoPadrao: env.ESFORCO_PADRAO?.trim() || 'low',

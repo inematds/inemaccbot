@@ -73,6 +73,9 @@ export interface FlowDef {
    *  pode sobrescrever qualquer um dos dois (ver `AlvoDef`). */
   avatar_id?: string;
   voice_id?: string;
+  /** Motor da geração (`avatar_iii` | `avatar_iv` | `avatar_v`). Sem ele, a
+   *  tarefa usa o barato — ver `MOTOR_PADRAO`. */
+  engine?: string;
 }
 
 const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
@@ -103,6 +106,8 @@ function texto(v: unknown, campo: string): string {
  */
 export const TAREFAS_DE_FASE = new Set([
   'fluxo-agente', 'fluxo-navegador', 'heygen.baixar', 'heygen.gerar',
+  // A rota de CRÉDITOS: mesma fase, outra autenticação (OAuth pela CLI).
+  'heygen.gerar-creditos',
 ]);
 
 export function validarFlow(dados: unknown, raiz: string, skills: string[] = []): FlowDef {
@@ -121,6 +126,7 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
   // deles, e a fase `gerar` recusa com mensagem própria quando faltam.
   const avatar_id = typeof d.avatar_id === 'string' ? d.avatar_id.trim() : undefined;
   const voice_id = typeof d.voice_id === 'string' ? d.voice_id.trim() : undefined;
+  const engine = typeof d.engine === 'string' ? d.engine.trim() : undefined;
 
   const versao_def = d.versao_def;
   if (typeof versao_def !== 'number' || !Number.isInteger(versao_def) || versao_def <= 0) {
@@ -232,6 +238,7 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
     nome, prefixo, versao_def, alvos, fases,
     ...(avatar_id ? { avatar_id } : {}),
     ...(voice_id ? { voice_id } : {}),
+    ...(engine ? { engine } : {}),
   };
 }
 

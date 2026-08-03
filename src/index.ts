@@ -377,7 +377,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     fluxos?.reenfileirarOrfas();
 
     // 5. só então: workers e bot.
-    const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia, heygenEnvPath: cfg.heygenEnvPath });
+    const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia, heygenEnvPath: cfg.heygenEnvPath, heygenCli: cfg.heygenCli });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
     const transporte = transp.transporte;
     /** Drena os avisos de fluxo. Chamado depois do ack, nunca dentro dele. */
