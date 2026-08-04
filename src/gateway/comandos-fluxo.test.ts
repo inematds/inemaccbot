@@ -767,9 +767,9 @@ describe('legenda e CTA como opções do fluxo', () => {
     writeFileSync(join(repo, 'flow.json'), JSON.stringify(flow));
   });
 
-  it('sem pedir, o reel sai SEM legenda', async () => {
+  it('sem pedir, o reel sai COM legenda (default do dono do canal)', async () => {
     await manda('/brinquedo Assunto | alvos=um');
-    expect(entregaDoFluxo(1)).toContain('NÃO gere legenda');
+    expect(entregaDoFluxo(1)).toContain('palavra-a-palavra');
   });
 
   it('| legenda=sim liga, e manda a caixa encostar embaixo', async () => {
