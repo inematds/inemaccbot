@@ -178,3 +178,36 @@ padrão), então não há gordura de "está usando opus à toa".
 - **Falta o teste de lote**: `/promoavatar3 <assunto> | alvos=jovens-alc,`
   `jovens-aut,jovens-pro | creditos` (3 créditos dos 499).
 - A rota `| api` nunca fez chamada real; carteira em US$ 0,22.
+
+---
+
+## Assunto 3 — dar uma geral no `promoavatar3` (anotado em 2026-08-04)
+
+**Decisão do dono:** primeiro acertar o `promoavatar` inteiro; **depois** revisar
+o `promoavatar3` com o mesmo tratamento. Não fazer os dois em paralelo.
+
+O que o `promoavatar` recebeu e o `promoavatar3` **ainda não tem**:
+
+| item | promoavatar | promoavatar3 |
+|---|---|---|
+| portão depois do download | ✅ | ✅ (única coisa já aplicada) |
+| seção `## IMAGENS` por segmento (regra 11b) | ✅ | ❌ |
+| templates de layout (`templates/*.json`) | ✅ 4 | ❌ |
+| mapa `formato editorial → layout` | ✅ | ❌ |
+| `entrega` mandando usar `preparar.py`/`montar.py` | ✅ | ❌ |
+
+Cuidados para a revisão, aprendidos no `promoavatar`:
+
+1. **`definicao_json` é snapshot por fluxo** — nada disso alcança fluxo já
+   criado. Testar exige fluxo novo.
+2. **A skill é lida ao vivo**; o `entrega` não. Mudança em
+   `~/.claude/skills/reel-edita-inema/` vale para TODOS os domínios na hora —
+   inclusive o promoavatar3 — enquanto o `flow.json` só vale para fluxo novo.
+   Isso já aconteceu: os reels do A#21 usaram o `preparar.py` sem que o
+   `entrega` deles pedisse.
+3. **O promoavatar3 usa 3 públicos "jovens-*"** (`jovens-alc`, `jovens-aut`,
+   `jovens-pro`) e a rota `| creditos`, não a `| navega`. O mapa de layouts pode
+   fazer menos sentido com públicos tão próximos — vale checar se os formatos
+   editoriais realmente variam entre eles antes de copiar o mapa.
+4. **Nunca espalhar mudança de comportamento sem pedido.** O portão só entrou
+   aqui porque foi pedido explicitamente; o resto espera.
