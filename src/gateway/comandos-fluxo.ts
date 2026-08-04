@@ -5,13 +5,15 @@
 // `/status`, `/refazer` e `/cancelar` são os MESMOS verbos dos jobs — o que
 // muda é o argumento: `12` é job, `P#16` é fluxo. Ter dois verbos para a mesma
 // pergunta seria atrito puro.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { carregarFlow, congelar, hashDefinicao, parseRef, type FlowDef } from '../dominio/flow.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
 import type { Fase, Fluxo } from '../fluxos/estado.js';
 import type { Fluxos } from '../fluxos/runtime.js';
+import { comCapa } from '../fluxos/capa.js';
+import { pastaTextos } from '../fluxos/entrada-fase.js';
 
 export interface DepsFluxo {
   fluxos: Fluxos;
@@ -682,4 +684,77 @@ function oQueEstaFazendo(visao: { fluxo: { status: string }; fases: Fase[] }): s
   if (visao.fluxo.status === 'feito') return 'Já terminou.';
   if (visao.fluxo.status === 'falhou') return 'Terminou com falha — veja /status para retentar.';
   return `Status: ${visao.fluxo.status}.`;
+}
+
+/**
+ * `capa: A#22 jovens` + a imagem anexada — troca a imagem de um segmento pela
+ * que a pessoa mandou no chat.
+ *
+ * Existe porque quem revisa está no Telegram. As imagens são decididas na fase
+ * de texto (seção `## IMAGENS`, regra 11b do prompt) e o caminho anterior era
+ * "edite o .md e acrescente `arquivo:`" — instrução que só funciona para quem
+ * tem terminal. Aqui o bot escreve a linha.
+ *
+ * `alvo` aceita `*` para valer em TODOS os públicos do fluxo: com 12 públicos,
+ * repetir o comando doze vezes é o mesmo tipo de trabalho manual que este
+ * comando existe para eliminar.
+ *
+ * IO injetável para o teste não tocar disco.
+ */
+export function definirCapaFluxo(
+  ref: string,
+  alvo: string | undefined,
+  pedido: { n: number; arquivo: string; modo?: 'contain' | 'cover' },
+  deps: DepsFluxo & {
+    ler?: (caminho: string) => string | null;
+    gravar?: (caminho: string, texto: string) => void;
+  },
+): string | undefined {
+  const r = parseRef(ref);
+  if (!r) return undefined;
+  const visao = deps.fluxos.status(r.id);
+  if (!visao || visao.fluxo.prefixo !== r.prefixo) return `${ref} não existe neste bot.`;
+  if (!alvo) return `diga o público: \`capa: ${ref} <publico>\` (ou \`*\` para todos).`;
+
+  const registrado = deps.registrados.find((x) => x.command === visao.fluxo.tipo);
+  if (!registrado?.repo) {
+    return `${ref} não tem repo de domínio registrado — não sei onde ficam os textos.`;
+  }
+  const pasta = pastaTextos(registrado.repo, visao.fluxo);
+
+  const ler = deps.ler ?? ((c: string) => (existsSync(c) ? readFileSync(c, 'utf8') : null));
+  const gravar = deps.gravar ?? ((c: string, t: string) => writeFileSync(c, t, 'utf8'));
+
+  const todos = [...new Set(visao.fases.map((f) => f.alvo).filter((a): a is string => Boolean(a)))];
+  const alvos = alvo === '*' ? todos : [alvo];
+  if (!alvos.length) return `${ref} não tem públicos.`;
+
+  const ok: string[] = [];
+  const erros: string[] = [];
+  for (const a of alvos) {
+    const caminho = `${pasta}/${a}.md`;
+    const md = ler(caminho);
+    if (md === null) { erros.push(`${a}: não achei ${caminho}`); continue; }
+    const res = comCapa(md, pedido);
+    if (!res.ok) { erros.push(`${a}: ${res.erro}`); continue; }
+    gravar(caminho, res.texto);
+    ok.push(`${a}${res.segmento ? ` — entra em "${res.segmento}"` : ''}`
+      + (res.substituiu ? ' (substituiu a anterior)' : ''));
+  }
+
+  const linhas = [
+    ok.length
+      ? `🖼️ IMAGEM ${pedido.n} de ${ref} definida em ${ok.length} público(s)`
+        + `${pedido.modo === 'cover' ? ' (cover — preenche cortando)' : ''}:`
+      : `nada mudou em ${ref}.`,
+    ...ok.map((l) => `  ✅ ${l}`),
+    ...erros.map((l) => `  ❌ ${l}`),
+  ];
+  // O aviso importa: depois que o reel roda, mexer no texto não muda o vídeo —
+  // e a pessoa ficaria esperando um efeito que não vem.
+  const reelFeito = visao.fases.some((f) => f.fase === 'reel' && f.estado === 'feito');
+  if (ok.length && reelFeito) {
+    linhas.push('⚠️ o reel deste fluxo já foi montado — use /refazer para valer.');
+  }
+  return linhas.join('\n');
 }

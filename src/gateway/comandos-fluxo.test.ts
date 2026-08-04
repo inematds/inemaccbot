@@ -12,7 +12,7 @@ import { FakeRunner } from '../fila/runner.js';
 import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
 import { Fluxos } from '../fluxos/runtime.js';
-import { tabelaFluxo } from './comandos-fluxo.js';
+import { definirCapaFluxo, tabelaFluxo } from './comandos-fluxo.js';
 import { tratarMensagem, type DepsMensagem } from './mensagem.js';
 
 let dir: string;
@@ -803,5 +803,71 @@ describe('legenda e CTA como opções do fluxo', () => {
     const e = entregaDoFluxo(1);
     expect(e).toContain(join(repo, 'cta', 'cta-9x16.mp4'));
     expect(e).toContain('no FIM');
+  });
+});
+
+// A pessoa que revisa está no Telegram: mandar a imagem com legenda
+// `capa: A#1 um` tem que bastar. Antes o caminho era "edite o .md", que só
+// funciona para quem tem terminal.
+describe('capa — trocar a imagem de um segmento pela enviada no chat', () => {
+  const MD = [
+    '## IMAGENS',
+    'IMAGEM 1 — "primeira frase" [ATENÇÃO/capa]',
+    'um prompt qualquer',
+    '',
+    'IMAGEM 2 — "segunda frase"',
+    'outro prompt',
+  ].join('\n');
+
+  function comDisco(inicial: Record<string, string>) {
+    const disco = { ...inicial };
+    return {
+      disco,
+      ler: (c: string) => disco[c] ?? null,
+      gravar: (c: string, t: string) => { disco[c] = t; },
+    };
+  }
+
+  it('escreve o arquivo no público pedido e diz em que momento ele entra', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    const d = comDisco({ [`${repo}/textos/B1/um.md`]: MD });
+    const saida = definirCapaFluxo('B#1', 'um', { n: 1, arquivo: '/midia/capa.png' },
+      { fluxos, registrados, chatId: 9, ler: d.ler, gravar: d.gravar });
+    expect(saida).toContain('IMAGEM 1 de B#1');
+    expect(saida).toContain('entra em "primeira frase"');
+    expect(d.disco[`${repo}/textos/B1/um.md`]).toContain('arquivo: /midia/capa.png');
+  });
+
+  it('`*` vale para todos os públicos do fluxo', async () => {
+    await manda('/brinquedo Assunto | alvos=um,dois');
+    const d = comDisco({
+      [`${repo}/textos/B1/um.md`]: MD,
+      [`${repo}/textos/B1/dois.md`]: MD,
+    });
+    const saida = definirCapaFluxo('B#1', '*', { n: 1, arquivo: '/midia/c.png' },
+      { fluxos, registrados, chatId: 9, ler: d.ler, gravar: d.gravar });
+    expect(saida).toContain('2 público(s)');
+    expect(d.disco[`${repo}/textos/B1/um.md`]).toContain('arquivo: /midia/c.png');
+    expect(d.disco[`${repo}/textos/B1/dois.md`]).toContain('arquivo: /midia/c.png');
+  });
+
+  it('sem público, ensina a sintaxe em vez de adivinhar', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    expect(definirCapaFluxo('B#1', undefined, { n: 1, arquivo: '/x.png' }, { fluxos, registrados, chatId: 9 }))
+      .toContain('diga o público');
+  });
+
+  it('público sem arquivo no disco vira erro nomeado, não silêncio', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    const d = comDisco({});
+    const saida = definirCapaFluxo('B#1', 'um', { n: 1, arquivo: '/x.png' },
+      { fluxos, registrados, chatId: 9, ler: d.ler, gravar: d.gravar });
+    expect(saida).toContain('não achei');
+    expect(saida).toContain('nada mudou');
+  });
+
+  it('fluxo inexistente é dito, não ignorado', async () => {
+    expect(definirCapaFluxo('B#99', 'um', { n: 1, arquivo: '/x.png' }, { fluxos, registrados, chatId: 9 }))
+      .toContain('não existe neste bot');
   });
 });
