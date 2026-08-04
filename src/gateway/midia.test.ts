@@ -90,4 +90,14 @@ describe('rotearAnexo', () => {
     expect(r.join('')).not.toContain('SEGREDO');
     expect(r.join('')).toContain('não consegui baixar');
   });
+
+  // `capa` é a exceção: a legenda diz ONDE a imagem vai e o anexo É a imagem.
+  it('capa mantém o caminho do anexo como campo', () => {
+    expect(comandoDeAnexo('capa: A#22 jovens', '/midia/x.png'))
+      .toBe('capa: A#22 jovens | arquivo=/midia/x.png');
+  });
+
+  it('capa sem alvo continua com o caminho como entrada', () => {
+    expect(comandoDeAnexo('capa', '/midia/x.png')).toBe('capa: /midia/x.png');
+  });
 });

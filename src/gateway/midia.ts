@@ -66,7 +66,14 @@ export function comandoDeAnexo(legenda: string, caminho: string): string {
   // Legenda com entrada própria ("transcrever: http://x") manda mais que o
   // anexo: quem escreveu foi explícito.
   const entrada = jaTemEntrada ? cabeca.slice(i + 1).trim() : caminho;
-  return [`${verbo}: ${entrada}`, ...campos].join(' | ');
+  // ...com UMA exceção, e ela é estreita de propósito: `capa` precisa das duas
+  // coisas ao mesmo tempo — a legenda diz ONDE a imagem vai (`capa: A#22
+  // jovens`) e o anexo É a imagem. Para os outros verbos o caminho continua
+  // sendo descartado: anexar um campo que eles não conhecem faria o parser
+  // recusar com "campo desconhecido" (o `transcrever:` quebraria).
+  const extra = jaTemEntrada && verbo.toLowerCase() === 'capa'
+    ? [`arquivo=${caminho}`] : [];
+  return [`${verbo}: ${entrada}`, ...campos, ...extra].join(' | ');
 }
 
 /** Teto do anexo. A API do Telegram já não deixa um bot baixar acima de 20 MB;
