@@ -211,3 +211,51 @@ Cuidados para a revisão, aprendidos no `promoavatar`:
    editoriais realmente variam entre eles antes de copiar o mapa.
 4. **Nunca espalhar mudança de comportamento sem pedido.** O portão só entrou
    aqui porque foi pedido explicitamente; o resto espera.
+
+---
+
+## Assunto 4 — Notificar cada fase concluída no chat (sugestão, 2026-08-04)
+
+**Pedido do dono, durante o A#23:** hoje o chat avisa nos portões e no fim. Quem
+acompanha um fluxo fica sem saber quando uma fase intermediária fecha — no A#23
+os avatares dos dois públicos ficaram prontos e só se descobriu consultando o
+banco. A sugestão é **notificar a cada fase realizada**, não só nos portões.
+
+Onde isso encosta no código:
+
+- `jobs.notificado_em` já existe e é a trava de "avisou uma vez só"
+  (`src/fila/store.ts:312`), com varredura de recuperação para mensagem que se
+  perdeu (`src/fila/worker.ts:229`). O mecanismo está pronto; o que falta é
+  **quando** disparar.
+- Hoje o aviso sai por job terminal e nos pontos de `pausa_apos`. Uma fase de
+  escopo `alvo` gera N jobs (um por público), então "fase concluída" para o
+  usuário é o **conjunto**, não o job — notificar por job daria 2 mensagens por
+  fase com 2 públicos, e 12 com 12.
+
+Decisões que precisam ser tomadas antes de implementar:
+
+1. **Granularidade:** por job (`A#23/jovens/navega-avatar feito`) ou por fase
+   agregada (`A#23 · navega-avatar: 2/2 feitos`)? Com 12 públicos a primeira
+   vira spam — provavelmente agregada, com uma linha só quando o último alvo
+   fecha.
+2. **Opt-in ou padrão?** Um `| verboso` no comando, ou sempre. Fluxo de 12
+   públicos × 4 fases = 48 eventos se for por job.
+3. **O que a mensagem carrega:** só o nome da fase, ou o dado útil (qual
+   template resolveu, quantas imagens saíram, custo parcial).
+
+Não implementado — está aqui como sugestão registrada, não como decisão.
+
+## Achado ao verificar o A#23: o snapshot não congela o template
+
+`definicao_json` do fluxo 23 tem as chaves `alvos, avatar_id, engine, fases,
+nome, prefixo, versao_def, voice_id` — **não** `template` nem `templates_dir`,
+que existem no `flow.json` do repo.
+
+Hoje não quebra: o `preparar.py` acha o `flow.json` do repo sozinho (mudança de
+2026-08-04). Mas quer dizer que **o layout de um fluxo não é reproduzível pelo
+snapshot** — se o `template` padrão da raiz mudar no repo, refazer um fluxo
+antigo pode sair com outro layout, e o snapshot não denuncia. O `entrega` (que
+descreve todo o pipeline) É congelado; a config de layout não.
+
+Conferido no A#23: o `entrega` congelado já traz `montar-reel.py` e as decisões
+de SFX/legenda/revisor — o fluxo nasceu com tudo de 2026-08-04.
