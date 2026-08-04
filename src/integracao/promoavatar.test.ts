@@ -310,6 +310,9 @@ describe('vídeo final: link e nome do título', () => {
     acabar(`A#${id}//texto`, join(dir, 'artefatos', 'fluxos', '1.txt'));
     f.aprovar(id);
     acabar(`A#${id}/mulheres/baixar`, join(dir, 'avatar.mp4'));
+    // Segundo portão: os avatares baixaram e esperam você assistir antes de
+    // queimar ~19 min de render por público.
+    f.aprovar(id);
     acabar(`A#${id}/mulheres/reel`, join(dir, 'reel-9.mp4'));
   }
 
@@ -414,6 +417,7 @@ describe('do assunto ao reel, com o portão no meio', () => {
     mkdirSync(join(dir, 'artefatos', 'fluxos', 'A1'), { recursive: true });
     writeFileSync(avatar, 'video');
     ackar('A#1/mulheres/baixar', avatar);
+    fluxos.aprovar(id);   // portão novo: os avatares baixaram e esperam revisão
 
     const reel = fila.listar().find((j) => j.flow_ref === 'A#1/mulheres/reel')!;
     expect(reel.fila).toBe('render');
@@ -433,6 +437,7 @@ describe('do assunto ao reel, com o portão no meio', () => {
     ackar('A#1//texto', 'ok');
     fluxos.aprovar(id);
     ackar('A#1/mulheres/baixar', '/tmp/a.mp4');
+    fluxos.aprovar(id);   // portão novo depois do download
     ackar('A#1/mulheres/reel', '/tmp/reel.mp4');
     expect(estado.obter(id)!.status).toBe('feito');
     // `some` e não `at(-1)`: depois do aviso de fim vem o link do vídeo final.
@@ -491,6 +496,7 @@ describe('| de=<fase> — começar no meio', () => {
   it('o fluxo ainda fecha normalmente no fim', () => {
     const id = criarDe('baixar');
     ackar('A#1/mulheres/baixar', '/tmp/a.mp4');
+    fluxos.aprovar(id);   // portão novo depois do download
     ackar('A#1/mulheres/reel', '/tmp/reel.mp4');
     expect(estado.obter(id)!.status).toBe('feito');
   });
