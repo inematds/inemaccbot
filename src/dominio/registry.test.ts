@@ -121,7 +121,7 @@ describe('o registry REAL do repo', () => {
   it('é válido e tem as skills das etapas 2 e 3, mais as da Agnes', () => {
     expect(defs.map((d) => d.command).sort()).toEqual(
       ['curso', 'demo', 'dublar', 'explicativo', 'historia', 'imagem',
-        'reel', 'reelinematds', 'transcrever'],
+        'reel', 'reelinematds', 'reelpromo', 'transcrever'],
     );
     expect(acharSkill(defs, 'transcrever')?.fila).toBe('texto');
     expect(acharSkill(defs, 'explicativo')?.fila).toBe('render');
@@ -148,7 +148,7 @@ describe('o registry REAL do repo', () => {
   // coisa. Em reel o agente roda o pipeline criativo INLINE — só o render final
   // é destacado —, então ele precisa de folga bem maior que o default.
   it('as skills que trabalham inline declaram teto de setup próprio', () => {
-    for (const nome of ['reel', 'reelinematds']) {
+    for (const nome of ['reel', 'reelinematds', 'reelpromo']) {
       const d = acharSkill(defs, nome)!;
       expect(d.timeout_setup_segundos, nome).toBeGreaterThan(30 * 60);
       expect(d.timeout_setup_segundos!, nome).toBeLessThanOrEqual(d.timeout_segundos);

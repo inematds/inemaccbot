@@ -171,6 +171,34 @@
     },
     "aceita_destino": true,
     "aguarda_artefato": true,
+    "command": "reelpromo",
+    "prompt": "prompts/reelpromo.md",
+    "campos": {
+      "mover": {
+        "tipo": "bandeira",
+        "padrao": "não",
+        "descricao": "mover para o destino em vez de copiar",
+        "usa": "entrega"
+      }
+    },
+    "descricao": "reel 9:16 do promoavatar pelos motores do repo (skill reel-promoavatar)",
+    "exemplo": "reelpromo: /home/user/A23-jovens-v1.mp4 | lives22",
+    "timeout_setup_segundos": 5400
+  },
+  {
+    "fila": "render",
+    "kind": "agent",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 4,
+    "timeout_segundos": 7200,
+    "perfil": {
+      "modelo": "sonnet",
+      "esforco": "low"
+    },
+    "aceita_destino": true,
+    "aguarda_artefato": true,
     "command": "reelinematds",
     "prompt": "prompts/reelinematds.md",
     "campos": {

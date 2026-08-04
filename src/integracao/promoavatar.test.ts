@@ -81,7 +81,10 @@ describe('flow.json real do promoavatar', () => {
     const porId = (id: string) => def.fases.find((f) => f.id === id)!;
     expect(porId('texto').pausa_apos).toBe(true);
     expect(porId('baixar').espera).toEqual({ intervalo: 120, timeout: 5400 });
-    expect(porId('reel').tarefa).toBe('reel');
+    // A fase usa a tarefa `reelpromo`, não a skill global `reel`: os motores
+    // deste domínio moram no repo do promoavatar, e a skill global tem cópias
+    // próprias e desatualizadas (medido no A#23 — ver reel-promoavatar).
+    expect(porId('reel').tarefa).toBe('reelpromo');
   });
 
   it('tem os 12 públicos, cada um com canal e gatilho', () => {
@@ -421,7 +424,7 @@ describe('do assunto ao reel, com o portão no meio', () => {
 
     const reel = fila.listar().find((j) => j.flow_ref === 'A#1/mulheres/reel')!;
     expect(reel.fila).toBe('render');
-    expect(reel.tarefa).toBe('reel');
+    expect(reel.tarefa).toBe('reelpromo');
     const input = JSON.parse(reel.input) as { entrada: string; destino?: string };
     expect(input.entrada).toContain(avatar);
     expect(input.entrada).toContain('capa impacto');
