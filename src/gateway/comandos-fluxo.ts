@@ -80,7 +80,7 @@ export function ajudaDoFluxo(
     'Campos (com "|" no fim, ou "--" em qualquer lugar):',
     '  | alvos=a,b   só esses públicos (ou --alvo=a --alvo=b)',
     '  | de=<fase>   começa nessa fase (as anteriores ficam puladas)',
-    '  | legenda=nao desliga a legenda do reel (padrão: COM legenda)',
+    '  | legenda     liga a legenda no reel (padrão: SEM — a legenda vem do estúdio)',
     '  | versao=N    versão do assunto',
     '  | sombra      mostra o plano sem enfileirar nada',
     ...(def.fases.some((f) => f.opcional === 'api')
@@ -108,12 +108,17 @@ export function ajudaDoFluxo(
  * mora. Um fluxo em andamento não muda de regra no meio (§3.4), e o `/status`
  * continua contando a verdade sem tabela nova.
  *
- * `{legenda}` — default é COM, decidido pelo dono do canal em 2026-08-03. A
- * regra anterior era o contrário ("legenda é decisão de quem publica, e
- * forçá-la em todo reel é decidir pelo dono do canal") — o argumento valeria
- * se o bot servisse vários canais, mas serve UM, e nele a legenda é padrão de
- * publicação: reel mudo no feed perde quem assiste sem som. Quem quiser sem,
- * escreve `| legenda=nao` — a flag sempre aceitou negação explícita.
+ * `{legenda}` — default é SEM, e a razão NÃO é preferência estética: a legenda
+ * é decisão do ESTÚDIO. Se você ligar legenda no HeyGen, ela vem QUEIMADA no
+ * avatar (o download prefere `video_url_caption` quando existe — ver
+ * `fila/tarefas/heygen.ts`), e o reel pôr outra por cima daria legenda dupla.
+ * Se você optar por não legendar no estúdio, aí sim liga a nossa com
+ * `| legenda`. Regra do dono do canal em 2026-08-03, válida para promoavatar
+ * e promoavatar3.
+ *
+ * (Eu tinha invertido este default mais cedo no mesmo dia, por ler o pedido
+ * como "quero legenda por padrão". Era o oposto: queimada no estúdio, e a
+ * nossa só como alternativa. Não inverta de novo sem reler isto.)
  * `{cta}` — o clipe padrão do PRÓPRIO domínio (`<repo>/cta/cta-9x16.mp4`).
  * Cada fluxo tem o seu, editável sem tocar no bot; sem arquivo, o CTA volta a
  * ser desenhado pelo agente.
@@ -252,7 +257,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   let versao: number | undefined;
   let de: string | undefined;
   let sombra = false;
-  let legenda = true;   // default LIGADA — ver a nota em `resolverOpcoes`
+  let legenda = false;  // default DESLIGADA — ver a nota em `resolverOpcoes`
   let api = false;
   let creditos = false;
   let navega = false;
