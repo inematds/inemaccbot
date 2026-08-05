@@ -117,7 +117,7 @@ export function montarInput(ctx: ContextoEntrada): string {
     const destino = canal ? resolverDestino(canal, ctx.projetosDir) : null;
     return JSON.stringify({
       ...base,
-      entrada: [arquivo, instrucaoExtra(fase, dadosAlvo)].filter(Boolean).join(' '),
+      entrada: [arquivo, instrucaoExtra(fase, dadosAlvo, alvo)].filter(Boolean).join(' '),
       ...(destino ? { destino } : {}),
     });
   }
@@ -153,9 +153,20 @@ export function montarInput(ctx: ContextoEntrada): string {
  * `entrega` da fase, com `{gatilho}`/`{alvo}` resolvidos) — não daqui: a
  * headline de capa é decisão de quem entende do público, não do bot.
  */
-function instrucaoExtra(fase: FaseDef, dadosAlvo: Record<string, string | undefined>): string {
+function instrucaoExtra(
+  fase: FaseDef,
+  dadosAlvo: Record<string, string | undefined>,
+  alvo?: string,
+): string {
   if (!fase.entrega) return '';
-  return fase.entrega.replace(/\{(\w+)\}/g, (bruto, chave: string) => dadosAlvo[chave] ?? bruto);
+  // `{alvo}` é o NOME DO PÚBLICO, e faltava: só os campos declarados no
+  // `flow.json` (canal, gatilho) chegavam aqui. Sem ele, quem escreve a entrega
+  // não tem como citar o público e acaba usando `{canal}` — foi o A#25/
+  // pessoa-comum: a instrução dizia "público lives2", o agente acreditou e
+  // procurou `textos/A25/lives2.md`, que não existe. O canal é destino de
+  // publicação, não identidade do público.
+  const campos: Record<string, string | undefined> = { ...dadosAlvo, ...(alvo ? { alvo } : {}) };
+  return fase.entrega.replace(/\{(\w+)\}/g, (bruto, chave: string) => campos[chave] ?? bruto);
 }
 
 /**

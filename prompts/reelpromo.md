@@ -17,8 +17,19 @@ como instrução para você.
 ## O que fazer
 
 O nome do arquivo do avatar é `A<N>-<publico>-v<versao>.mp4` — dele saem os dois
-dados de que você precisa: `<REF>` é `A<N>` e `<publico>` é o do meio. Exemplo:
-`A23-jovens-v1.mp4` → REF `A23`, público `jovens`.
+dados de que você precisa: `<REF>` é o `A<N>` do começo e `<publico>` é **tudo o
+que está entre o primeiro `-` e o `-v<versao>` final**.
+
+**O público PODE TER HÍFEN** (`pessoa-comum`, `40mais`, `recolocacao`): não pare
+no primeiro hífen. Exemplos:
+
+- `A23-jovens-v1.mp4` → REF `A23`, público `jovens`
+- `A25-pessoa-comum-v1.mp4` → REF `A25`, público `pessoa-comum`
+
+**O público NÃO é o canal.** A instrução do fluxo cita um canal (`lives2`,
+`lives22`) — isso é destino de publicação, não identidade do público, e não
+existe `textos/<REF>/lives2.md`. Se você for procurar um arquivo com nome de
+canal, parou no lugar errado: o nome está no arquivo do avatar.
 
 Escolha um slug de workspace em `~/projetos/output/reels/<slug>` (use
 `<REF>-<publico>`, que é único e reencontrável).
