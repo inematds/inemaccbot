@@ -22,8 +22,8 @@ import { planejarLimpeza } from '../dominio/limpeza.js';
 import { ajudaDaSkill } from './ajuda-dominio.js';
 import { executar, parseComando } from './comandos.js';
 import {
-  ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, fluxosCompletos, painelFluxos,
-  refazerFluxo, statusFluxo, textoFluxos,
+  ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, definirCapaFluxo, fluxosCompletos,
+  painelFluxos, parseCapa, refazerFluxo, statusFluxo, textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
 import { interpretar } from './interpret.js';
@@ -78,6 +78,25 @@ function tratarComandoDeFluxo(
   const argumento = resto.join(' ');
 
   if (verbo === '/fluxos') return textoFluxos(registrados);
+
+  // `capa: A#25 jovens` COM a foto anexada — o último elo da corrente.
+  //
+  // O anexo já vinha sendo baixado (`gateway/midia.ts` monta
+  // `capa: <ref> <alvo> | arquivo=<caminho>`) e o núcleo que escreve no `.md` já
+  // existia com testes; faltava exatamente isto, e por isso mandar a foto no
+  // chat não fazia nada. O momento natural de usar é o PORTÃO da fase de texto:
+  // ali nenhum avatar foi gerado e nenhuma imagem foi paga, então trocar a capa
+  // ainda é de graça.
+  if (verbo === 'capa:' || verbo === 'capa' || verbo === '/capa') {
+    const { ref, alvo, n, arquivo, modo } = parseCapa(t);
+    if (!ref) return 'use: `capa: A#25 <publico>` COM a imagem anexada (ou `*` para todos).';
+    if (!arquivo) {
+      return 'não veio imagem. Mande a FOTO com a legenda `capa: '
+        + `${ref}${alvo ? ` ${alvo}` : ' <publico>'}\` — ou passe \`| arquivo=/caminho\`.`;
+    }
+    return definirCapaFluxo(ref, alvo, { n, arquivo, ...(modo ? { modo } : {}) }, depsFluxo)
+      ?? `não entendi "${ref}" — use \`capa: A#25 <publico>\`.`;
+  }
 
   // `/ajuda <nome>` — a ajuda de UM domínio, skill ou fluxo. Sem nome, cai no
   // `/ajuda` geral (a lista de comandos), tratado adiante.

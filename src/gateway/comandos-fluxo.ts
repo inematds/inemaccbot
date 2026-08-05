@@ -701,6 +701,29 @@ function oQueEstaFazendo(visao: { fluxo: { status: string }; fases: Fase[] }): s
  *
  * IO injetável para o teste não tocar disco.
  */
+/**
+ * `capa: A#25 jovens 2 cover | arquivo=/x.png` → as partes.
+ *
+ * Separado do roteador para ser testável sem fluxo, disco nem chat. O
+ * `arquivo=` chega de dois jeitos: montado pelo `gateway/midia.ts` quando a
+ * pessoa manda a FOTO com a legenda, ou digitado por quem já tem o caminho.
+ */
+export function parseCapa(texto: string): {
+  ref?: string; alvo?: string; n: number; arquivo?: string; modo?: 'cover';
+} {
+  const [cabeca, ...campos] = String(texto ?? '').split('|').map((x) => x.trim());
+  const partes = (cabeca ?? '').replace(/^\/?capa:?/i, '').trim().split(/\s+/).filter(Boolean);
+  const [ref, alvo, ...opcoes] = partes;
+  const campoArquivo = campos.find((c) => /^arquivo\s*=/.test(c));
+  const arquivo = campoArquivo?.split('=').slice(1).join('=').trim() || undefined;
+  // `n` é o número da imagem no roteiro visual (1 = a capa do feed); `cover`
+  // pede o enquadramento que CORTA. O default é `contain`: imagem enviada pelo
+  // dono não é cortada sem ele pedir — ela já vem composta.
+  const n = Number(opcoes.find((o) => /^\d+$/.test(o)) ?? 1);
+  const modo = opcoes.some((o) => o.toLowerCase() === 'cover') ? 'cover' as const : undefined;
+  return { ref, alvo, n, arquivo, ...(modo ? { modo } : {}) };
+}
+
 export function definirCapaFluxo(
   ref: string,
   alvo: string | undefined,

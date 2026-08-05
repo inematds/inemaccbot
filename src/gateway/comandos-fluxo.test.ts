@@ -12,7 +12,7 @@ import { FakeRunner } from '../fila/runner.js';
 import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
 import { Fluxos } from '../fluxos/runtime.js';
-import { definirCapaFluxo, tabelaFluxo } from './comandos-fluxo.js';
+import { definirCapaFluxo, parseCapa, tabelaFluxo } from './comandos-fluxo.js';
 import { tratarMensagem, type DepsMensagem } from './mensagem.js';
 
 let dir: string;
@@ -869,5 +869,42 @@ describe('capa — trocar a imagem de um segmento pela enviada no chat', () => {
   it('fluxo inexistente é dito, não ignorado', async () => {
     expect(definirCapaFluxo('B#99', 'um', { n: 1, arquivo: '/x.png' }, { fluxos, registrados, chatId: 9 }))
       .toContain('não existe neste bot');
+  });
+});
+
+/**
+ * O parser do verbo `capa:` — o elo que faltava para a foto mandada no chat
+ * chegar ao `.md`. O anexo já era baixado e o núcleo já escrevia; sem isto,
+ * mandar a imagem no Telegram não fazia nada (pendência "not-wired" de
+ * 2026-08-04, fechada em 2026-08-05).
+ */
+describe('parseCapa', () => {
+  it('lê o que o anexo monta: legenda + arquivo do midia.ts', () => {
+    expect(parseCapa('capa: A#25 jovens | arquivo=/midia/1785-x.png'))
+      .toEqual({ ref: 'A#25', alvo: 'jovens', n: 1, arquivo: '/midia/1785-x.png' });
+  });
+
+  it('`*` vale para todos os públicos, e o número da imagem é opcional', () => {
+    const r = parseCapa('capa: A#25 * 3 | arquivo=/a/b.png');
+    expect(r.alvo).toBe('*');
+    expect(r.n).toBe(3);
+  });
+
+  it('`cover` é explícito; sem ele o modo fica indefinido (contain)', () => {
+    expect(parseCapa('capa: A#25 jovens cover | arquivo=/a.png').modo).toBe('cover');
+    // Imagem enviada pelo dono não é cortada sem ele pedir: ela já vem composta.
+    expect(parseCapa('capa: A#25 jovens | arquivo=/a.png').modo).toBeUndefined();
+  });
+
+  it('sem `arquivo=` devolve arquivo indefinido — quem chama recusa', () => {
+    expect(parseCapa('capa: A#25 jovens').arquivo).toBeUndefined();
+  });
+
+  it('aceita caminho com `=` no nome sem picotar', () => {
+    expect(parseCapa('capa: A#25 j | arquivo=/tmp/a=b.png').arquivo).toBe('/tmp/a=b.png');
+  });
+
+  it('sem nada devolve ref indefinida em vez de explodir', () => {
+    expect(parseCapa('capa:').ref).toBeUndefined();
   });
 });
