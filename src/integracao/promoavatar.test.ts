@@ -204,12 +204,16 @@ describe('portão entrega os roteiros no chat', () => {
   });
 
   /**
-   * Quando o avatar é gerado sozinho (rota `| navega`, ou `| api`), ninguém
-   * copia fala nenhuma do chat: o agente do navegador lê o roteiro do arquivo.
-   * Mandar 12 blocos de fala ali só empurra para cima a única coisa que ainda
-   * se lê no portão — QUAIS públicos entraram. Pedido do dono em 2026-08-04.
+   * São dois portões e eles pedem coisas diferentes.
+   *
+   * O da fase de TEXTO existe para você LER e revisar antes de aprovar, então
+   * as falas vão inteiras — inclusive quando o avatar é gerado sozinho
+   * (`| navega`), porque revisar é o motivo de o portão existir.
+   *
+   * Este teste existe porque a primeira versão condicionou pela ROTA e tirou a
+   * fala do portão errado (2026-08-05).
    */
-  it('com rota automática manda só a lista dos alvos, não as falas', () => {
+  it('o portão do TEXTO manda as falas mesmo com rota automática', () => {
     const id = fluxos.criar({
       tipo: 'promoavatar', definicao: def, hash: hashDefinicao(def, REPO_DOMINIO),
       assunto: 'Não comece aprendendo ferramentas', alvos: ['mulheres', 'jovens'],
@@ -219,16 +223,36 @@ describe('portão entrega os roteiros no chat', () => {
     escreverRoteiro(id, 'jovens', 'Tem uma profissão nascendo agora.');
     ackar(`A#${id}//texto`, 'ok');
 
-    // Nenhuma mensagem "título + fala" (o formato de copiar e colar).
-    expect(roteiros()).toHaveLength(0);
-    const lista = eventos.map((e) => e.texto).find((t) => t.includes('avatar(es) a gerar'))!;
+    expect(roteiros()).toHaveLength(2);
+    expect(roteiros()[0]).toContain('Tem uma profissão nascendo agora.');
+    expect(roteiros()[1]).toContain('Autonomia de verdade com IA.');
+    // E nada de lista resumida aqui: ela é do portão dos avatares.
+    expect(eventos.map((e) => e.texto).some((t) => t.includes('avatar(es) a gerar'))).toBe(false);
+  });
+
+  /**
+   * O portão dos AVATARES (depois do download) é o outro caso: aqui não há o
+   * que ler — as falas já foram revisadas no portão anterior — e repetir 12
+   * blocos empurraria para cima a única coisa que se olha, que é QUAIS públicos
+   * entraram. Vai só a lista, com os títulos do estúdio.
+   */
+  it('o portão dos AVATARES manda só a lista, não as falas de novo', () => {
+    const id = criar(['mulheres', 'jovens']);
+    escreverRoteiro(id, 'mulheres', 'Autonomia de verdade com IA.');
+    escreverRoteiro(id, 'jovens', 'Tem uma profissão nascendo agora.');
+    ackar(`A#${id}//texto`, 'ok');
+    fluxos.aprovar(id);
+    const antes = eventos.length;
+    for (const alvo of ['jovens', 'mulheres']) {
+      ackar(`A#${id}/${alvo}/baixar`, `/midia/${alvo}.mp4`);
+    }
+    const novos = eventos.slice(antes).map((e) => e.texto);
+    const lista = novos.find((t) => t.includes('avatar(es) a gerar'));
     expect(lista).toBeDefined();
-    // Os títulos são os MESMOS que `heygen.baixar` procura por igualdade exata.
     expect(lista).toContain(`A${id}-jovens-v1`);
-    expect(lista).toContain(`A${id}-mulheres-v1`);
-    // E a fala não vai junto — é o ponto do pedido.
     expect(lista).not.toContain('Autonomia de verdade');
-    expect(lista).not.toContain('profissão nascendo');
+    // Nenhuma mensagem no formato "título + fala" neste portão.
+    expect(novos.filter((t) => /^A\d+-/.test(t))).toHaveLength(0);
   });
 
   /**

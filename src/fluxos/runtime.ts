@@ -349,7 +349,7 @@ export class Fluxos {
             : '')
           + `Quando estiver pronto: /aprovar ${fluxo.prefixo}#${fluxo.id}`,
         );
-        this.entregarRoteiros(fluxo);
+        this.entregarRoteiros(fluxo, faseDef);
       }
       return;
     }
@@ -383,7 +383,7 @@ export class Fluxos {
    * a mensagem instruir um nome que o download não acha, e a fase expira em
    * 90 min esperando um vídeo que existe com outro nome.
    */
-  private entregarRoteiros(fluxo: Fluxo): void {
+  private entregarRoteiros(fluxo: Fluxo, faseDef?: FaseDef): void {
     if (fluxo.chat_id === null) return;
     const repo = this.repoDe(fluxo.tipo);
     if (!repo) {
@@ -393,20 +393,26 @@ export class Fluxos {
     const pasta = pastaTextos(repo, fluxo);
     const faltando: string[] = [];
 
-    // Quem GRAVA o avatar decide se a fala precisa ir para o chat.
+    // QUAL PORTÃO decide o que vai no chat — não a rota do avatar.
     //
-    // A fala vai no chat para ser selecionada e colada no estúdio. Quando o
-    // fluxo tem uma fase que gera o avatar sozinho (`navega-avatar` pelo
-    // navegador, `gerar`/`gerar-creditos` pela API), ninguém cola nada — e aí
-    // 12 blocos de fala só empurram para cima a única coisa que ainda se lê
-    // aqui, que é QUAIS públicos entraram. Pedido do dono em 2026-08-04.
+    // São dois portões e eles pedem coisas diferentes:
+    //
+    //  - o da fase que ESCREVE os textos (escopo `fluxo`): você precisa LER os
+    //    roteiros para revisar antes de aprovar. Vão inteiros, um por público,
+    //    sempre — mesmo quando o avatar é gerado sozinho. Revisar é o motivo
+    //    de o portão existir.
+    //  - o dos AVATARES (escopo `alvo`, depois do download): aqui não há o que
+    //    ler, e 12 blocos de fala repetidos só empurram para cima a única coisa
+    //    que se olha, que é QUAIS públicos entraram. Vai só a lista.
+    //
+    // Pedido do dono em 2026-08-04, corrigido em 2026-08-05: a primeira versão
+    // condicionou pela ROTA (`| navega`) e tirou a fala do portão errado — o de
+    // texto, justamente o que existe para ser lido.
     //
     // A leitura do arquivo continua acontecendo nos dois casos: é ela que
-    // detecta roteiro faltando, e esse aviso vale mais quando é automático —
+    // detecta roteiro faltando, e esse aviso vale mais no portão dos avatares —
     // sem ele, um público sem texto só apareceria 90 min depois, no download.
-    const automatico = this.estado.fases(fluxo.id).some(
-      (f) => f.fase === 'navega-avatar' || f.fase === 'gerar' || f.fase === 'gerar-creditos',
-    );
+    const soLista = faseDef !== undefined && faseDef.escopo !== 'fluxo';
     const titulos: string[] = [];
 
     for (const alvo of this.alvosDoFluxo(fluxo)) {
@@ -416,7 +422,7 @@ export class Fluxos {
         faltando.push(alvo);
         continue;
       }
-      if (automatico) {
+      if (soLista) {
         titulos.push(tituloEstudio(fluxo, alvo));
         continue;
       }
@@ -432,7 +438,7 @@ export class Fluxos {
     // então dividir só faria o chat rolar. O título é o mesmo que a fase de
     // download procura por igualdade exata, e é por ele que se acha o vídeo no
     // estúdio se algo precisar de conferência.
-    if (automatico && titulos.length) {
+    if (soLista && titulos.length) {
       this.avisar(
         fluxo,
         `🎬 ${fluxo.prefixo}#${fluxo.id} — ${titulos.length} avatar(es) a gerar:\n`
