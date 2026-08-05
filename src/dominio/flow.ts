@@ -6,6 +6,7 @@
 // prompt no meio de uma execução mudaria as regras do jogo em voo (§3.4). Por
 // isso a definição é CONGELADA na criação, e o hash cobre o JSON mais o
 // conteúdo de cada prompt referenciado.
+import { ESFORCOS_RANK, MODELOS_RANK } from './perfil.js';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
@@ -53,6 +54,21 @@ export interface FaseDef {
    * não vai acontecer.
    */
   opcional?: string;
+  /**
+   * Perfil de execução DESTA fase (`{modelo, esforco, motor}`, todos opcionais).
+   *
+   * O slot já existia em `resolverPerfil` (`FontesPerfil.fase`, precedência 2)
+   * e nunca tinha sido ligado: sem ele toda fase de todo fluxo rodava no padrão
+   * do `.env`, e fases de dificuldade muito diferente compartilhavam perfil por
+   * acidente — exatamente o defeito do v1 que o `perfil.ts` existe para
+   * corrigir. Medido em 2026-08-05: a fase `texto` escreve o roteiro de 12
+   * públicos UMA vez (US$ 2,41 no fluxo), enquanto a fase `reel` multiplica por
+   * público e o que sobra de modelo nela é ler o mosaico e reagir a exit != 0.
+   * São trabalhos diferentes; agora podem ter modelos diferentes.
+   *
+   * Ausente = o padrão do `.env`, como antes.
+   */
+  perfil?: { motor?: string; modelo?: string; esforco?: string };
 }
 
 export interface AlvoDef {
@@ -165,6 +181,31 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
     const opcional = typeof f.opcional === 'string' && f.opcional.trim()
       ? f.opcional.trim() : undefined;
 
+    // Validado AQUI, no boot, e não na hora de enfileirar: um `modelo: "opus5"`
+    // (que não existe — o nome é `opus`) tem que derrubar o registro do fluxo,
+    // não a fase, 40 minutos depois, com o avatar já gerado.
+    let perfil: { motor?: string; modelo?: string; esforco?: string } | undefined;
+    if (f.perfil !== undefined) {
+      if (typeof f.perfil !== 'object' || f.perfil === null || Array.isArray(f.perfil)) {
+        erro(`fases[${i}].perfil`, 'precisa ser objeto {motor?, modelo?, esforco?}');
+      }
+      const p = f.perfil as Record<string, unknown>;
+      const campo = (nome: 'motor' | 'modelo' | 'esforco'): string | undefined => {
+        if (p[nome] === undefined) return undefined;
+        const v = texto(p[nome], `fases[${i}].perfil.${nome}`);
+        if (nome === 'modelo' && MODELOS_RANK[v] === undefined) {
+          erro(`fases[${i}].perfil.modelo`, `"${v}" — conheço: ${Object.keys(MODELOS_RANK).join(', ')}`);
+        }
+        if (nome === 'esforco' && ESFORCOS_RANK[v] === undefined) {
+          erro(`fases[${i}].perfil.esforco`, `"${v}" — conheço: ${Object.keys(ESFORCOS_RANK).join(', ')}`);
+        }
+        return v;
+      };
+      const m = campo('motor'), mo = campo('modelo'), e = campo('esforco');
+      perfil = { ...(m ? { motor: m } : {}), ...(mo ? { modelo: mo } : {}), ...(e ? { esforco: e } : {}) };
+      if (Object.keys(perfil).length === 0) perfil = undefined;
+    }
+
     const escopo = texto(f.escopo, `fases[${i}].escopo`);
     if (escopo !== 'fluxo' && escopo !== 'alvo') erro(`fases[${i}].escopo`, '"fluxo" ou "alvo"');
 
@@ -231,6 +272,7 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       ...(typeof f.entrega === 'string' ? { entrega: f.entrega } : {}),
       ...(f.pausa_apos === true ? { pausa_apos: true } : {}),
       ...(opcional ? { opcional } : {}),
+      ...(perfil ? { perfil } : {}),
     };
   });
 

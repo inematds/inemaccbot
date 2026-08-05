@@ -349,6 +349,9 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // bases de URL ela responde.
       publicar: (origem, titulo, tipo) =>
         publicarVideo(origem, titulo, cfg.publicoDir, cfg.publicoUrls, tipo),
+      // Base sobre a qual o `perfil` de uma fase é resolvido (o mesmo default
+      // que o worker usaria se a fase não declarasse nada).
+      perfilPadrao: { motor: cfg.motorPadrao, modelo: cfg.modeloPadrao, esforco: cfg.esforcoPadrao },
     });
     fluxosRegistrados = (deps.carregarFluxos ?? carregarFluxosPadrao)(
       join(RAIZ_REPO, 'config', 'fluxos.json'),

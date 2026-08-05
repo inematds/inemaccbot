@@ -9,7 +9,8 @@ import { readFileSync } from 'node:fs';
 import { flowRef, type FaseDef, type FlowDef } from '../dominio/flow.js';
 import { primeiraFala } from '../dominio/roteiro.js';
 import type { FilaSqlite } from '../fila/store.js';
-import type { Agora, Job } from '../fila/types.js';
+import type { Agora, Job, Perfil } from '../fila/types.js';
+import { resolverPerfil } from '../dominio/perfil.js';
 import { EstadoFluxos, type Fase, type Fluxo, type StatusFluxo } from './estado.js';
 import { montarInput, pastaTextos, tituloEstudio } from './entrada-fase.js';
 import type { Publicacao } from './publicar.js';
@@ -60,6 +61,12 @@ export interface OpcoesRuntime {
    * Ausente = nenhum link vai ao chat, e o fluxo diz isso em vez de calar.
    */
   publicar?: (origem: string, titulo: string, tipo: string) => Publicacao | undefined;
+  /**
+   * Perfil padrão do `.env`. Só é consultado quando uma fase declara `perfil`
+   * no `flow.json` — aí o resolvido (fase sobre padrão) é gravado no job, para
+   * que o log diga com que modelo aquela fase rodou.
+   */
+  perfilPadrao?: Perfil;
 }
 
 export interface EventoFluxo {
@@ -123,6 +130,7 @@ export class Fluxos {
   private readonly repoDe: (tipo: string) => string | undefined;
   private readonly lerRoteiro: (pasta: string, alvo: string) => string | null;
   private readonly publicar?: (origem: string, titulo: string, tipo: string) => Publicacao | undefined;
+  private readonly perfilPadrao: Perfil;
 
   constructor(opts: OpcoesRuntime) {
     this.estado = opts.estado;
@@ -135,6 +143,7 @@ export class Fluxos {
     this.repoDe = opts.repoDe ?? ((): undefined => undefined);
     this.lerRoteiro = opts.lerRoteiro ?? lerRoteiroDoDisco;
     this.publicar = opts.publicar;
+    this.perfilPadrao = opts.perfilPadrao ?? { motor: 'claude', modelo: 'sonnet', esforco: 'low' };
   }
 
   /**
@@ -261,10 +270,22 @@ export class Fluxos {
     // arquivo): é o que alimenta a próxima — o download consome o título, o
     // reel consome o .mp4 baixado.
     const anterior = this.dadosDaAnterior(fluxo, def, fase, alvo);
+    // Perfil DA FASE (precedência 2 em `resolverPerfil`). Sem `perfil` no
+    // flow.json não gravamos nada e o worker cai no padrão do `.env`, que é o
+    // comportamento de sempre — um fluxo antigo não muda de modelo por isto
+    // existir. `skills.ts` exige os TRÊS campos para respeitar o job, então
+    // resolvemos aqui contra o padrão em vez de gravar só o que a fase disse.
+    const perfil = fase.perfil
+      ? resolverPerfil({ fase: fase.perfil, padrao: this.perfilPadrao }).perfil
+      : undefined;
     const job = this.fila.enfileirar({
       fila: fase.fila,
       kind: fase.kind,
       tarefa: fase.tarefa,
+      // `perfil`, não `motor/modelo/esforco` soltos: é o campo que `NovoJob`
+      // declara, e um spread com os três passa no typecheck (spread não dispara
+      // excess-property check) e é descartado em silêncio no insert.
+      ...(perfil ? { perfil } : {}),
       input: montarInput({
         fluxo, def, fase, alvo, anterior,
         raizArtefatos: this.raizArtefatos,

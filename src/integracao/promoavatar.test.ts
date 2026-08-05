@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { abrirDb } from '../db/abrir.js';
 import { MIGRATIONS, aplicarMigrations } from '../db/migrations.js';
-import { carregarFlow, congelar, hashDefinicao, type FlowDef } from '../dominio/flow.js';
+import { carregarFlow, congelar, hashDefinicao, validarFlow, type FlowDef } from '../dominio/flow.js';
 import { carregarSkills } from '../dominio/registry.js';
 import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
@@ -645,5 +645,56 @@ describe('opções do fluxo: legenda e clipe de CTA', () => {
 
   it('existe o clipe de CTA 9:16 no repo de domínio', () => {
     expect(existsSync(join(REPO_DOMINIO, 'cta', 'cta-9x16.mp4'))).toBe(true);
+  });
+});
+
+/**
+ * Perfil por FASE. O slot existia em `resolverPerfil` (precedência 2) e nunca
+ * tinha sido ligado — toda fase de todo fluxo rodava no padrão do `.env`.
+ * A fase de texto escreve o roteiro dos 12 públicos uma vez; a de reel
+ * multiplica por público e só lê o mosaico. São trabalhos diferentes.
+ */
+describe('perfil por fase', () => {
+  it('grava no job o perfil que a fase declarou, resolvido sobre o padrão', () => {
+    const comPerfil = {
+      ...def,
+      fases: def.fases.map((f) => (f.id === 'texto'
+        ? { ...f, perfil: { modelo: 'opus', esforco: 'high' } }
+        : f.id === 'reel' ? { ...f, perfil: { modelo: 'haiku' } } : f)),
+    };
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: comPerfil, hash: 'h',
+      assunto: 'assunto', alvos: ['mulheres'], chatId: 55,
+    }).id;
+
+    const texto = fila.listar().find((j) => j.flow_ref === `A#${id}//texto`)!;
+    expect(texto.modelo).toBe('opus');
+    expect(texto.esforco).toBe('high');
+    // O que a fase NÃO declarou vem do padrão — não fica nulo, senão o worker
+    // ignora o job inteiro (`skills.ts` exige os três campos).
+    expect(texto.motor).toBeTruthy();
+  });
+
+  it('fase sem `perfil` continua caindo no padrão — nada muda para fluxo antigo', () => {
+    // Construído SEM perfil de propósito: o flow.json real passou a declarar um
+    // na fase de texto (2026-08-05), e um fluxo criado antes disso — ou de outro
+    // domínio — não pode mudar de modelo por o campo existir.
+    const semPerfil = {
+      ...def,
+      fases: def.fases.map(({ perfil, ...resto }) => resto),
+    };
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: semPerfil, hash: 'h',
+      assunto: 'assunto', alvos: ['mulheres'], chatId: 55,
+    }).id;
+    const texto = fila.listar().find((j) => j.flow_ref === `A#${id}//texto`)!;
+    expect(texto.modelo).toBeNull();
+  });
+
+  it('modelo inexistente derruba o flow.json no parse, não na hora de rodar', () => {
+    expect(() => validarFlow({
+      ...def,
+      fases: def.fases.map((f) => (f.id === 'texto' ? { ...f, perfil: { modelo: 'opus5' } } : f)),
+    }, REPO_DOMINIO, def.fases.map((f) => f.tarefa))).toThrow(/opus5/);
   });
 });
