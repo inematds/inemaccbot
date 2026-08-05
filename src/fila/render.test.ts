@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { RenderFalhou, esperarArtefato, limparMarcadores, trabalhoEmCurso } from './render.js';
+import { RenderFalhou, esperarArtefato, limparMarcadores, processoVivo, trabalhoEmCurso } from './render.js';
 
 let dir: string;
 let alvo: string;
@@ -183,5 +183,67 @@ describe('marcador de erro com artefato a caminho', () => {
     })).rejects.toThrow(/passo destacado morreu/);
     // Rápido: a carência é curta, não o timeout inteiro de 10 min.
     expect(t).toBeLessThan(10_000);
+  });
+});
+
+/**
+ * Um processo MORTO não escreve `.err`: o marcador vem do `|| touch` do próprio
+ * comando, e quem é morto (`systemctl restart` derrubando o cgroup, OOM, kill
+ * -9) não chega lá. Sem isto, o serviço esperava o timeout INTEIRO.
+ *
+ * Custou 108 min de fila parada no A#25/40mais (2026-08-05): eu reiniciei o
+ * serviço 2 min depois de o render disparar, e os outros 10 reels ficaram atrás
+ * dele — a fila `render` é 1 por vez.
+ */
+describe('processo destacado morto sem marcador', () => {
+  /** Um PID que seguramente não existe. Sobe até achar um livre. */
+  function pidMorto(): number {
+    for (let p = 4_194_300; p > 4_000_000; p -= 7) {
+      try { process.kill(p, 0); } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'ESRCH') return p;
+      }
+    }
+    throw new Error('não achei pid livre');
+  }
+
+  it('processoVivo distingue vivo, morto e desconhecido', () => {
+    expect(processoVivo(alvo)).toBeNull();          // sem .pid
+    writeFileSync(`${alvo}.pid`, 'nao-e-numero');
+    expect(processoVivo(alvo)).toBeNull();          // ilegível: conservador
+    writeFileSync(`${alvo}.pid`, String(process.pid));
+    expect(processoVivo(alvo)).toBe(true);
+    writeFileSync(`${alvo}.pid`, String(pidMorto()));
+    expect(processoVivo(alvo)).toBe(false);
+  });
+
+  it('não adota render cujo processo já morreu', () => {
+    writeFileSync(`${alvo}.log`, 'comecou e morreu');
+    writeFileSync(`${alvo}.pid`, String(pidMorto()));
+    expect(trabalhoEmCurso(alvo)).toBe(false);
+  });
+
+  it('sem .pid legível continua adotando: sem prova de morte, espera', () => {
+    writeFileSync(`${alvo}.log`, 'comecou');
+    expect(trabalhoEmCurso(alvo)).toBe(true);
+  });
+
+  it('a espera falha rápido em vez de consumir o timeout inteiro', async () => {
+    writeFileSync(`${alvo}.log`, 'render disparado\nmorreu aqui');
+    writeFileSync(`${alvo}.pid`, String(pidMorto()));
+    const r = relogio();
+    await expect(esperarArtefato(alvo, {
+      timeoutMs: 7_200_000, sinal: semSinal, ...r,
+    })).rejects.toThrow(/foi MORTO/);
+    // Muito antes das 2h: a carência é de segundos, não de horas.
+    expect(r.agoraMs()).toBeLessThan(120_000);
+  });
+
+  it('processo morto MAS artefato pronto: o artefato vence', async () => {
+    writeFileSync(`${alvo}.log`, 'terminou e o bash saiu');
+    writeFileSync(`${alvo}.pid`, String(pidMorto()));
+    writeFileSync(alvo, 'conteudo do mp4');
+    await expect(esperarArtefato(alvo, {
+      timeoutMs: 60_000, sinal: semSinal, ...relogio(),
+    })).resolves.toBe(alvo);
   });
 });

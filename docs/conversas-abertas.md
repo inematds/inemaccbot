@@ -259,3 +259,25 @@ descreve todo o pipeline) É congelado; a config de layout não.
 
 Conferido no A#23: o `entrega` congelado já traz `montar-reel.py` e as decisões
 de SFX/legenda/revisor — o fluxo nasceu com tudo de 2026-08-04.
+
+## Reiniciar o serviço mata todo render em voo (2026-08-05)
+
+`systemctl restart` derruba o cgroup inteiro: o render é neto do serviço
+(serviço → agente → `nohup bash -c`), então cai junto. O `nohup` não protege.
+
+Pior, até o conserto de hoje: quem é MORTO não escreve o `.err` (o marcador vem
+do `|| touch` do próprio comando), então o serviço esperava o **timeout inteiro
+de 120 min** por um processo que não existia — com a fila `render` (1 por vez)
+parada atrás. Custou 108 min no A#25/40mais.
+
+**Conserto (em `src/fila/render.ts`):** `processoVivo()` testa o `.pid` com
+sinal 0; `trabalhoEmCurso()` deixa de adotar render morto, e `esperarArtefato()`
+falha em segundos quando o processo sumiu sem artefato. Conservador de
+propósito: sem `.pid` legível, ou com EPERM, continua esperando — declarar morto
+um render vivo custa a GPU e os tokens já gastos.
+
+**O procedimento continua valendo**, porque o conserto reduz o dano mas não
+evita a perda do render: **antes de reiniciar, conferir
+`select * from jobs where status='running'`** — e, se houver algo na fila
+`render`, esperar. Verificar imediatamente antes, não "há pouco": no caso acima
+a fila estava vazia na checagem e o fluxo entrou no minuto seguinte.

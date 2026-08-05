@@ -88,7 +88,39 @@ export function limparMarcadores(alvo: string): void {
  */
 export function trabalhoEmCurso(alvo: string): boolean {
   if (existsSync(alvo)) return true; // pronto: adotar é o certo
-  return existsSync(`${alvo}.log`) && !existsSync(`${alvo}.err`);
+  if (!existsSync(`${alvo}.log`) || existsSync(`${alvo}.err`)) return false;
+  // Disparado E ainda vivo. O `.log` sozinho não prova vida: o processo pode ter
+  // sido morto sem chance de rodar o `|| touch .err` — é o que um
+  // `systemctl restart` faz, porque o render é neto do serviço e cai junto com o
+  // cgroup. Aconteceu em 2026-08-05 (A#25/40mais): a tentativa seguinte ADOTOU
+  // um render morto e ficou 2h esperando, com a fila `render` (1 por vez)
+  // parada atrás dela.
+  return processoVivo(alvo) !== false;
+}
+
+/**
+ * O processo destacado ainda existe?
+ *
+ * `true` vivo · `false` morto · `null` não dá para saber (sem `.pid`, ilegível,
+ * ou de outro dono). O `null` é deliberado e conservador: sem prova de morte,
+ * quem chama deve continuar esperando — declarar morto um render vivo custa a
+ * GPU e os tokens já gastos.
+ */
+export function processoVivo(alvo: string): boolean | null {
+  let pid: number;
+  try {
+    pid = Number(readFileSync(`${alvo}.pid`, 'utf8').trim());
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(pid) || pid <= 1) return null;
+  try {
+    process.kill(pid, 0);   // sinal 0: só testa existência
+    return true;
+  } catch (e) {
+    // EPERM = existe, de outro dono. Só ESRCH prova que morreu.
+    return (e as NodeJS.ErrnoException).code === 'ESRCH' ? false : null;
+  }
 }
 
 /**
@@ -133,6 +165,21 @@ export async function esperarArtefato(alvo: string, opts: OpcoesEspera): Promise
       prazoDeCarencia = agora() + estavelMs * 2 + intervaloMs;
       log(`marcador de erro visto em ${alvo} — dando carência até o artefato estabilizar`);
     }
+    // Processo MORTO sem marcador e sem artefato: mesma carência, mesmo destino.
+    //
+    // O `.err` é escrito pelo `|| touch` do próprio comando, então ele só existe
+    // quando o comando teve a chance de terminar. Quem é MORTO — `systemctl
+    // restart` derrubando o cgroup, OOM killer, `kill -9` — não escreve nada, e
+    // aí o serviço esperava o timeout INTEIRO (120 min), com a fila `render`
+    // parada atrás. Foi o A#25/40mais em 2026-08-05: 108 min de espera por um
+    // processo morto 2 min depois de disparado.
+    //
+    // A carência é a mesma do marcador, e pelo mesmo motivo: o `.pid` é do
+    // `bash -c`, que pode sair antes do ffmpeg terminar de fechar o arquivo.
+    if (prazoDeCarencia === null && processoVivo(alvo) === false && !existsSync(alvo)) {
+      prazoDeCarencia = agora() + estavelMs * 2 + intervaloMs;
+      log(`processo destacado de ${alvo} não existe mais — carência antes de declarar morto`);
+    }
     let tamanho = -1;
     try { tamanho = statSync(alvo).size; } catch { tamanho = -1; }
     if (tamanho > 0) {
@@ -153,7 +200,12 @@ export async function esperarArtefato(alvo: string, opts: OpcoesEspera): Promise
     if (prazoDeCarencia !== null && agora() >= prazoDeCarencia) {
       let trecho = '';
       try { trecho = readFileSync(arquivoLog, 'utf8').slice(-2_000); } catch { /* sem log */ }
-      throw new RenderFalhou(`o passo destacado morreu (ver ${arquivoLog})${trecho ? `\n${trecho}` : ''}`);
+      const semMarcador = !existsSync(marcadorErro)
+        ? ' — sem marcador de erro: foi MORTO (restart do serviço, OOM ou kill), não falhou sozinho'
+        : '';
+      throw new RenderFalhou(
+        `o passo destacado morreu (ver ${arquivoLog})${semMarcador}${trecho ? `\n${trecho}` : ''}`,
+      );
     }
 
     await dormir(intervaloMs);
