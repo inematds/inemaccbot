@@ -20,7 +20,7 @@ Rode de forma AUTÔNOMA, sem pedir confirmação nem qualquer interação.
    segundo plano destacado, gravando EXATAMENTE em {{saida}}:
 
    ```
-   nohup bash -c 'echo $$ > "{{saida}}.pid"; npx hyperframes render --quality high --output "{{saida}}" || touch "{{saida}}.err"' >"{{saida}}.log" 2>&1 &
+   nohup bash -c 'echo $$ > "{{saida}}.pid"; bash ~/.claude/skills/reel-edita-inema/scripts/hf.sh render --quality high --output "{{saida}}" || touch "{{saida}}.err"' >"{{saida}}.log" 2>&1 &
    ```
 
    Repare que o PID é gravado DE DENTRO do `bash -c`, com `echo $$` na primeira
