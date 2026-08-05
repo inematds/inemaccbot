@@ -204,6 +204,34 @@ describe('portão entrega os roteiros no chat', () => {
   });
 
   /**
+   * Quando o avatar é gerado sozinho (rota `| navega`, ou `| api`), ninguém
+   * copia fala nenhuma do chat: o agente do navegador lê o roteiro do arquivo.
+   * Mandar 12 blocos de fala ali só empurra para cima a única coisa que ainda
+   * se lê no portão — QUAIS públicos entraram. Pedido do dono em 2026-08-04.
+   */
+  it('com rota automática manda só a lista dos alvos, não as falas', () => {
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: def, hash: hashDefinicao(def, REPO_DOMINIO),
+      assunto: 'Não comece aprendendo ferramentas', alvos: ['mulheres', 'jovens'],
+      chatId: 55, opcoes: { navega: true },
+    }).id;
+    escreverRoteiro(id, 'mulheres', 'Autonomia de verdade com IA.');
+    escreverRoteiro(id, 'jovens', 'Tem uma profissão nascendo agora.');
+    ackar(`A#${id}//texto`, 'ok');
+
+    // Nenhuma mensagem "título + fala" (o formato de copiar e colar).
+    expect(roteiros()).toHaveLength(0);
+    const lista = eventos.map((e) => e.texto).find((t) => t.includes('avatar(es) a gerar'))!;
+    expect(lista).toBeDefined();
+    // Os títulos são os MESMOS que `heygen.baixar` procura por igualdade exata.
+    expect(lista).toContain(`A${id}-jovens-v1`);
+    expect(lista).toContain(`A${id}-mulheres-v1`);
+    // E a fala não vai junto — é o ponto do pedido.
+    expect(lista).not.toContain('Autonomia de verdade');
+    expect(lista).not.toContain('profissão nascendo');
+  });
+
+  /**
    * A garantia que sustenta o resto: `heygen.baixar` casa o vídeo por
    * IGUALDADE EXATA de título. Se a mensagem ensinar um nome e o download
    * procurar outro, a pessoa grava 12 vídeos e a fase expira em 90 min

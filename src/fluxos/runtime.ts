@@ -393,11 +393,31 @@ export class Fluxos {
     const pasta = pastaTextos(repo, fluxo);
     const faltando: string[] = [];
 
+    // Quem GRAVA o avatar decide se a fala precisa ir para o chat.
+    //
+    // A fala vai no chat para ser selecionada e colada no estúdio. Quando o
+    // fluxo tem uma fase que gera o avatar sozinho (`navega-avatar` pelo
+    // navegador, `gerar`/`gerar-creditos` pela API), ninguém cola nada — e aí
+    // 12 blocos de fala só empurram para cima a única coisa que ainda se lê
+    // aqui, que é QUAIS públicos entraram. Pedido do dono em 2026-08-04.
+    //
+    // A leitura do arquivo continua acontecendo nos dois casos: é ela que
+    // detecta roteiro faltando, e esse aviso vale mais quando é automático —
+    // sem ele, um público sem texto só apareceria 90 min depois, no download.
+    const automatico = this.estado.fases(fluxo.id).some(
+      (f) => f.fase === 'navega-avatar' || f.fase === 'gerar' || f.fase === 'gerar-creditos',
+    );
+    const titulos: string[] = [];
+
     for (const alvo of this.alvosDoFluxo(fluxo)) {
       const bruto = this.lerRoteiro(pasta, alvo);
       const fala = bruto === null ? null : primeiraFala(bruto);
       if (!fala) {
         faltando.push(alvo);
+        continue;
+      }
+      if (automatico) {
+        titulos.push(tituloEstudio(fluxo, alvo));
         continue;
       }
       // SEM emoji e sem `(${alvo})`: esta mensagem existe para ser SELECIONADA
@@ -406,6 +426,18 @@ export class Fluxos {
       // Os avisos que ninguém copia (portão, falta, fim) mantêm o emoji — ali
       // ele ajuda a varrer o chat com o olho.
       this.avisar(fluxo, `${tituloEstudio(fluxo, alvo)}\n\n${fala}`);
+    }
+
+    // UMA mensagem com a lista, não uma por público: aqui não há nada a copiar,
+    // então dividir só faria o chat rolar. O título é o mesmo que a fase de
+    // download procura por igualdade exata, e é por ele que se acha o vídeo no
+    // estúdio se algo precisar de conferência.
+    if (automatico && titulos.length) {
+      this.avisar(
+        fluxo,
+        `🎬 ${fluxo.prefixo}#${fluxo.id} — ${titulos.length} avatar(es) a gerar:\n`
+        + titulos.map((t) => `· ${t}`).join('\n'),
+      );
     }
 
     // Falta NUNCA vira lista curta silenciosa: sem esta linha, um público sem
