@@ -80,7 +80,10 @@ describe('flow.json real do promoavatar', () => {
     expect(def.fases.find((f) => f.id === 'gerar')?.opcional).toBe('api');
     const porId = (id: string) => def.fases.find((f) => f.id === id)!;
     expect(porId('texto').pausa_apos).toBe(true);
-    expect(porId('baixar').espera).toEqual({ intervalo: 120, timeout: 5400 });
+    // 40h, não 90 min: a fila de renderização do HeyGen chega a 36h, e ESPERAR
+    // NÃO É ERRO — o teto existe só para o vídeo que nunca foi gerado. Dois
+    // públicos do A#33 morreram no prazo antigo com o vídeo pronto lá.
+    expect(porId('baixar').espera).toEqual({ intervalo: 300, timeout: 144_000 });
     // A fase de reel é FUNÇÃO desde 2026-08-06: o agente só re-derivava nomes
     // que o bot já tinha e disparava um comando. Ver `fila/tarefas/reel.ts` e
     // `docs/custo-por-fase-a19-a29.md`.
@@ -585,7 +588,7 @@ describe('a janela de poll vem do flow.json, não de um default', () => {
     fluxos.aprovar(id);
     const baixar = fila.listar().find((j) => j.tarefa === 'heygen.baixar')!;
     const input = JSON.parse(baixar.input) as { espera: { intervalo: number; timeout: number } };
-    expect(input.espera).toEqual({ intervalo: 120, timeout: 5400 });
+    expect(input.espera).toEqual({ intervalo: 300, timeout: 144_000 });
   });
 
   // Sem o prazo, um vídeo que a pessoa nunca gera é pollado PARA SEMPRE:
