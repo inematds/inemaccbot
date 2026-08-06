@@ -109,6 +109,52 @@ export function montarInput(ctx: ContextoEntrada): string {
     });
   }
 
+  // A rota do ESTÚDIO por script (`| estudio`). Precisa do TÍTULO — que é o
+  // contrato com a fase `baixar` — e da FALA. NÃO precisa de avatar, voz nem
+  // motor: eles vêm do template clonado, e é exatamente por isso que esta rota
+  // existe ao lado do `| creditos`, que monta o vídeo sem template.
+  if (fase.tarefa === 'heygen.estudio') {
+    return JSON.stringify({
+      ...base,
+      titulo: tituloEstudio(fluxo, alvo),
+      texto: falaDoAlvo(ctx.repoDominio, fluxo, alvo),
+      ...(fase.espera ? { espera: fase.espera } : {}),
+    });
+  }
+
+  // A fase de reel como FUNÇÃO (`reel.montar`). Aqui está a razão de ela poder
+  // deixar de ser agente: TODOS os campos abaixo são derivados do fluxo e do
+  // alvo, e o bot já os conhece. O agente recebia só o caminho do avatar e
+  // tinha que RE-DERIVAR `REF` e `público` parseando esse nome — um dado que
+  // este mesmo arquivo tinha gerado em `caminhoAvatar`. Era esse round-trip que
+  // pagava US$ 0,18 por reel e produzia os erros de identificação de público.
+  if (fase.tarefa === 'reel.montar') {
+    const titulo = tituloEstudio(fluxo, alvo);
+    return JSON.stringify({
+      ...base,
+      // `anterior` é o `.mp4` que a fase `baixar` devolveu; o caminho canônico
+      // é o mesmo, e serve de rede quando a fase roda solta.
+      avatar: ctx.anterior || caminhoAvatar(ctx.raizArtefatos, fluxo, alvo),
+      alvo,
+      textos: ctx.repoDominio ? join(pastaTextos(ctx.repoDominio, fluxo), `${alvo}.md`) : '',
+      // Determinística por fluxo × alvo × versão, e NÃO pelo id do job: é isso
+      // que faz o "procure antes de criar" continuar valendo numa retentativa,
+      // que nasce com outro id.
+      saida: `${ctx.raizArtefatos}/reel/${titulo}.mp4`,
+      ws: `${ctx.projetosDir}/output/reels/${titulo}`,
+      script: ctx.repoDominio ? join(ctx.repoDominio, 'scripts', 'montar-reel.py') : '',
+      // O canal do público, resolvido para uma pasta pelo registry de destinos
+      // (§3.2: o domínio diz para QUEM, o bot sabe ONDE). Sem isto o reel fica
+      // no artefato do bot e NÃO chega ao canal — foi o que aconteceu com o
+      // A#30/A#31/A#32 quando a fase virou função: o `destino` só era montado
+      // no branch de skill, porque quem copiava era o agente.
+      ...(dadosAlvo.canal
+        ? { destino: resolverDestino(dadosAlvo.canal, ctx.projetosDir) ?? undefined }
+        : {}),
+      ...(fase.espera ? { espera: fase.espera } : {}),
+    });
+  }
+
   // Skill do catálogo (a última fase do promoclub é a MESMA skill `reel` que o
   // usuário dispara no chat — fluxo é cliente da fila como qualquer um, §3.2).
   if (fase.kind === 'agent' && !fase.prompt_texto) {

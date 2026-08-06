@@ -168,7 +168,7 @@ describe('criarBot', () => {
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
       projetosDir: '/tmp/projetos-inexistente',
-      heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen',
+      heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
     };
     const { bot, transporte } = criarBot(cfg, { aoComando: async () => 'ok' });
     expect(bot).toBeDefined();
@@ -189,7 +189,7 @@ describe('criarBot', () => {
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
       projetosDir: '/tmp/projetos-inexistente',
-      heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen',
+      heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
     };
 
     const linhas: string[] = [];

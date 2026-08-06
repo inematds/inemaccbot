@@ -7,6 +7,8 @@ import { criarHttpGet } from './http.js';
 import { criarFfmpegThumb } from './ffmpeg.js';
 import { criarClienteHeygen, criarHeygenBaixar, criarHeygenGerar, lerChaveHeygen } from './heygen.js';
 import { clienteViaCli, rodarCliReal } from './heygen-cli.js';
+import { criarReelMontar, disparoReal } from './reel.js';
+import { criarHeygenEstudio } from './heygen-estudio.js';
 
 export function criarTarefas(opts: {
   raizMidia: string;
@@ -15,6 +17,10 @@ export function criarTarefas(opts: {
   /** Binário da CLI `heygen` (rota de créditos). CAMINHO, não segredo: o token
    *  OAuth expira e quem o renova é a própria CLI, em `~/.config/heygen`. */
   heygenCli?: string;
+  /** Perfil de Chromium logado no HeyGen (rota `| estudio`). */
+  heygenPerfilChrome?: string;
+  /** `scripts/heygen-estudio.mjs` — o roteiro do estúdio, sem agente. */
+  heygenEstudioScript?: string;
 }): Record<string, Tarefa> {
   const cliente = criarClienteHeygen(
     () => lerChaveHeygen(opts.heygenEnvPath ?? '', (p) => readFileSync(p, 'utf8')),
@@ -33,5 +39,14 @@ export function criarTarefas(opts: {
     'heygen.gerar-creditos': criarHeygenGerar(
       clienteViaCli(cliente, rodarCliReal(opts.heygenCli ?? 'heygen')),
     ),
+    // A fase de reel SEM agente. O contrato com `render.ts` é o mesmo do
+    // caminho de agente (`.pid`/`.log`/`.err`); o que sai é o modelo.
+    'reel.montar': criarReelMontar({ disparar: disparoReal() }),
+    // A rota `| estudio`: mesmo efeito e mesma cobrança do `| navega`, com um
+    // script no lugar do agente. O `navega` fica de pé como caminho de volta.
+    'heygen.estudio': criarHeygenEstudio(cliente, {
+      perfil: opts.heygenPerfilChrome ?? '',
+      script: opts.heygenEstudioScript ?? 'scripts/heygen-estudio.mjs',
+    }),
   };
 }

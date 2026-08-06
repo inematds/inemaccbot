@@ -163,7 +163,8 @@ describe('catálogo', () => {
     const tarefas = criarTarefas({ raizMidia: raiz });
     expect(Object.keys(tarefas).sort())
       .toEqual([
-        'ffmpeg.thumb', 'heygen.baixar', 'heygen.gerar', 'heygen.gerar-creditos', 'http.get',
+        'ffmpeg.thumb', 'heygen.baixar', 'heygen.estudio', 'heygen.gerar',
+        'heygen.gerar-creditos', 'http.get', 'reel.montar',
       ]);
   });
 });

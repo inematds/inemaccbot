@@ -380,7 +380,16 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     fluxos?.reenfileirarOrfas();
 
     // 5. só então: workers e bot.
-    const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({ raizMidia, heygenEnvPath: cfg.heygenEnvPath, heygenCli: cfg.heygenCli });
+    const tarefas = (deps.criarTarefas ?? criarTarefasPadrao)({
+      raizMidia,
+      heygenEnvPath: cfg.heygenEnvPath,
+      heygenCli: cfg.heygenCli,
+      heygenPerfilChrome: cfg.heygenPerfilChrome,
+      // O script mora no REPO DO BOT (é infraestrutura, não conteúdo de
+      // domínio): resolvido a partir do `dist/`, funciona rodando de qualquer
+      // diretório.
+      heygenEstudioScript: join(RAIZ_REPO, 'scripts', 'heygen-estudio.mjs'),
+    });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
     const transporte = transp.transporte;
     /** Drena os avisos de fluxo. Chamado depois do ack, nunca dentro dele. */

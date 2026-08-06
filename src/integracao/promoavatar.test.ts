@@ -81,10 +81,12 @@ describe('flow.json real do promoavatar', () => {
     const porId = (id: string) => def.fases.find((f) => f.id === id)!;
     expect(porId('texto').pausa_apos).toBe(true);
     expect(porId('baixar').espera).toEqual({ intervalo: 120, timeout: 5400 });
-    // A fase usa a tarefa `reelpromo`, não a skill global `reel`: os motores
-    // deste domínio moram no repo do promoavatar, e a skill global tem cópias
-    // próprias e desatualizadas (medido no A#23 — ver reel-promoavatar).
-    expect(porId('reel').tarefa).toBe('reelpromo');
+    // A fase de reel é FUNÇÃO desde 2026-08-06: o agente só re-derivava nomes
+    // que o bot já tinha e disparava um comando. Ver `fila/tarefas/reel.ts` e
+    // `docs/custo-por-fase-a19-a29.md`.
+    expect(porId('reel').kind).toBe('function');
+    expect(porId('reel').tarefa).toBe('reel.montar');
+    expect(porId('reel').espera).toEqual({ intervalo: 120, timeout: 10800 });
   });
 
   it('tem os 12 públicos, cada um com canal e gatilho', () => {
@@ -476,14 +478,16 @@ describe('do assunto ao reel, com o portão no meio', () => {
 
     const reel = fila.listar().find((j) => j.flow_ref === 'A#1/mulheres/reel')!;
     expect(reel.fila).toBe('render');
-    expect(reel.tarefa).toBe('reelpromo');
-    const input = JSON.parse(reel.input) as { entrada: string; destino?: string };
-    expect(input.entrada).toContain(avatar);
-    expect(input.entrada).toContain('capa impacto');
-    // O gatilho do público entra na instrução — é o que vira headline-choque.
-    expect(input.entrada).toContain('autonomia');
-    // Canal por NOME no flow.json; caminho resolvido pelo bot (§3.2).
-    expect(input.destino).toContain('yt-pub-lives4');
+    expect(reel.tarefa).toBe('reel.montar');
+    expect(reel.kind).toBe('function');
+    const input = JSON.parse(reel.input) as Record<string, string>;
+    // O avatar vem da fase anterior; o resto o bot DERIVA — antes ele mandava
+    // só o caminho e o agente re-parseava REF e público desse nome.
+    expect(input.avatar).toBe(avatar);
+    expect(input.alvo).toBe('mulheres');
+    expect(input.textos).toMatch(/textos\/A1\/mulheres\.md$/);
+    expect(input.saida).toMatch(/reel\/A1-mulheres-v1\.mp4$/);
+    expect(input.script).toMatch(/scripts\/montar-reel\.py$/);
     void id;
   });
 
@@ -636,11 +640,13 @@ describe('o título é a chave de idempotência (§2.5)', () => {
  * na definição CONGELADA: o fluxo nasce com a regra e não muda no meio.
  */
 describe('opções do fluxo: legenda e clipe de CTA', () => {
-  it('o flow.json real declara os dois marcadores', () => {
+  it('a fase de reel não carrega mais instrução de agente', () => {
     const reel = def.fases.find((f) => f.id === 'reel')!;
-    // Depois de `congelar` eles ainda são marcadores: quem resolve é a criação.
-    expect(reel.entrega).toContain('{cta}');
-    expect(reel.entrega).toContain('{legenda}');
+    // `entrega` era prosa para o modelo — CTA e legenda agora são decisão do
+    // `montar-reel.py` (CTA: clipe padrão do repo; legenda: não existe, ver
+    // decisão 2 de promoavatar/docs/decisoes-reel.md).
+    expect(reel.entrega).toBeUndefined();
+    expect(reel.perfil).toBeUndefined();
   });
 
   it('existe o clipe de CTA 9:16 no repo de domínio', () => {

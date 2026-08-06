@@ -124,6 +124,11 @@ export const TAREFAS_DE_FASE = new Set([
   'fluxo-agente', 'fluxo-navegador', 'heygen.baixar', 'heygen.gerar',
   // A rota de CRÉDITOS: mesma fase, outra autenticação (OAuth pela CLI).
   'heygen.gerar-creditos',
+  // A rota do ESTÚDIO por script (`| estudio`), irmã do `fluxo-navegador`.
+  'heygen.estudio',
+  // A fase de reel como FUNÇÃO: o agente só resolvia nomes e disparava um
+  // comando. Ver `fila/tarefas/reel.ts` e `docs/custo-por-fase-a19-a29.md`.
+  'reel.montar',
 ]);
 
 export function validarFlow(dados: unknown, raiz: string, skills: string[] = []): FlowDef {

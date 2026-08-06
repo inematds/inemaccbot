@@ -90,7 +90,9 @@ export function ajudaDoFluxo(
     ...(def.fases.some((f) => f.opcional === 'creditos')
       ? ['  | creditos   o BOT gera (créditos da assinatura)'] : []),
     ...(def.fases.some((f) => f.opcional === 'navega')
-      ? ['  | navega     o BOT gera no estúdio, clonando o template (créditos)'] : []),
+      ? ['  | navega     o BOT gera no estúdio pelo AGENTE, clonando o template (créditos)'] : []),
+    ...(def.fases.some((f) => f.opcional === 'estudio')
+      ? ['  | estudio    o BOT gera no estúdio por SCRIPT, clonando o template (créditos)'] : []),
     ...(def.fases.some((f) => f.pausa_apos)
       ? ['  | sem-portao  não para para você aprovar'] : []),
     '',
@@ -172,6 +174,17 @@ function resolverOpcoes(def: FlowDef, repo: string, opcoes: OpcoesDoFluxo): Flow
       const { pausa_apos: _, ...semPausa } = f;
       return semPausa;
     });
+  // `| legenda` só existia como PROSA para o agente. Com a fase de reel em
+  // `kind: function` quem monta é o `montar-reel.py`, e ele não legenda (é a
+  // decisão 2 de `promoavatar/docs/decisoes-reel.md`: legenda vem queimada do
+  // estúdio). Aceitar a opção em silêncio entregaria reel sem legenda dizendo
+  // que legendou — recusar na criação é o comportamento honesto.
+  if (legenda && fases.some((f) => f.tarefa === 'reel.montar')) {
+    throw new Error(
+      '`| legenda` não vale neste fluxo: a fase de reel é uma função e o pipeline '
+      + 'não gera legenda (a do estúdio já vem queimada no avatar).',
+    );
+  }
   return { ...def, fases };
 }
 
@@ -214,6 +227,11 @@ interface ArgumentoFluxo {
    *  estúdio (`Edit as New`). Também sai dos créditos da assinatura, mas pelo
    *  estúdio e não pela CLI. Exclusiva com `api` e `creditos`. */
   navega: boolean;
+  /** A fase de avatar é feita pelo BOT no estúdio, por um SCRIPT de navegador
+   *  (Playwright), não por um agente. Mesmo efeito e mesma cobrança do
+   *  `navega` — clona o template, herda cenário/avatar/voz/motor —, e o
+   *  `navega` fica de pé ao lado como caminho de volta se o DOM mudar. */
+  estudio: boolean;
   /** Tira o portão humano. Default NÃO: o fluxo continua parando. */
   semPortao: boolean;
 }
@@ -223,12 +241,14 @@ interface ArgumentoFluxo {
  * acrescentar um campo. */
 const CAMPOS = [
   'alvos', 'alvo', 'versao', 'versão', 'de', 'legenda',
-  'api', 'creditos', 'créditos', 'navega', 'sem-portao', 'sem-portão',
+  'api', 'creditos', 'créditos', 'navega', 'estudio', 'estúdio',
+  'sem-portao', 'sem-portão',
 ] as const;
 
 /** Campos que são BANDEIRA: existir já é ligar, valor é opcional. */
 const BANDEIRAS = new Set([
-  'legenda', 'api', 'creditos', 'créditos', 'navega', 'sem-portao', 'sem-portão',
+  'legenda', 'api', 'creditos', 'créditos', 'navega', 'estudio', 'estúdio',
+  'sem-portao', 'sem-portão',
 ]);
 
 /** `--alvo=x`, `--alvos=a,b`, `--sombra`. Repetível, e em qualquer posição. */
@@ -263,6 +283,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   let api = false;
   let creditos = false;
   let navega = false;
+  let estudio = false;
   let semPortao = false;
   let erro: string | undefined;
 
@@ -285,6 +306,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     if (chave === 'api') { api = ligado; return; }
     if (chave === 'creditos' || chave === 'créditos') { creditos = ligado; return; }
     if (chave === 'navega') { navega = ligado; return; }
+    if (chave === 'estudio' || chave === 'estúdio') { estudio = ligado; return; }
     if (chave === 'sem-portao' || chave === 'sem-portão') { semPortao = ligado; return; }
     const n = Number(valor);
     if (!Number.isInteger(n) || n <= 0) { erro ??= `versão inválida: "${valor}"`; return; }
@@ -344,6 +366,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     ['api', api, 'carteira em US$'],
     ['creditos', creditos, 'créditos da assinatura, pela CLI'],
     ['navega', navega, 'créditos da assinatura, pelo estúdio no navegador'],
+    ['estudio', estudio, 'créditos da assinatura, pelo estúdio por script'],
   ] as const;
   const pedidas = rotas.filter(([, ligada]) => ligada);
   if (pedidas.length > 1) {
@@ -355,7 +378,9 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     };
   }
 
-  return { assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, semPortao };
+  return {
+    assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, estudio, semPortao,
+  };
 }
 
 export function criarFluxo(
@@ -365,7 +390,9 @@ export function criarFluxo(
   if ('erro' in lido) return lido.erro === 'sem-assunto'
     ? `faltou o assunto — ex.: ${registrado.exemplo}`
     : lido.erro;
-  const { assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, semPortao } = lido;
+  const {
+    assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, estudio, semPortao,
+  } = lido;
 
   // A definição é lida do disco AQUI e congelada na criação. Um `flow.json`
   // inválido é recusado agora, com o usuário na frente, e não no primeiro job.
@@ -386,7 +413,9 @@ export function criarFluxo(
   const pedido = {
     tipo: registrado.command, definicao, hash, assunto, alvos, versao, de,
     chatId: deps.chatId,
-    opcoes: { api, creditos, navega, semPortao },
+    // A chave é o NOME da opção no `flow.json` (`opcional: "estudio"`): quem
+    // filtra é `definicaoEfetiva`, comparando por essa string.
+    opcoes: { api, creditos, navega, estudio, semPortao },
   };
 
   try {

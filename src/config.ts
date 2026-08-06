@@ -17,6 +17,9 @@ export interface Config {
   /** Binário da CLI `heygen` — a rota de créditos (OAuth). CAMINHO, não
    *  segredo: o token expira e quem renova é a própria CLI. */
   heygenCli: string;
+  /** Perfil de Chromium JÁ LOGADO no HeyGen, usado pela rota `| estudio`.
+   *  CAMINHO, não segredo — os cookies moram lá dentro e não no repo. */
+  heygenPerfilChrome: string;
   motorPadrao: string;
   modeloPadrao: string;
   esforcoPadrao: string;
@@ -60,6 +63,8 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     // Default derivado do HOME: quem instala não precisa declarar o óbvio, e
     // um destino que não existe já é recusado com a lista dos que existem.
     projetosDir: env.PROJETOS_DIR?.trim() || join(env.HOME ?? homedir(), 'projetos'),
+    heygenPerfilChrome: env.HEYGEN_PERFIL_CHROME?.trim()
+      || join(env.HOME ?? homedir(), '.cache', 'inemaccbot', 'perfil-heygen'),
     chatsPermitidos,
     heygenEnvPath: env.HEYGEN_ENV_PATH?.trim()
       || join(env.HOME ?? homedir(), 'projetos', 'openpcbotv2', '.env'),

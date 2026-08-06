@@ -115,7 +115,8 @@ campos próprios de cada skill saem em `/ajuda <skill>`.
 | opção | padrão | |
 |---|---|---|
 | `--alvo=x` (repetível) ou `\| alvos=a,b` | todos | só esses públicos |
-| `\| legenda` | **desligada** | legenda no reel, caixa encostada na borda inferior |
+| `\| legenda` | **desligada** | legenda no reel, caixa encostada na borda inferior. **Recusada** quando a fase de reel é `kind: function` — ver "A fase de reel deixou de ser agente" |
+| `\| api` · `\| creditos` · `\| estudio` · `\| navega` | nenhuma | quem gera o avatar, e de que bolso sai. **Só uma por fluxo.** Sem nenhuma, quem grava no estúdio é você. Ver "As SEIS rotas de avatar" |
 | `\| versao=N` | 1 | muda o `-vN` do título do estúdio |
 | `\| de=<fase>` | — | começa no meio (você já fez texto e/ou avatar) |
 | `\| sombra` | — | mostra o plano, não enfileira nada |
@@ -190,7 +191,7 @@ seletivo, retomada e definição congelada.
 O domínio diz para QUEM (canal por nome, `lives21`); o bot sabe ONDE (o caminho no disco).
 Nunca ponha caminho no `flow.json`.
 
-#### As CINCO rotas de avatar, e de que bolso cada uma sai
+#### As SEIS rotas de avatar, e de que bolso cada uma sai
 
 Quem decide de onde sai o custo **não é um parâmetro no corpo do POST — é a
 autenticação**. A doc da HeyGen é explícita: *"When you authenticate with an API
@@ -201,10 +202,46 @@ the user's web account and draws on subscription credits"*.
 | rota | quem faz o trabalho | custo | estado |
 |---|---|---|---|
 | **normal** (padrão) | **você**, no estúdio | **ilimitado nesta conta** (ver ressalva) · seu tempo: 36 colagens | **em produção** |
-| **`\| creditos`** | o bot, pela CLI autenticada por OAuth | **~1 crédito por vídeo** | **implementado**; rota provada à mão em 2026-08-02, ainda não em fluxo |
+| **`\| creditos`** | o bot, pela CLI autenticada por OAuth | **~1 crédito por vídeo** | **implementado**; rota provada à mão em 2026-08-02, **ainda não em fluxo** |
 | **`\| api`** | o bot, pela chave de API | **~US$ 0,73/vídeo** (Avatar III) | implementado, **nunca fez chamada real** |
-| **navegação** (`fluxo-navegador`) | um agente dirigindo o estúdio, montando a cena do zero | igual à normal, **mais tokens de LLM** | escrito no promoclub, **nunca rodou** |
-| **`\| navega`** | um agente CLONANDO um template no estúdio (`Edit as New`) | igual à normal, **menos tokens que a de navegação** | implementado no promoavatar 2026-08-03, **nunca rodou ponta a ponta** |
+| **`\| estudio`** | um SCRIPT (Playwright) clonando o template no estúdio | igual à normal, **zero token de LLM** | implementado 2026-08-06; o script gerou vídeo ponta a ponta no teste, **ainda não rodou dentro de um fluxo** |
+| **`\| navega`** | um AGENTE clonando o template no estúdio (`Edit as New`) | igual à normal, **+ ~US$ 1,25 de LLM por público** | **em produção** — 112 jobs, A#19 a A#29 |
+| **navegação** (`fluxo-navegador` montando cena do zero) | um agente escolhendo avatar, voz, cenário | igual à normal, **mais tokens ainda** | escrito no promoclub, **nunca rodou** |
+
+**`| estudio` e `| navega` fazem a mesma coisa e cobram do mesmo lugar** — clonam
+o `TEMPLATE-AVATAR`, herdam cenário, avatar, voz e motor. A única diferença é
+quem pilota o navegador: um script determinístico ou um agente. O `navega` fica
+de pé de propósito, como caminho de volta se o DOM do HeyGen mudar e o script
+quebrar. **Pedir duas rotas é recusado na criação** — juntas gerariam o mesmo
+vídeo duas vezes, cada uma cobrando de um bolso.
+
+O que o script resolve e o prompt não resolvia (medido em 2026-08-06, ao portar):
+
+1. **A busca por `TEMPLATE-AVATAR` devolve três** (`-9`, `-16` e o certo). O
+   prompt manda o agente PARAR nesse caso, porque ele não tem como decidir qual
+   é o original. O script casa por **igualdade exata**.
+2. **"Gerar" não gera.** Abre um modal de confirmação (resolução, formato, fps);
+   quem dispara é o botão **"Enviar"**. Esse passo **não estava no prompt** — um
+   agente que declarasse "gerei" ali estaria de boa-fé, e a fase `baixar`
+   esperaria 1h30 por um vídeo que ficou `draft` para sempre.
+3. **Acento sem receita.** `type()` pelo CDP escreve certo no tiptap: some toda
+   a parte de `xclip`/`xdotool`/`ctrl+2`/`visibilityState` — a maior seção do
+   prompt e a "causa nº 1 de falha silenciosa".
+4. **A interface está em pt-BR** ("Editar como Novo", "Vídeo sem título",
+   "Gerar", "Enviar"), e o prompt fala em inglês. O agente acertava por
+   interpretação; o script acerta por seletor.
+
+O script é `scripts/heygen-estudio.mjs` e a tarefa é `heygen.estudio`
+(`src/fila/tarefas/heygen-estudio.ts`). Ele **retoma de um rascunho homônimo**
+em vez de clonar de novo, e a tarefa **não gera duas vezes**: se o título já
+está no estúdio em qualquer status que não `draft`, a tentativa anterior já
+enviou e já cobrou.
+
+**O ponto frágil da rota `| estudio` é a sessão.** Ela usa um perfil de Chromium
+já logado no HeyGen (`HEYGEN_PERFIL_CHROME`, default
+`~/.cache/inemaccbot/perfil-heygen`) — uma cópia dos cookies do Chromium do
+`:99`. Quando a sessão expirar, a fase falha com *"a sessão do HeyGen não está
+logada neste perfil"* e o conserto é recopiar o perfil.
 
 A `| navega` é a rota de navegação **sem montar cena**: em vez de escolher
 avatar, voz, cenário e proporção a cada vídeo, ela clona um projeto-template do
@@ -280,6 +317,73 @@ cobrando dos dois bolsos. O motor é do domínio (`"engine": "avatar_iii"` no
 Detalhe completo, com as travas de idempotência e de saldo:
 [`docs/fase-avatar-via-api.md`](docs/fase-avatar-via-api.md).
 
+#### A fase de reel deixou de ser agente (2026-08-06)
+
+No promoavatar a última fase (`reel`) era `kind: agent`: um prompt de 86 linhas
+mandava o modelo (1) extrair `REF` e `público` do NOME do arquivo do avatar,
+(2) escolher um slug de workspace, (3) conferir se o `.md` do público existia e
+(4) montar uma linha de comando. **Nada disso é decisão** — o bot já conhecia os
+quatro dados; foi ele que gerou aquele nome (`entrada-fase.ts:caminhoAvatar`).
+Metade do prompt existia só para o modelo não errar o parse de volta.
+
+Hoje é `kind: function` / `reel.montar`. O contrato com o resto do sistema não
+mudou: o pipeline continua indo para segundo plano destacado gravando
+`.pid`/`.log`/`.err`, e quem vigia continua sendo `render.ts`.
+
+O que isso custava, medido em
+[`docs/custo-por-fase-a19-a29.md`](docs/custo-por-fase-a19-a29.md): **US$ 0,18 e
+~180k de cache_read por reel, para produzir ~1k de saída**.
+
+**O ganho é custo e superfície de falha, não velocidade.** Medido nos primeiros
+reels do A#30 pelo caminho novo: mediana **180s**, contra **220s** pelo caminho
+de agente — praticamente o mesmo, e era o esperado, já que o que saiu foi
+conversa, não processamento. (A primeira leitura desses números deu "6× mais
+lento" e estava errada: `jobs.iniciado_em` não é reescrito na reclamação, então
+a subtração incluía a espera na fila. Ver a ressalva de método no doc.) E três defeitos de
+produção saíram daí, nenhum do `montar-reel.py`:
+
+- **A#23** — o agente usou a skill global em vez da do projeto e escreveu o HTML
+  à mão (`template: None`);
+- **A#25** — leu o `{canal}` como se fosse o público e foi procurar
+  `textos/A25/lives2.md`, que não existe;
+- **A#29** — rodando em `haiku`, escreveu um redirecionamento de shell que o
+  portão de permissão recusou (job morto em 58s), e o job seguinte ficou **1h47
+  sem produzir uma linha**. Em `sonnet` o mesmo job leva ~3,5 min. Registrado em
+  `promoavatar/docs/decisoes-reel.md` (decisão 4).
+
+**A opção `| legenda` é recusada quando a fase de reel é função.** Ela só
+existia como prosa para o agente: o `montar-reel.py` não legenda, porque a
+legenda vem queimada do estúdio (é a decisão 2 do `decisoes-reel.md`). Aceitar
+em silêncio entregaria reel sem legenda dizendo que legendou.
+
+#### Onde o custo de um fluxo realmente está
+
+Medição de 11 fluxos (A#19 a A#29, 245 jobs), em
+[`docs/custo-por-fase-a19-a29.md`](docs/custo-por-fase-a19-a29.md). No recorte
+de cobertura 100% (A#26 e A#27, pipeline novo, todos os jobs casados):
+
+| fase | US$ | participação |
+|---|---:|---:|
+| `navega-avatar` | 33,05 | **84,6%** |
+| `reel` | 4,29 | 11,0% |
+| `texto` | 1,74 | 4,5% |
+| `baixar` | 0,00 | 0% (`kind: function`) |
+
+Duas conclusões que mudaram o rumo do projeto:
+
+- **A navegação é o custo.** Ela nunca mudou em 11 fluxos (cache_read entre
+  3.790k e 5.157k, saída entre 6,3k e 8,0k, sempre) enquanto todo o resto caía.
+  É por isso que a rota `| estudio` existe.
+- **A fila pesa mais que o agente no relógio de parede.** No A#22 um reel
+  esperou 9.293s (2h35) na fila para rodar 938s. Com `render` serializado em 1 e
+  12 públicos por fluxo, quem quiser encurtar o fluxo mexe na concorrência, não
+  no prompt.
+
+Ressalva de método que vale para qualquer número desse doc: **o bot não registra
+token**. Tempo sai do banco (confiável); token sai dos logs de sessão do Claude
+Code, casados job a job. É arqueologia, e o doc explica o casamento e o que ele
+não prova.
+
 #### `heygen.baixar`: **quem decide a legenda é o estúdio**
 
 O `video_status.get` devolve `video_url` (limpo), `video_url_caption` (com a
@@ -324,6 +428,8 @@ No chat: `/ajuda <nome>` para qualquer um, ou `/<fluxo> help`.
 
 - **Comece por aqui se está retomando o projeto:** `docs/HANDOFF.md`
 - Avatar pela API (`| api`) e portão opcional (`| sem-portao`): `docs/fase-avatar-via-api.md`
+- **Custo, tempo e token por FASE (A#19–A#29):** [`docs/custo-por-fase-a19-a29.md`](docs/custo-por-fase-a19-a29.md) — é a medição que motivou a fase de reel virar função e a rota `| estudio`
+- Rota `| navega` (o agente no estúdio), que a `| estudio` substitui sem apagar: [`docs/rota-navega-avatar.md`](docs/rota-navega-avatar.md)
 - **Conversas abertas (retomar):** `docs/conversas-abertas.md` — layout/templates do reel, imagens, e o custo em tokens da fase de navegação
 - Arquitetura: `docs/superpowers/specs/2026-07-30-inemaccbot-design.md`
 - Perfil de execução (motor/modelo/esforço): `docs/perfil-de-execucao.md`
@@ -387,6 +493,7 @@ sem uma delas o boot falha alto e cedo, antes de subir qualquer worker:
 | `MOTOR_PADRAO` | não | `claude` | fallback de motor pro perfil de execução (etapa 2) |
 | `MODELO_PADRAO` | não | `sonnet` | idem, modelo |
 | `ESFORCO_PADRAO` | não | `low` | idem, esforço |
+| `HEYGEN_PERFIL_CHROME` | não | `~/.cache/inemaccbot/perfil-heygen` | perfil de Chromium **já logado no HeyGen**, usado pela rota `\| estudio`. Caminho, não segredo — os cookies moram lá dentro, fora do repo |
 
 `.env` fica fora do git, modo 600. O parser (`lerEnv` em `src/index.ts`) é minimalista de
 propósito (`CHAVE=valor`, `#` comenta, aspas opcionais) — não é `dotenv`, é o suficiente pro boot.
@@ -445,16 +552,27 @@ sem tarefa — assim a etapa 2 acrescenta tarefas sem mexer no boot:
 
 | fila | concorrência | tarefas nesta etapa |
 |---|---|---|
-| `io` | 10 | `http.get` |
+| `io` | 10 | `http.get`, `heygen.baixar`, `heygen.gerar`, `heygen.gerar-creditos` |
 | `cpu` | 1 | `ffmpeg.thumb` |
-| `texto` | 2 | nenhuma — ociosa |
-| `render` | 1 | nenhuma — ociosa |
-| `navegador` | 1 | nenhuma — ociosa |
+| `texto` | 2 | `fluxo-agente` (a fase de texto dos fluxos) |
+| `render` | 1 | `reel.montar` — **1 por vez de propósito**: é a GPU |
+| `navegador` | 1 | `heygen.estudio`, `fluxo-navegador` |
 
-## As duas tarefas `function`
+## As tarefas `function`
 
 O catálogo (`src/fila/tarefas/index.ts`) é **fechado**: o campo `tarefa` de um job só pode ser uma
-das chaves aqui, nunca texto livre do usuário.
+das chaves aqui, nunca texto livre do usuário. São sete: `http.get`, `ffmpeg.thumb`,
+`heygen.baixar`, `heygen.gerar`, `heygen.gerar-creditos`, `heygen.estudio` e `reel.montar`.
+
+- **`heygen.estudio`** (`src/fila/tarefas/heygen-estudio.ts`) — a rota `| estudio`: roda
+  `scripts/heygen-estudio.mjs` (Playwright headless) e devolve o TÍTULO. A fala vai para um
+  **arquivo**, nunca para a linha de comando — texto acentuado dentro de aspas de shell é a mesma
+  classe de bug que a receita antiga de `xclip` existia para evitar. O navegador é filho do
+  serviço e morre com `ctx.sinal`: ao contrário do render, deixar órfão aqui não economiza nada,
+  porque a retomada continua do rascunho.
+- **`reel.montar`** (`src/fila/tarefas/reel.ts`) — a fase de reel **sem agente** (ver a seção
+  abaixo). Dispara o `montar-reel.py` destacado e mantém o contrato de `render.ts`
+  (`.pid`/`.log`/`.err`).
 
 - **`http.get`** (`src/fila/tarefas/http.ts`) — faz um GET simples. Recusa qualquer esquema que não
   seja `http:`/`https:` (nada de `file://` virando leitura de disco a partir de uma URL do usuário),
