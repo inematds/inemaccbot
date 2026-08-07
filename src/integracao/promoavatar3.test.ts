@@ -1,14 +1,15 @@
-// O promoavatar3 usa o MOTOR do promoavatar, mas o `flow.json` DELE.
+// O promoavatar3 é AUTÔNOMO: motor, templates e skill próprios.
 //
-// Existe porque a alternativa — copiar `scripts/` e `templates/` para o outro
-// domínio — é o defeito que a skill `reel-promoavatar` foi criada para impedir:
-// no A#23 o agente rodou a cópia velha de `preparar.py` da skill global e saiu
-// `template: None`, com o HTML escrito à mão. Cópia de motor envelhece.
+// A primeira tentativa foi compartilhar o motor do promoavatar (`motor_repo`),
+// para não duplicar código que envelhece — foi cópia velha de `preparar.py` que
+// produziu o `template: None` do A#23. A decisão mudou quando o dono declarou o
+// promoavatar **congelado** (2026-08-06): "promoavatar3 não é evolução, é um
+// sistema diferente, e os dois podem evoluir". Com a origem parada, a cópia não
+// diverge — ela vira a única versão viva, e cada domínio ajusta a sua.
 //
-// A armadilha que estes testes fixam: `preparar.py` deriva o repo da pasta-pai
-// do PRÓPRIO script (`REPO = AQUI.parent`) quando `--flow` não vem. Sem o
-// `--flow` do domínio, um job do promoavatar3 leria os templates e o layout
-// padrão do promoavatar.
+// O que estes testes protegem: que o promoavatar3 não volte a depender do outro
+// repo em silêncio. `preparar.py` deriva o repo da pasta-pai do PRÓPRIO script,
+// então um `script` apontando para fora levaria o layout do domínio errado.
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -36,27 +37,33 @@ function entrada(faseId: string, alvo: string): Record<string, string> {
 }
 
 describe('promoavatar3: motor compartilhado, domínio próprio', () => {
-  it('a fase de reel é função e aponta para o motor do promoavatar', () => {
+  it('a fase de reel é função e usa o motor DESTE repo', () => {
     const reel = def.fases.find((f) => f.id === 'reel')!;
     expect(reel.kind).toBe('function');
     expect(reel.tarefa).toBe('reel.montar');
-    expect(def.motor_repo).toBe('promoavatar');
+    // Sem `motor_repo`: o promoavatar está congelado e este projeto é autônomo.
+    expect(def.motor_repo).toBeUndefined();
 
     const i = entrada('reel', Object.keys(def.alvos)[0]!);
-    expect(i.script).toBe(join(PROJETOS, 'promoavatar', 'scripts', 'montar-reel.py'));
-    // ...e o flow.json é o DELE: é de onde saem `template` e `templates_dir`.
+    expect(i.script).toBe(join(REPO_DOMINIO, 'scripts', 'montar-reel.py'));
     expect(i.flow).toBe(join(REPO_DOMINIO, 'flow.json'));
     expect(i.textos).toContain('promoavatar3/textos/C16/');
+    // A garantia que importa: NADA aponta para o outro repo.
+    expect(JSON.stringify(i)).not.toContain('projetos/promoavatar/');
   });
 
-  it('o motor existe no disco, com o `--flow` que o bot vai passar', () => {
-    expect(existsSync(join(PROJETOS, 'promoavatar', 'scripts', 'montar-reel.py'))).toBe(true);
-    expect(existsSync(join(REPO_DOMINIO, 'flow.json'))).toBe(true);
+  it('o motor e os layouts existem NESTE repo', () => {
+    for (const f of ['scripts/montar-reel.py', 'scripts/preparar.py', 'scripts/montar.py',
+      'scripts/qc-frames.py', 'scripts/revisor.py', 'scripts/gen-imagem.py',
+      'templates/empilhado-capa.json', 'cta/cta-9x16.mp4', 'flow.json']) {
+      expect(existsSync(join(REPO_DOMINIO, f)), `falta ${f}`).toBe(true);
+    }
   });
 
-  it('declara o layout, senão o `preparar.py` não resolve template nenhum', () => {
+  it('declara o layout, e o arquivo dele está aqui', () => {
     expect(def.template).toBeTruthy();
     expect(def.templates_dir).toBeTruthy();
+    expect(existsSync(join(REPO_DOMINIO, def.templates_dir!, `${def.template}.json`))).toBe(true);
   });
 
   it('a rota `| estudio` existe e é exclusiva com as outras', () => {
