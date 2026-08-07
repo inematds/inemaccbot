@@ -41,8 +41,12 @@ export interface EntradaReel {
   saida: string;
   /** Workspace de trabalho do pipeline (imagens, cortes, QC). */
   ws: string;
-  /** `montar-reel.py` do repo de domínio. */
+  /** `montar-reel.py` — pode ser o motor de OUTRO repo (um motor, N domínios). */
   script: string;
+  /** `flow.json` DO DOMÍNIO do job. Sem ele o `preparar.py` deriva o repo da
+   *  pasta-pai do script, e um job do promoavatar3 leria o `flow.json` do
+   *  promoavatar — templates e padrão de layout errados. */
+  flow?: string;
   /** `<yt-pub-livesN>/imports/videos` — a pasta que o projeto do canal importa.
    *  Ausente quando o público não declara canal. */
   destino?: string;
@@ -72,6 +76,7 @@ export function montarComando(e: EntradaReel): string {
     '--alvo', e.alvo,
     '--textos', q(e.textos),
     '--saida', q(e.saida),
+    ...(e.flow ? ['--flow', q(e.flow)] : []),
   ].join(' ');
   return `echo $$ > ${q(`${e.saida}.pid`)}; ${py} || touch ${q(`${e.saida}.err`)}`;
 }

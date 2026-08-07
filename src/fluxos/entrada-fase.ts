@@ -142,7 +142,14 @@ export function montarInput(ctx: ContextoEntrada): string {
       // que nasce com outro id.
       saida: `${ctx.raizArtefatos}/reel/${titulo}.mp4`,
       ws: `${ctx.projetosDir}/output/reels/${titulo}`,
-      script: ctx.repoDominio ? join(ctx.repoDominio, 'scripts', 'montar-reel.py') : '',
+      // O MOTOR pode morar em outro repo (`motor_repo` no flow.json): o
+      // promoavatar3 usa os scripts do promoavatar em vez de manter uma cópia
+      // que diverge — foi cópia velha de `preparar.py` que produziu o
+      // `template: None` do A#23.
+      script: motorDoReel(ctx),
+      // ...e por isso o `flow.json` do DOMÍNIO viaja junto: é dele que saem os
+      // templates e o layout padrão, não do repo onde o script mora.
+      ...(ctx.repoDominio ? { flow: join(ctx.repoDominio, 'flow.json') } : {}),
       // O canal do público, resolvido para uma pasta pelo registry de destinos
       // (§3.2: o domínio diz para QUEM, o bot sabe ONDE). Sem isto o reel fica
       // no artefato do bot e NÃO chega ao canal — foi o que aconteceu com o
@@ -199,6 +206,20 @@ export function montarInput(ctx: ContextoEntrada): string {
  * `entrega` da fase, com `{gatilho}`/`{alvo}` resolvidos) — não daqui: a
  * headline de capa é decisão de quem entende do público, não do bot.
  */
+/**
+ * Onde está o `montar-reel.py` deste domínio.
+ *
+ * `motor_repo` no `flow.json` aponta para o repo que HOSPEDA o motor; sem ele,
+ * o motor é o do próprio domínio. Um motor para N domínios evita a cópia que
+ * envelhece — a skill `reel-promoavatar` existe por causa de uma.
+ */
+function motorDoReel(ctx: ContextoEntrada): string {
+  const repo = ctx.def.motor_repo
+    ? join(ctx.projetosDir, ctx.def.motor_repo)
+    : ctx.repoDominio;
+  return repo ? join(repo, 'scripts', 'montar-reel.py') : '';
+}
+
 function instrucaoExtra(
   fase: FaseDef,
   dadosAlvo: Record<string, string | undefined>,

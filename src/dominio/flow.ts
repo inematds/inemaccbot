@@ -92,6 +92,25 @@ export interface FlowDef {
   /** Motor da geração (`avatar_iii` | `avatar_iv` | `avatar_v`). Sem ele, a
    *  tarefa usa o barato — ver `MOTOR_PADRAO`. */
   engine?: string;
+  /**
+   * Repo (nome da pasta em `projetosDir`) que HOSPEDA o `montar-reel.py`, para
+   * um domínio usar o motor de outro em vez de manter uma cópia.
+   *
+   * A cópia é a armadilha conhecida: no A#23 o agente rodou o `preparar.py`
+   * VELHO da skill global e saiu `template: None`. Um motor, N domínios — o
+   * `flow.json` de cada um viaja junto (`--flow`), então templates e layout
+   * continuam sendo do domínio.
+   */
+  motor_repo?: string;
+  /** Pasta dos layouts do reel, relativa ao repo do domínio (default
+   *  `templates`) — e o layout PADRÃO quando o texto não indica outro.
+   *
+   *  O `preparar.py` lê os dois do `flow.json` no disco, mas eles são
+   *  declarados aqui porque `congelar()` reconstrói a definição a partir do que
+   *  o validador devolve: campo não declarado é campo descartado na definição
+   *  congelada, e um `/status` ou um diff de fluxo deixariam de mostrá-lo. */
+  templates_dir?: string;
+  template?: string;
 }
 
 const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
@@ -148,6 +167,15 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
   const avatar_id = typeof d.avatar_id === 'string' ? d.avatar_id.trim() : undefined;
   const voice_id = typeof d.voice_id === 'string' ? d.voice_id.trim() : undefined;
   const engine = typeof d.engine === 'string' ? d.engine.trim() : undefined;
+  // Nome de PASTA, não caminho: o bot resolve contra `projetosDir`, como faz
+  // com os canais. `flow.json` com caminho absoluto envelhece na primeira vez
+  // que alguém move o repo.
+  const motor_repo = typeof d.motor_repo === 'string' ? d.motor_repo.trim() : undefined;
+  const templates_dir = typeof d.templates_dir === 'string' ? d.templates_dir.trim() : undefined;
+  const template = typeof d.template === 'string' ? d.template.trim() : undefined;
+  if (motor_repo && !/^[a-z0-9][a-z0-9._-]*$/.test(motor_repo)) {
+    erro('motor_repo', `"${motor_repo}" — nome de pasta em projetosDir, não caminho`);
+  }
 
   const versao_def = d.versao_def;
   if (typeof versao_def !== 'number' || !Number.isInteger(versao_def) || versao_def <= 0) {
@@ -286,6 +314,9 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
     ...(avatar_id ? { avatar_id } : {}),
     ...(voice_id ? { voice_id } : {}),
     ...(engine ? { engine } : {}),
+    ...(motor_repo ? { motor_repo } : {}),
+    ...(templates_dir ? { templates_dir } : {}),
+    ...(template ? { template } : {}),
   };
 }
 
