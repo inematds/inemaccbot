@@ -1,0 +1,150 @@
+// Gera o vídeo de avatar no estúdio do HeyGen por SCRIPT — sem agente.
+//
+//   node scripts/heygen-estudio.mjs --titulo A32-jovens-v1 \
+//     --fala-arquivo /tmp/fala.txt --perfil <dir> [--template TEMPLATE-AVATAR] [--seco]
+//
+// Faz o mesmo caminho que o prompt `fase-navega-avatar.md` descreve ao agente:
+// busca o template, `Editar como Novo`, renomeia ANTES de tudo, troca a fala,
+// `Gerar` e confirma no modal. As quatro diferenças que só um script consegue:
+//
+//  1. **Igualdade exata no nome do template.** A busca traz `TEMPLATE-AVATAR9`
+//     e `-16` junto; o prompt manda o agente PARAR nesse caso porque ele não
+//     tem como decidir. Aqui a decisão é `===`.
+//  2. **O modal.** "Gerar" só ABRE a confirmação (resolução/formato/fps); quem
+//     dispara é o "Enviar". Sem ele o vídeo fica `draft` para sempre e a fase
+//     `baixar` espera 1h30 por um vídeo que nunca vem. Medido em 2026-08-06.
+//  3. **Acento.** `type()` passa pelo CDP e escreve certo no tiptap — some toda
+//     a receita de xclip/xdotool/ctrl+2/visibilityState, que era a maior seção
+//     do prompt e a causa nº 1 de falha silenciosa.
+//  4. **A fala vem de ARQUIVO**, nunca de argumento: texto acentuado dentro de
+//     aspas de shell é a mesma classe de bug que a receita antiga tentava
+//     evitar.
+//
+// Sai 0 com `RESULT: <titulo>` na última linha; 3 com `ERRO: <motivo>`.
+import { readFileSync } from 'node:fs';
+import { chromium } from 'playwright';
+
+const arg = (n, d) => {
+  const i = process.argv.indexOf(`--${n}`);
+  return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : d;
+};
+const TITULO = arg('titulo');
+const PERFIL = arg('perfil');
+const TEMPLATE = arg('template', 'TEMPLATE-AVATAR');
+const SECO = process.argv.includes('--seco');   // para tudo antes do "Enviar"
+const FALA = (() => {
+  const f = arg('fala-arquivo');
+  return f ? readFileSync(f, 'utf8').trim() : '';
+})();
+
+if (!TITULO || !PERFIL || !FALA) {
+  console.error('ERRO: uso: --titulo <t> --perfil <dir> --fala-arquivo <arq> [--template <t>] [--seco]');
+  process.exit(3);
+}
+
+const passo = (m) => console.log(`${new Date().toISOString().slice(11, 19)} ${m}`);
+let ctx;
+const morrer = async (m) => {
+  await ctx?.close().catch(() => {});
+  console.error(`ERRO: ${m}`);
+  process.exit(3);
+};
+
+ctx = await chromium.launchPersistentContext(PERFIL, {
+  headless: true,
+  // `--password-store=basic`: é assim que o Chromium do snap cifra os cookies.
+  // Sem isto a sessão do HeyGen parece deslogada.
+  args: ['--password-store=basic', '--no-first-run', '--no-default-browser-check'],
+  viewport: { width: 1440, height: 900 },
+});
+const pg = ctx.pages()[0] ?? await ctx.newPage();
+pg.setDefaultTimeout(45_000);
+const BUSCA = 'input[placeholder*="esquisar" i], input[placeholder*="earch" i]';
+const CAMPO_TITULO = 'input[placeholder*="sem título" i], input[placeholder*="Untitled" i]';
+
+try {
+  passo('abrindo Projetos');
+  await pg.goto('https://app.heygen.com/projects', { waitUntil: 'domcontentloaded', timeout: 90_000 });
+  await pg.waitForTimeout(5_000);
+  if (!(await pg.locator(BUSCA).count())) {
+    await morrer('a sessão do HeyGen não está logada neste perfil');
+  }
+
+  // Retomada: um rascunho com ESTE título é uma tentativa anterior que renomeou
+  // e não gerou. Continuar dele evita deixar um segundo rascunho homônimo.
+  await pg.locator(BUSCA).first().fill(TITULO);
+  await pg.waitForTimeout(3_500);
+  const rascunho = pg.getByText(TITULO, { exact: true }).first();
+  if (await rascunho.count()) {
+    passo(`rascunho "${TITULO}" existe — continuando dele`);
+    await rascunho.locator('xpath=ancestor::*[.//img or .//video][1]').click();
+    await pg.waitForURL(/create-v4|editor/, { timeout: 60_000 });
+  } else {
+    passo(`buscando "${TEMPLATE}"`);
+    await pg.locator(BUSCA).first().fill(TEMPLATE);
+    await pg.waitForTimeout(4_000);
+    const alvo = pg.getByText(TEMPLATE, { exact: true });
+    const n = await alvo.count();
+    if (n !== 1) await morrer(`${n} cards com o nome exato "${TEMPLATE}" (esperado 1)`);
+
+    const card = alvo.first().locator('xpath=ancestor::*[.//img or .//video][1]');
+    await card.hover();
+    await card.locator('button').first().click();     // o ⋮ do CARD
+    await pg.waitForTimeout(1_200);
+    const item = pg.getByText(/Editar como Novo|Edit as New/i).first();
+    if (!(await item.count())) await morrer('o menu do card não tem "Editar como Novo"');
+    passo('Editar como Novo');
+    await item.click();
+    await pg.waitForURL(/create-v4|editor/, { timeout: 60_000 });
+  }
+  await pg.waitForTimeout(6_000);
+
+  // TÍTULO PRIMEIRO: o clone nasce com o nome do template, e enquanto não
+  // renomear existem dois `TEMPLATE-AVATAR` — a busca da rodada seguinte fica
+  // ambígua e o passo do `!== 1` acima recusaria o fluxo inteiro.
+  passo('renomeando');
+  const campo = pg.locator(CAMPO_TITULO).first();
+  if (!(await campo.count())) await morrer('campo de título não encontrado no estúdio');
+  await campo.click();
+  await campo.fill(TITULO);
+  await campo.press('Tab');
+  await pg.waitForTimeout(1_500);
+
+  passo('trocando a fala');
+  const editor = pg.locator('[contenteditable="true"]').first();
+  if (!(await editor.count())) await morrer('editor de script não encontrado');
+  await editor.click();
+  await editor.press('ControlOrMeta+a');
+  await editor.press('Backspace');
+  await editor.type(FALA, { delay: 6 });
+  await pg.waitForTimeout(2_000);
+
+  // Conferência pelo DOM, não por screenshot: `read_page` mostra o placeholder
+  // do título, não o valor.
+  const conferido = await pg.evaluate((sel) => ({
+    titulo: document.querySelector(sel)?.value ?? null,
+    texto: document.querySelector('[contenteditable="true"]')?.innerText?.trim() ?? '',
+  }), CAMPO_TITULO);
+  if (conferido.titulo !== TITULO) await morrer(`título ficou "${conferido.titulo}"`);
+  if (!conferido.texto.startsWith(FALA.slice(0, 24))) await morrer('a fala não entrou no editor');
+
+  if (SECO) { passo('--seco: parando antes de gerar'); await ctx.close(); process.exit(0); }
+
+  passo('Gerar');
+  const gerar = pg.getByRole('button', { name: /^(Gerar|Generate)/i }).first();
+  if (!(await gerar.count())) await morrer('botão Gerar não encontrado');
+  await gerar.click();
+  await pg.waitForTimeout(4_000);
+
+  // O passo que não estava no prompt do agente.
+  const enviar = pg.getByRole('button', { name: /^(Enviar|Submit)$/i }).first();
+  if (!(await enviar.count())) await morrer('modal de geração sem botão "Enviar"');
+  passo('Enviar');
+  await enviar.click();
+  await pg.waitForTimeout(8_000);
+
+  await ctx.close();
+  console.log(`RESULT: ${TITULO}`);
+} catch (e) {
+  await morrer((e && e.message ? e.message : String(e)).split('\n')[0].slice(0, 200));
+}

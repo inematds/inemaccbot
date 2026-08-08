@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-wal
+*.db-shm
+.superpowers/
+
+# Dados de execução: artefatos, mídia baixada, logs e backups do banco.
+# Nada aqui é fonte — e um render de 65 MB entrou no repo antes desta linha existir.
+state/
+backups/
+*.log
+
+# Nenhum .env entra no repo — um .env.bak vazou o BOT_TOKEN em 2026-08-08.
+.env*
+!.env.example

@@ -1,0 +1,40 @@
+# Unit systemd do inemaccbot — task 11 (etapa 1).
+#
+# CORRIGIDO ao instalar de verdade (2026-07-31): esta e uma unidade de USUARIO
+# (~/.config/systemd/user), igual as do inemaccvbot/mkivideos. Por isso:
+#   - alvo e `default.target`, nao `multi-user.target` (que so existe no escopo
+#     de sistema — habilitar contra ele emite aviso e nao liga no boot da sessao);
+#   - nao existe `User=` (a unidade ja roda como o usuario da sessao);
+#   - caminhos usam %h em vez do home hardcoded, como o unit do v1 faz.
+#
+# Verificado contra o código antes de escrever este arquivo:
+#   - `ExecStart=/usr/bin/node dist/index.js`: `npm run build` (tsc, outDir=dist,
+#     rootDir=src em tsconfig.json) produz exatamente `dist/index.js` a partir de
+#     `src/index.ts`. Caminho confere, nada a ajustar.
+#   - `TimeoutStopSec=120`: `main()` (src/index.ts) passa `timeoutDrenoMs: 110_000`
+#     pra `criarServico` — 110s de teto pro dreno antes de `abortar()` o que sobrou,
+#     e o comentário no próprio código já amarra os dois valores ("O unit dá 120s
+#     no SIGTERM; saímos com folga antes do SIGKILL"). 10s de folga entre o dreno
+#     acabar (com timeout) e o systemd mandar SIGKILL — suficiente pra `abortar()`,
+#     `limparTimers()` e `db.close()` rodarem depois do timeout do dreno.
+#   - `EnvironmentFile=.../.env`: `main()` lê `.env` de `resolve(process.cwd(), '.env')`;
+#     com `WorkingDirectory` = mesma pasta do `.env`, os dois caminhos coincidem. O
+#     ambiente do processo (portanto o que o systemd injeta via `EnvironmentFile`)
+#     vence o arquivo quando os dois definem a mesma chave.
+
+[Unit]
+Description=inemaccbot — gateway Telegram + fila durável
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projetos/inemaccbot
+EnvironmentFile=%h/projetos/inemaccbot/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target
