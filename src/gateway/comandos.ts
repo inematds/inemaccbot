@@ -21,7 +21,7 @@ export type Comando =
   | { tipo: 'refazer'; id: number }
   | { tipo: 'http'; url: string }
   | { tipo: 'thumb'; entrada: string }
-  | { tipo: 'ajuda' }
+  | { tipo: 'ajuda'; tudo?: true }
   | { tipo: 'skills' }
   /** Um pedido de skill do catálogo (`transcrever: <link> | lives3`). */
   | { tipo: 'skill'; pedido: PedidoSkill }
@@ -89,7 +89,9 @@ export function parseComando(texto: string, defs: SkillDef[] = [], projetosDir =
       return { tipo: 'espaco' };
     case '/ajuda':
     case '/help':
-      return { tipo: 'ajuda' };
+      // `tudo` e `comandos` são palavras RESERVADAS da ajuda: qualquer outro
+      // argumento é nome de domínio e nem chega aqui (`mensagem.ts` intercepta).
+      return AJUDA_COMPLETA.has(arg.toLowerCase()) ? { tipo: 'ajuda', tudo: true } : { tipo: 'ajuda' };
     case '/skills':
       return { tipo: 'skills' };
     case '/status':
@@ -200,6 +202,37 @@ function naLargura(texto: string, limite = LARGURA_CHAT): string {
   return l.length <= limite ? l : `${l.slice(0, limite - 1)}…`;
 }
 
+/**
+ * A ajuda tem DOIS níveis, e o curto é o padrão.
+ *
+ * O completo tem 4 seções mais o catálogo de skills — passa de 30 linhas, e no
+ * celular isso é uma tela inteira de comando que ninguém pediu. Quem digita
+ * `/ajuda` quase sempre quer uma de quatro coisas: ver o que está rolando,
+ * liberar um portão, descobrir o que dá pra pedir, ou achar o nome de uma skill.
+ * O resto é consulta, e consulta se chama: `/ajuda tudo`.
+ */
+export const AJUDA_COMPLETA = new Set(['tudo', 'comandos', 'completa', 'all']);
+
+/** O nível 1: cabe em meia tela e diz como chegar no resto. */
+function respostaAjudaCurta(): string {
+  return [
+    'O básico:',
+    '  /status — o que está rolando',
+    '  /pronto — libera o portão',
+    '  /skills — o que dá pra pedir',
+    '  /fluxos — pipelines com estado',
+    '',
+    'Pedir é uma linha:',
+    '  skill: entrada | campo',
+    '  ex.: transcrever: https://…',
+    '',
+    'Detalhe:',
+    '  /ajuda tudo — todos os comandos',
+    '  /ajuda <nome> — uma skill ou fluxo',
+    '  ex.: /ajuda reel',
+  ].join('\n');
+}
+
 /** A ajuda mistura os comandos FIXOS (serviço) com as skills do REGISTRY — a
  * lista de skills nunca é escrita à mão aqui, senão ela envelhece calada. */
 function respostaAjuda(defs: SkillDef[]): string {
@@ -212,7 +245,7 @@ function respostaAjuda(defs: SkillDef[]): string {
     // ninguém perceba.
     for (const l of secao.linhas) linhas.push(naLargura(`  ${l.uso} — ${l.descricao}`));
   }
-  linhas.push('', 'Esta lista: /ajuda ou /help');
+  linhas.push('', 'Esta lista: /ajuda tudo (ou /help tudo)', 'O resumo: /ajuda');
   if (defs.length) {
     linhas.push('', 'Skills (skill: entrada | campo):');
     // A descrição vem do registry e pode ter qualquer tamanho — cortar aqui é
@@ -466,7 +499,7 @@ export function executar(cmd: Comando, deps: DepsComando): string {
       return 'pong';
 
     case 'ajuda':
-      return respostaAjuda(deps.defs ?? []);
+      return cmd.tudo ? respostaAjuda(deps.defs ?? []) : respostaAjudaCurta();
 
     case 'espaco': {
       const areas = deps.areas ?? [];

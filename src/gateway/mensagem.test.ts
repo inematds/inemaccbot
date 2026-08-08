@@ -55,6 +55,17 @@ function deps(respostas: string[]): DepsMensagem {
 }
 
 describe('tratarMensagem', () => {
+  it('/ajuda é o resumo e /ajuda tudo é a lista inteira', async () => {
+    const d = deps([]);
+    const curta = await tratarMensagem(1, '/ajuda', d);
+    expect(curta).toContain('/ajuda tudo');
+    expect(curta).not.toContain('/furar');
+
+    const completa = await tratarMensagem(1, '/ajuda tudo', d);
+    expect(completa).toContain('/furar');
+    expect(completa).not.toContain('não conheço');
+  });
+
   it('comando de serviço nem chega no agente', async () => {
     const d = deps([]); // nenhuma resposta preparada: se chamar o runner, dá vazio
     expect(await tratarMensagem(1, '/ping', d)).toBe('pong');

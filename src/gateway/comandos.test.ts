@@ -88,6 +88,14 @@ describe('parseComando', () => {
     expect(parseComando('/help')).toEqual({ tipo: 'ajuda' });
   });
 
+  it('/ajuda tudo (e sinônimos) pede a ajuda COMPLETA', () => {
+    expect(parseComando('/ajuda tudo')).toEqual({ tipo: 'ajuda', tudo: true });
+    expect(parseComando('/ajuda comandos')).toEqual({ tipo: 'ajuda', tudo: true });
+    expect(parseComando('/help all')).toEqual({ tipo: 'ajuda', tudo: true });
+    // Nome de domínio NÃO é palavra reservada: continua sendo ajuda de um só.
+    expect(parseComando('/ajuda reel')).toEqual({ tipo: 'ajuda' });
+  });
+
   // Defeito real, achado no primeiro uso pelo chat: `/status` sozinho é a
   // pergunta mais comum que existe ("o que está rolando?"), e caía em
   // "comando não reconhecido".
@@ -117,8 +125,37 @@ describe('executar', () => {
   // A ajuda era uma lista corrida de 18 linhas, e `/status` aparecia DUAS vezes
   // com descrições que se contradiziam (uma dizendo que lista jobs — o que hoje
   // é o `/jobs`). Agrupar é o que faz uma lista desse tamanho ser lida.
+  // A ajuda COMPLETA passou de 30 linhas com o catálogo de skills junto — uma
+  // tela inteira no celular para quem só queria liberar um portão. Ela continua
+  // existindo inteira, mas atrás de `/ajuda tudo`.
+  describe('/ajuda curta (o padrão)', () => {
+    const curta = () => executar(parseComando('/ajuda'), depsSkills());
+
+    it('cabe em meia tela: no máximo 16 linhas', () => {
+      expect(curta().split('\n').length).toBeLessThanOrEqual(16);
+    });
+
+    it('não despeja o catálogo de skills nem a manutenção', () => {
+      const r = curta();
+      expect(r).not.toContain('/furar');
+      expect(r).not.toContain('/limpar');
+      // `depsSkills` tem skills registradas: nenhuma pode vazar para o resumo.
+      expect(r).not.toMatch(/^\s+transcrever —/m);
+    });
+
+    it('ensina os dois caminhos para o detalhe', () => {
+      const r = curta();
+      expect(r).toContain('/ajuda tudo');
+      expect(r).toContain('/ajuda <nome>');
+    });
+
+    it('cabe na largura do chat', () => {
+      for (const l of curta().split('\n')) expect(l.length).toBeLessThanOrEqual(42);
+    });
+  });
+
   describe('/ajuda agrupada', () => {
-    const ajuda = () => executar(parseComando('/ajuda'), deps());
+    const ajuda = () => executar(parseComando('/ajuda tudo'), deps());
 
     it('não descreve o mesmo comando duas vezes', () => {
       const usos = ajuda().split('\n')
@@ -134,7 +171,7 @@ describe('executar', () => {
     });
 
     it('a descrição da skill também é cortada na largura', () => {
-      const r = executar(parseComando('/ajuda'), depsSkills());
+      const r = executar(parseComando('/ajuda tudo'), depsSkills());
       for (const l of r.split('\n')) expect(l.length).toBeLessThanOrEqual(42);
     });
 
@@ -153,8 +190,8 @@ describe('executar', () => {
     });
   });
 
-  it('/ajuda lista os comandos', () => {
-    const r = executar(parseComando('/ajuda'), deps());
+  it('/ajuda tudo lista os comandos', () => {
+    const r = executar(parseComando('/ajuda tudo'), deps());
     expect(r).toMatch(/ping/);
     expect(r).toMatch(/fila/);
     expect(r).toMatch(/status/);
@@ -604,8 +641,8 @@ describe('verbo insensível a maiúsculas (teclado de celular capitaliza)', () =
     });
   });
 
-  it('/ajuda lista o alias /help', () => {
-    const r = executar(parseComando('/ajuda'), { fila, chatId: 42, agora: () => 1_000 });
+  it('/ajuda tudo lista o alias /help', () => {
+    const r = executar(parseComando('/ajuda tudo'), { fila, chatId: 42, agora: () => 1_000 });
     expect(r).toContain('/help');
   });
 });

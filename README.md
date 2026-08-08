@@ -187,7 +187,8 @@ dono dele.** É por isso que a key do HeyGen não foi copiada para cá.
 | comando | o que faz |
 |---|---|
 | `/ping` | verifica se o bot está vivo |
-| `/ajuda` (`/help`) | a lista de comandos |
+| `/ajuda` (`/help`) | **o resumo** — o básico e como chegar no resto |
+| `/ajuda tudo` | a lista COMPLETA de comandos (sinônimos: `comandos`, `completa`, `all`) |
 | `/ajuda <nome>` | a ajuda de UMA skill ou fluxo (`/ajuda promoavatar`) |
 | `/skills` · `/fluxos` | os dois catálogos |
 | `/fila` | por fila: rodando, pendentes, idade, erro em 24h, retentados |
@@ -201,6 +202,11 @@ dono dele.** É por isso que a key do HeyGen não foi copiada para cá.
 | `/furar j13` | põe um job pendente na frente |
 | `/pronto [ref]` | "terminei minha parte" — libera o portão. Sinônimos: `/aprovar`, `/aprovado`, `/ok` |
 | `/limpar <escopo>` | ver abaixo |
+
+**A ajuda tem dois níveis, e o curto é o padrão.** A lista completa passa de 30
+linhas com o catálogo de skills junto — uma tela inteira no celular para quem só
+queria liberar um portão. `/ajuda` responde o básico e ensina os dois caminhos para
+o detalhe; `/ajuda tudo` continua entregando tudo.
 
 **Referência de fluxo:** `A#9`, `a#9`, `A9` e `a9` são a mesma coisa. Só número
 (`13`) é sempre JOB. Na lista, job aparece como `j13 · A#9/jovens` — o `j`

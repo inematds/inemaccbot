@@ -20,7 +20,7 @@ import type { Fluxos } from '../fluxos/runtime.js';
 import { humano } from '../dominio/espaco.js';
 import { planejarLimpeza } from '../dominio/limpeza.js';
 import { ajudaDaSkill } from './ajuda-dominio.js';
-import { executar, parseComando } from './comandos.js';
+import { AJUDA_COMPLETA, executar, parseComando } from './comandos.js';
 import {
   ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, definirCapaFluxo, fluxosCompletos,
   painelFluxos, parseCapa, refazerFluxo, statusFluxo, textoFluxos,
@@ -100,7 +100,8 @@ function tratarComandoDeFluxo(
 
   // `/ajuda <nome>` — a ajuda de UM domínio, skill ou fluxo. Sem nome, cai no
   // `/ajuda` geral (a lista de comandos), tratado adiante.
-  if ((verbo === '/ajuda' || verbo === '/help') && argumento.trim()) {
+  if ((verbo === '/ajuda' || verbo === '/help') && argumento.trim()
+      && !AJUDA_COMPLETA.has(argumento.trim().toLowerCase())) {
     const nome = argumento.trim().toLowerCase().replace(/^\//, '');
     const fluxo = registrados.find((f) => f.command === nome);
     if (fluxo) return ajudaDoFluxo(fluxo, depsFluxo.skills);

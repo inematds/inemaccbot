@@ -59,6 +59,27 @@ function deps(): DepsMensagem {
 
 const manda = (texto: string) => tratarMensagem(9, texto, deps());
 
+// `tudo` atravessa o roteamento de ajuda de DOMÍNIO — que só existe quando há
+// fluxos ligados. Sem a palavra reservada, `/ajuda tudo` responderia "não
+// conheço \"tudo\"", porque o nome cairia na busca por skill/fluxo.
+describe('/ajuda em dois níveis', () => {
+  it('o resumo não lista tudo, mas ensina como pedir o resto', async () => {
+    const r = await manda('/ajuda');
+    expect(r).toContain('/ajuda tudo');
+    expect(r).not.toContain('/furar');
+  });
+
+  it('/ajuda tudo devolve a lista inteira, não "não conheço"', async () => {
+    const r = await manda('/ajuda tudo');
+    expect(r).toContain('/furar');
+    expect(r).not.toContain('não conheço');
+  });
+
+  it('/ajuda <fluxo> continua sendo a ajuda daquele fluxo', async () => {
+    expect(await manda('/ajuda brinquedo')).toContain('brinquedo');
+  });
+});
+
 describe('/fluxos', () => {
   it('lista o catálogo', async () => {
     expect(await manda('/fluxos')).toContain('brinquedo');
