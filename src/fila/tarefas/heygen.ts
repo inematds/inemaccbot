@@ -1,4 +1,4 @@
-// Fase 2.5 do promoclub: descobre no HeyGen o vídeo daquele alvo, PELO TÍTULO, e
+// Fase 2.5 do promoavatar: descobre no HeyGen o vídeo daquele alvo, PELO TÍTULO, e
 // baixa.
 //
 // Portado do `baixarTick` do v1, com duas diferenças de fundo:

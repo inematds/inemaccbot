@@ -1,6 +1,6 @@
 // Motor `chrome`: `claude --chrome -p`.
 //
-// Existe por UMA razão: a fase de avatar do promoclub dirige o estúdio do HeyGen
+// Existe por UMA razão: a fase de avatar do promoavatar dirige o estúdio do HeyGen
 // pelo navegador, e a extensão do Claude só é reconhecida quando a CLI sobe com
 // `--chrome` (nesta máquina ARM64 com Chromium snap — está documentado no
 // `docs/setup-linux-navegador.md` do repo de domínio).

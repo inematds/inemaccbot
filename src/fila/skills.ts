@@ -110,7 +110,7 @@ export interface OpcoesSkills {
 const TIMEOUT_SETUP_PADRAO_SEGUNDOS = 20 * 60;
 
 /** Teto de uma fase de fluxo com agente. Generoso: uma fase de texto do
- * promoclub gera 12 peças numa sessão só. */
+ * promoavatar gera 12 peças numa sessão só. */
 const TIMEOUT_FASE_SEGUNDOS = 60 * 60;
 
 /**

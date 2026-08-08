@@ -27,9 +27,9 @@ describe('publicarVideo', () => {
   // Dois fluxos, duas pastas: é o que permite limpar um sem tocar no outro.
   it('fluxos diferentes não se misturam', () => {
     publicarVideo(origem, 'A9-jovens-v1', join(dir, 'pub'), BASES, 'promoavatar');
-    publicarVideo(origem, 'P3-jovens-v1', join(dir, 'pub'), BASES, 'promoclub');
+    publicarVideo(origem, 'C3-jovens-v1', join(dir, 'pub'), BASES, 'promoavatar3');
     expect(existsSync(join(dir, 'pub', 'promoavatar', 'A9-jovens-v1.mp4'))).toBe(true);
-    expect(existsSync(join(dir, 'pub', 'promoclub', 'P3-jovens-v1.mp4'))).toBe(true);
+    expect(existsSync(join(dir, 'pub', 'promoavatar3', 'C3-jovens-v1.mp4'))).toBe(true);
   });
 
   it('sem subpasta, cai na raiz (compatível com o que já existia)', () => {

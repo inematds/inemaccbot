@@ -44,7 +44,7 @@ export function publicarVideo(
   if (!origem || !dir || !bases.length) return undefined;
   if (!existsSync(origem)) return undefined;
 
-  // Uma subpasta por FLUXO (`promoavatar`, `promoclub`). Duas razões, e as duas
+  // Uma subpasta por FLUXO (`promoavatar`, `promoavatar3`). Duas razões, e as duas
   // vieram do uso: dá para limpar um fluxo sem tocar no outro, e o servidor
   // HTTP passa a expor só o que o bot publicou — servir a raiz `output/`
   // colocaria 159 GB de outros projetos na rede local.

@@ -11,7 +11,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 
 export interface FluxoRegistrado {
-  /** O que se digita no chat: `/promoclub <assunto>`. */
+  /** O que se digita no chat: `/promoavatar <assunto>`. */
   command: string;
   /** Caminho do repo de domínio, onde vivem `flow.json` e `prompts/`. */
   repo: string;

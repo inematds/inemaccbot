@@ -262,7 +262,7 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
     let prompt: string | undefined;
     // Prompt próprio só nas fases que SÃO do domínio (`fluxo-agente`,
     // `fluxo-navegador`). Quando a fase dispara uma SKILL do catálogo (a última
-    // do promoclub é a mesma `reel` que o usuário chama no chat), o prompt é da
+    // do promoavatar é a mesma `reel` que o usuário chama no chat), o prompt é da
     // skill e mora no bot — exigi-lo aqui obrigaria o domínio a duplicá-lo.
     if (kind === 'agent' && TAREFAS_DE_FASE.has(tarefa)) {
       prompt = texto(f.prompt, `fases[${i}].prompt`);

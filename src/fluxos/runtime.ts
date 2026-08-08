@@ -378,7 +378,7 @@ export class Fluxos {
     const proxima = this.proximaFase(def, fase);
     if (proxima) {
       // Fase de escopo `fluxo` alimenta TODOS os alvos; fase de alvo alimenta só
-      // o seu. É o que faz o promoclub caber: 1 job de texto para 12 públicos,
+      // o seu. É o que faz o promoavatar caber: 1 job de texto para 12 públicos,
       // depois 12 jobs de render.
       const alvos = proxima.escopo === 'fluxo'
         ? ['']

@@ -6,8 +6,6 @@ Gateway Telegram + fila durável. Sucessor do `inemaccvbot`.
 
 Guia completo (landing + passo a passo): **https://inematds.github.io/inemaccbot/guia/**
 
-Instalar do zero (pré-requisitos, `.env`, systemd): [**Instalação (passo a passo)**](#instalação-passo-a-passo).
-
 **Estado: etapas 0 a 5 concluídas, mais os fluxos de domínio.** A fila é durável (SQLite em
 WAL, lease com heartbeat, drain, claim atômico), o gateway fala com o Telegram, as skills
 rodam como agente (`transcrever`, `dublar`, `explicativo`, `curso`, `demo`, `reel`,
@@ -17,6 +15,170 @@ definição congelada, portão humano e retomada. O v1 (`inemaccvbot`, `mkivideo
 
 O que **não** existe de propósito: barreira entre fases, preempção de job, teto global de
 agentes, multiusuário. Ver §11 do spec — cada item com o gatilho para reconsiderar.
+
+## Instalação (passo a passo)
+
+Do zero até `/ping` respondendo no Telegram. Testado no Ubuntu com Node v24.
+
+**Atalho:** `./scripts/instalar.sh` faz os passos 1 a 7 e para no que exige você
+(token, login do Claude, CTA, login do HeyGen), listando cada pendência com o que
+quebra sem ela. `--checar` não muda nada, só diz o que falta; `--sem-chromium` pula o
+download de ~400 MB. Rodar de novo é seguro. Os passos abaixo são o que ele faz — leia
+se quiser entender ou fazer na mão.
+
+### 0. Pré-requisitos
+
+| o quê | para quê | sem isso |
+|---|---|---|
+| **Node 22+** (`node -v`) | o processo | não sobe. O Ubuntu 24.04 traz o 18 — use o repositório NodeSource 22.x |
+| **`claude` no PATH, e LOGADO** | motor padrão dos jobs de agente (`src/fila/runner-claude.ts`) | o bot sobe, mas todo job de agente falha. Instalado ≠ autenticado: confira com `claude auth status` (espere `"loggedIn":true`) |
+| **`ffmpeg`** | tarefa `ffmpeg.thumb` e o áudio/vídeo das skills | thumbnail e render falham |
+| **`python3` + `bash`** | a fase de reel dispara o `montar-reel.py` destacado | a fase `reel.montar` falha |
+| **Chromium do Playwright** | `scripts/heygen-estudio.mjs` (`chromium.launchPersistentContext`) | a rota `\| estudio` falha. `npx playwright install --with-deps chromium` — a versão do Playwright está travada no `package.json` |
+| **`sqlite3` (CLI)** | opcional — inspecionar a fila na mão (`select ... from jobs`) | só perde o diagnóstico manual |
+
+O banco em si é o `better-sqlite3` (compila no `npm install`), não a CLI.
+
+### 1. Clonar e instalar
+
+```bash
+git clone git@github.com:inematds/inemaccbot.git ~/projetos/inemaccbot
+cd ~/projetos/inemaccbot
+npm ci            # `ci`, não `install`: instalação reproduzível pelo lockfile
+```
+
+**Ainda não rode `npm test`.** A suíte só fecha depois dos passos 2 e 3 — sem eles,
+dezenas de testes falham por `flow.json` ausente, e mais 2 por falta do CTA.
+
+### 2. Repos de domínio (irmãos, não submódulos)
+
+`config/fluxos.json` declara os repos que os fluxos carregam de `PROJETOS_DIR`
+(default `$HOME/projetos`). Eles NÃO vêm no clone e não são submódulos — clone os dois
+como irmãos deste diretório:
+
+```bash
+cd ~/projetos
+git clone https://github.com/inematds/promoavatar.git
+git clone https://github.com/inematds/promoavatar3.git
+```
+
+Sem eles o boot sobe, mas dezenas de testes falham e `/promoavatar` e `/promoavatar3`
+quebram na primeira fase.
+
+### 3. O CTA (ativo externo, fora do git)
+
+`promoavatar` e `promoavatar3` exigem `cta/cta-9x16.mp4`, e os dois repos ignoram
+`*.mp4` — o arquivo **não existe no clone nem no histórico**. Copie o CTA oficial para
+os dois caminhos:
+
+```text
+~/projetos/promoavatar/cta/cta-9x16.mp4
+~/projetos/promoavatar3/cta/cta-9x16.mp4
+```
+
+Formato esperado: 1080x1920, H.264/`yuv420p`/30 fps, AAC 48 kHz estéreo — o pipeline
+concatena sem reencodar quando os parâmetros batem. Sem o arquivo, **2 testes falham**.
+
+### 4. Testar e compilar
+
+```bash
+cd ~/projetos/inemaccbot
+npm test           # agora sim: 788/788
+npm run build      # gera dist/index.js — o unit systemd roda daí, não do src/
+```
+
+### 5. Criar o bot no Telegram
+
+Fale com o [@BotFather](https://t.me/BotFather) → `/newbot` → ele devolve o token.
+Esse valor é o `BOT_TOKEN` do passo 6 — **nunca commite o arquivo que o contém** (ver §`.env`).
+
+### 6. Escrever o `.env`
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+Preencha as cinco obrigatórias (tabela completa em [`.env`](#env)) e troque `/CAMINHO/PARA`
+pelos caminhos reais. As opcionais têm default derivado do `$HOME` — a linha pode sair fora.
+
+**Como descobrir o `ALLOWED_CHAT_IDS`**, já que sem ele o bot ignora você: deixe
+`ALLOWED_CHAT_IDS=0`, suba (passo 7), mande qualquer mensagem pro bot e leia o `LOG_FILE`:
+
+```
+gateway: mensagem rejeitada — chat 123456789 fora da allowlist
+```
+
+Esse número é o seu. Ponha no `.env` e reinicie. (Vários chats: separados por vírgula.)
+
+### 7. Subir — primeiro na mão, depois como serviço
+
+Na mão, pra ver o boot falhar alto se algo estiver errado:
+
+```bash
+node dist/index.js       # Ctrl-C encerra pelo caminho normal (SIGINT → drenar)
+```
+
+Boot saudável imprime a linha de recuperação de leases
+(`boot: recuperação de leases — requeued=N failed=M`). Erro de config ou migration
+derruba o processo ali mesmo, de propósito — leia a mensagem antes de mexer em outra coisa.
+
+Como serviço de **usuário** (não de sistema — a unidade não tem `User=` e o alvo é
+`default.target`):
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/inemaccbot.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now inemaccbot
+loginctl enable-linger "$USER"   # o serviço sobrevive ao logout / sobe no boot
+```
+
+Os caminhos do unit usam `%h/projetos/inemaccbot` — se clonou em outro lugar, edite
+`WorkingDirectory`, `EnvironmentFile` e o `WantedBy` **não**.
+
+### 8. Verificar
+
+```bash
+systemctl --user status inemaccbot   # active (running)
+tail -f "$(grep ^LOG_FILE .env | cut -d= -f2)"
+```
+
+No chat: `/ping` responde, `/ajuda` lista os comandos, `/fila` mostra as filas vazias.
+Se `/ping` não responde mas o serviço está `active`, é allowlist — volte ao passo 6.
+
+### 9. Atualizar depois
+
+```bash
+git pull && npm install && npm run build
+sqlite3 inemaccbot.db "select id,fila,tarefa,status from jobs where status in ('queued','running');"
+systemctl --user restart inemaccbot
+```
+
+**A consulta não é opcional.** Reiniciar com job em voo mata o processo com SIGTERM e
+gasta uma tentativa dele — é a seção [`código 143`](#código-143-não-é-erro-do-agente--é-restart).
+Fila vazia → reinicie à vontade.
+
+## Configuração: o que só VOCÊ pode providenciar
+
+Nada disto o bot resolve sozinho — são segredos, contas e ativos que moram fora do
+repo. A coluna da direita diz o que quebra se faltar, para você não descobrir no meio
+de um render.
+
+| o quê | onde | se faltar |
+|---|---|---|
+| **Token do Telegram** | `BOT_TOKEN` no `.env` (BotFather) | o boot falha na hora: `config: falta BOT_TOKEN` |
+| **Allowlist de chat** | `ALLOWED_CHAT_IDS` no `.env` | o boot falha igual. E com o id errado o bot fica mudo: toda mensagem vira `rejeitada — fora da allowlist` no log |
+| **Login do Claude** | `claude auth status` → `loggedIn: true` | o bot sobe e aceita comandos, mas **todo job de agente falha** — é a falha mais confusa de diagnosticar, porque tudo *parece* certo |
+| **CTA `cta-9x16.mp4`** | `~/projetos/promoavatar/cta/` e `~/projetos/promoavatar3/cta/` (passo 3) | 2 testes falham, e nenhum reel fecha: a última fase concatena o CTA no fim |
+| **Perfil Chromium logado no HeyGen** | `HEYGEN_PERFIL_CHROME` (default `~/.cache/inemaccbot/perfil-heygen`) — você loga **uma vez, na mão**, naquele perfil | a rota `\| estudio` falha. É caminho, não segredo: os cookies moram dentro da pasta, fora do repo |
+| **API key do HeyGen** | **não fica neste `.env`** — mora no arquivo apontado por `HEYGEN_ENV_PATH` (default `~/projetos/openpcbotv2/.env`) | as rotas `\| api` e `\| creditos` falham |
+| **CLI do HeyGen** | binário `heygen` no PATH, ou o caminho em `HEYGEN_CLI` | idem |
+| **Servidor do link final** | `PUBLICO_DIR` (a pasta servida) + `PUBLICO_URLS` (as bases de URL) | o vídeo é produzido, mas a mensagem chega sem link para baixar. São **duas** URLs porque a máquina fica em duas redes ao mesmo tempo |
+| **Repos de domínio** | `promoavatar` e `promoavatar3` como irmãos (passo 2) | os fluxos quebram na primeira fase |
+
+Regra geral: **`.env` guarda caminho e id; segredo de terceiro mora no arquivo do
+dono dele.** É por isso que a key do HeyGen não foi copiada para cá.
 
 ## Uso no chat
 
@@ -208,7 +370,7 @@ the user's web account and draws on subscription credits"*.
 | **`\| api`** | o bot, pela chave de API | **~US$ 0,73/vídeo** (Avatar III) | implementado, **nunca fez chamada real** |
 | **`\| estudio`** | um SCRIPT (Playwright) clonando o template no estúdio | igual à normal, **zero token de LLM** | implementado 2026-08-06; o script gerou vídeo ponta a ponta no teste, **ainda não rodou dentro de um fluxo** |
 | **`\| navega`** | um AGENTE clonando o template no estúdio (`Edit as New`) | igual à normal, **+ ~US$ 1,25 de LLM por público** | **em produção** — 112 jobs, A#19 a A#29 |
-| **navegação** (`fluxo-navegador` montando cena do zero) | um agente escolhendo avatar, voz, cenário | igual à normal, **mais tokens ainda** | escrito no promoclub, **nunca rodou** |
+| **navegação** (`fluxo-navegador` montando cena do zero) | um agente escolhendo avatar, voz, cenário | igual à normal, **mais tokens ainda** | escrito no fluxo antigo `promoclub`, **nunca rodou** |
 
 **`| estudio` e `| navega` fazem a mesma coisa e cobram do mesmo lugar** — clonam
 o `TEMPLATE-AVATAR`, herdam cenário, avatar, voz e motor. A única diferença é
@@ -314,7 +476,7 @@ cobrando dos dois bolsos. O motor é do domínio (`"engine": "avatar_iii"` no
    vira rate limit no meio.
 4. **Rota `| api` continua não provada** — só dá para testar com a carteira
    recarregada. Sem pressa: com créditos funcionando, a API é reserva.
-5. **Navegação**: manter como legado do promoclub, não como quarta opção viva.
+5. **Navegação**: manter como legado do `promoclub` (fluxo aposentado), não como quarta opção viva.
 
 Detalhe completo, com as travas de idempotência e de saldo:
 [`docs/fase-avatar-via-api.md`](docs/fase-avatar-via-api.md).
@@ -441,7 +603,7 @@ No chat: `/ajuda <nome>` para qualquer um, ou `/<fluxo> help`.
 - **Conversas abertas (retomar):** `docs/conversas-abertas.md` — layout/templates do reel, imagens, e o custo em tokens da fase de navegação
 - Arquitetura: `docs/superpowers/specs/2026-07-30-inemaccbot-design.md`
 - Perfil de execução (motor/modelo/esforço): `docs/perfil-de-execucao.md`
-- Planos: `docs/superpowers/plans/` (uma etapa por arquivo, 0 a 5 + promoclub)
+- Planos: `docs/superpowers/plans/` (uma etapa por arquivo, 0 a 5 + promoclub, aposentado)
 - Testes herdados do v1 e onde cada um foi parar: `docs/herdado-do-v1.md`
 - Crítica externa ao design (respondida na §13 do spec): `docs/analise_critica_inemaccbot_design.md`
 
@@ -474,144 +636,6 @@ src/
   arquitetura.test.ts   verifica as fronteiras entre camadas (agora com gateway/)
   index.ts      boot, laço, agendamento e desligamento — o miolo do processo
 ```
-
-## Instalação (passo a passo)
-
-Do zero até `/ping` respondendo no Telegram. Testado no Ubuntu com Node v24.
-
-### 0. Pré-requisitos
-
-| o quê | para quê | sem isso |
-|---|---|---|
-| **Node 22+** (`node -v`) | o processo | não sobe. O Ubuntu 24.04 traz o 18 — use o repositório NodeSource 22.x |
-| **`claude` no PATH, e LOGADO** | motor padrão dos jobs de agente (`src/fila/runner-claude.ts`) | o bot sobe, mas todo job de agente falha. Instalado ≠ autenticado: confira com `claude auth status` (espere `"loggedIn":true`) |
-| **`ffmpeg`** | tarefa `ffmpeg.thumb` e o áudio/vídeo das skills | thumbnail e render falham |
-| **`python3` + `bash`** | a fase de reel dispara o `montar-reel.py` destacado | a fase `reel.montar` falha |
-| **Chromium do Playwright** | `scripts/heygen-estudio.mjs` (`chromium.launchPersistentContext`) | a rota `\| estudio` falha. `npx playwright install --with-deps chromium` — a versão do Playwright está travada no `package.json` |
-| **`sqlite3` (CLI)** | opcional — inspecionar a fila na mão (`select ... from jobs`) | só perde o diagnóstico manual |
-
-O banco em si é o `better-sqlite3` (compila no `npm install`), não a CLI.
-
-### 1. Clonar e instalar
-
-```bash
-git clone git@github.com:inematds/inemaccbot.git ~/projetos/inemaccbot
-cd ~/projetos/inemaccbot
-npm ci            # `ci`, não `install`: instalação reproduzível pelo lockfile
-```
-
-**Ainda não rode `npm test`.** A suíte só fecha depois dos passos 2 e 3 — sem eles,
-50 testes falham por `flow.json` ausente e mais 2 por falta do CTA.
-
-### 2. Repos de domínio (irmãos, não submódulos)
-
-`config/fluxos.json` declara três repos que os fluxos carregam de `PROJETOS_DIR`
-(default `$HOME/projetos`). Eles NÃO vêm no clone e não são submódulos — clone os três
-como irmãos deste diretório:
-
-```bash
-cd ~/projetos
-git clone git@github.com:inematds/inemaclubpromover.git   # PRIVADO — precisa de acesso
-git clone https://github.com/inematds/promoavatar.git
-git clone https://github.com/inematds/promoavatar3.git
-```
-
-Sem eles o boot sobe, mas **50 testes falham** e todo `/promoclub`, `/promoavatar` e
-`/promoavatar3` quebra na primeira fase.
-
-### 3. O CTA (ativo externo, fora do git)
-
-`promoavatar` e `promoavatar3` exigem `cta/cta-9x16.mp4`, e os dois repos ignoram
-`*.mp4` — o arquivo **não existe no clone nem no histórico**. Copie o CTA oficial para
-os dois caminhos:
-
-```text
-~/projetos/promoavatar/cta/cta-9x16.mp4
-~/projetos/promoavatar3/cta/cta-9x16.mp4
-```
-
-Formato esperado: 1080x1920, H.264/`yuv420p`/30 fps, AAC 48 kHz estéreo — o pipeline
-concatena sem reencodar quando os parâmetros batem. Sem o arquivo, **2 testes falham**.
-
-### 4. Testar e compilar
-
-```bash
-cd ~/projetos/inemaccbot
-npm test           # agora sim: 797/797
-npm run build      # gera dist/index.js — o unit systemd roda daí, não do src/
-```
-
-### 5. Criar o bot no Telegram
-
-Fale com o [@BotFather](https://t.me/BotFather) → `/newbot` → ele devolve o token.
-Esse valor é o `BOT_TOKEN` do passo 3 — **nunca commite o arquivo que o contém** (ver §`.env`).
-
-### 6. Escrever o `.env`
-
-```bash
-cp .env.example .env
-chmod 600 .env
-```
-
-Preencha as cinco obrigatórias (tabela completa em [`.env`](#env)) e troque `/CAMINHO/PARA`
-pelos caminhos reais. As opcionais têm default derivado do `$HOME` — a linha pode sair fora.
-
-**Como descobrir o `ALLOWED_CHAT_IDS`**, já que sem ele o bot ignora você: deixe
-`ALLOWED_CHAT_IDS=0`, suba (passo 4), mande qualquer mensagem pro bot e leia o `LOG_FILE`:
-
-```
-gateway: mensagem rejeitada — chat 123456789 fora da allowlist
-```
-
-Esse número é o seu. Ponha no `.env` e reinicie. (Vários chats: separados por vírgula.)
-
-### 7. Subir — primeiro na mão, depois como serviço
-
-Na mão, pra ver o boot falhar alto se algo estiver errado:
-
-```bash
-node dist/index.js       # Ctrl-C encerra pelo caminho normal (SIGINT → drenar)
-```
-
-Boot saudável imprime a linha de recuperação de leases
-(`boot: recuperação de leases — requeued=N failed=M`). Erro de config ou migration
-derruba o processo ali mesmo, de propósito — leia a mensagem antes de mexer em outra coisa.
-
-Como serviço de **usuário** (não de sistema — a unidade não tem `User=` e o alvo é
-`default.target`):
-
-```bash
-mkdir -p ~/.config/systemd/user
-cp deploy/inemaccbot.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now inemaccbot
-loginctl enable-linger "$USER"   # o serviço sobrevive ao logout / sobe no boot
-```
-
-Os caminhos do unit usam `%h/projetos/inemaccbot` — se clonou em outro lugar, edite
-`WorkingDirectory`, `EnvironmentFile` e o `WantedBy` **não**.
-
-### 8. Verificar
-
-```bash
-systemctl --user status inemaccbot   # active (running)
-tail -f "$(grep ^LOG_FILE .env | cut -d= -f2)"
-```
-
-No chat: `/ping` responde, `/ajuda` lista os comandos, `/fila` mostra as filas vazias.
-Se `/ping` não responde mas o serviço está `active`, é allowlist — volte ao passo 3.
-
-### 9. Atualizar depois
-
-```bash
-git pull && npm install && npm run build
-sqlite3 inemaccbot.db "select id,fila,tarefa,status from jobs where status in ('queued','running');"
-systemctl --user restart inemaccbot
-```
-
-**A consulta não é opcional.** Reiniciar com job em voo mata o processo com SIGTERM e
-gasta uma tentativa dele — é a seção [`código 143`](#código-143-não-é-erro-do-agente--é-restart).
-Fila vazia → reinicie à vontade.
 
 ## Desenvolvimento
 

@@ -20,7 +20,7 @@ export interface DepsFluxo {
   registrados: FluxoRegistrado[];
   chatId: number;
   /** Comandos das skills do catálogo. Uma FASE pode disparar uma skill (a
-   * última do promoclub é a mesma `reel` do chat), e a validação do `flow.json`
+   * última do promoavatar é a mesma `reel` do chat), e a validação do `flow.json`
    * precisa conhecê-las para não recusar o que existe. */
   skills?: string[];
 }

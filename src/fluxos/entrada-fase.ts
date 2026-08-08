@@ -39,7 +39,7 @@ export interface ContextoEntrada {
  * O bot DITA este caminho, e isso foi pago em produção: o prompt pedia um
  * caminho relativo (`textos/<slug-do-assunto>/`) e o job rodava com
  * `cwd: homedir()`, então o agente escolhia o repo e o slug sozinho — o A#1
- * gravou os 12 textos e o commit no repo do `promoclub`, não no do
+ * gravou os 12 textos e o commit no repo do `promoavatar`, não no do
  * `promoavatar`. Caminho escolhido pelo agente é caminho que o portão não
  * consegue reencontrar.
  *
@@ -162,7 +162,7 @@ export function montarInput(ctx: ContextoEntrada): string {
     });
   }
 
-  // Skill do catálogo (a última fase do promoclub é a MESMA skill `reel` que o
+  // Skill do catálogo (a última fase do promoavatar é a MESMA skill `reel` que o
   // usuário dispara no chat — fluxo é cliente da fila como qualquer um, §3.2).
   if (fase.kind === 'agent' && !fase.prompt_texto) {
     const arquivo = ctx.anterior ?? '';

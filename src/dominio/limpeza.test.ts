@@ -14,7 +14,7 @@ const DIA = 24 * 60 * 60 * 1000;
 const FLUXOS = [
   { id: 8, prefixo: 'A', tipo: 'promoavatar' },
   { id: 9, prefixo: 'A', tipo: 'promoavatar' },
-  { id: 3, prefixo: 'P', tipo: 'promoclub' },
+  { id: 3, prefixo: 'C', tipo: 'promoavatar3' },
 ];
 
 /** Grava com mtime FIXO relativo ao relógio fictício: sem isso a fixture nasce
@@ -36,7 +36,7 @@ beforeEach(() => {
   arquivo(join(art, 'fluxos', 'A9', 'av.mp4'), 300);
   arquivo(join(pub, 'promoavatar', 'A8-jovens-v1.mp4'), 400);
   arquivo(join(pub, 'promoavatar', 'A9-jovens-v1.mp4'), 500);
-  arquivo(join(pub, 'promoclub', 'P3-jovens-v1.mp4'), 600);
+  arquivo(join(pub, 'promoavatar3', 'C3-jovens-v1.mp4'), 600);
   arquivo(join(pub, 'criancas', 'nao-e-nosso.mp4'), 9999);
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -87,16 +87,16 @@ describe('escopo por FLUXO', () => {
 });
 
 describe('escopo por TIPO', () => {
-  it('promoavatar pega A#8 e A#9, e não o promoclub', () => {
+  it('promoavatar pega A#8 e A#9, e não o promoavatar3', () => {
     const caminhos = planejar('promoavatar').itens.map((i) => i.caminho).join('|');
     expect(caminhos).toContain('A8');
     expect(caminhos).toContain('A9');
     expect(caminhos).not.toContain('P3');
   });
 
-  it('promoclub pega só o dele', () => {
-    const caminhos = planejar('promoclub').itens.map((i) => i.caminho).join('|');
-    expect(caminhos).toContain('P3-jovens-v1.mp4');
+  it('promoavatar3 pega só o dele', () => {
+    const caminhos = planejar('promoavatar3').itens.map((i) => i.caminho).join('|');
+    expect(caminhos).toContain('C3-jovens-v1.mp4');
     expect(caminhos).not.toContain('A8');
   });
 });
@@ -122,7 +122,7 @@ describe('tudo', () => {
     const caminhos = planejar('tudo').itens.map((i) => i.caminho).join('|');
     expect(caminhos).toContain(join(art, 'reel', '99.mp4'));
     expect(caminhos).toContain('promoavatar');
-    expect(caminhos).toContain('promoclub');
+    expect(caminhos).toContain('promoavatar3');
   });
 
   // A regra que protege 159 GB: o bot só toca no que ele publicou.
