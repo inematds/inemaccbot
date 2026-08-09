@@ -83,17 +83,19 @@ export async function rotear(
     permitido: (chatId: number) => boolean;
     aoComando: (chatId: number, texto: string) => Promise<string>;
     log: (m: string) => void;
-    /** Presente SÓ enquanto o bot está sem dono (allowlist `[0]`). Ausente é o
-     *  caso normal, e aí a rejeição é exatamente a de sempre: silêncio. É o que
-     *  garante que um bot já pareado nunca ecoe chat id para estranho. */
-    parear?: (chatId: number) => string;
+    /** Tenta parear e devolve a resposta, ou `null` quando o bot JÁ tem dono.
+     *  Ausente (ou devolvendo `null`) é o caso normal, e aí a rejeição é
+     *  exatamente a de sempre: silêncio. É o que garante que um bot já pareado
+     *  nunca ecoe chat id para estranho. */
+    parear?: (chatId: number) => string | null;
   },
 ): Promise<string[]> {
   const { chatId, texto } = entrada;
 
   if (!deps.permitido(chatId)) {
     if (deps.parear && ehPingDePareamento(texto)) {
-      return cortar(deps.parear(chatId));
+      const resposta = deps.parear(chatId);
+      if (resposta !== null) return cortar(resposta);
     }
     deps.log(`gateway: mensagem rejeitada — chat ${chatId} fora da allowlist`);
     return [];
@@ -186,6 +188,10 @@ export function criarBot(
     log?: (m: string) => void;
     /** Ausente: o bot ignora anexos (é o comportamento da etapa 1). */
     baixarAnexo?: BaixarAnexo;
+    /** Grava a allowlist nova onde ela sobrevive a um restart (o `.env`).
+     *  Injetada porque o gateway não conhece disco — e porque o teste do
+     *  pareamento não pode escrever no `.env` de ninguém. */
+    persistirAllowlist?: (ids: number[]) => void;
   },
 ): { bot: Bot; transporte: Transporte } {
   const bot = new Bot(cfg.botToken);
@@ -195,10 +201,34 @@ export function criarBot(
   // uma fiação esquecida assim é silenciosa nos testes, não barulhenta no sink errado.
   const log = deps.log ?? ((): void => {});
 
+  // O estado é consultado A CADA mensagem, não uma vez na construção: parear na
+  // construção deixaria a porta aberta para sempre, e o SEGUNDO /ping tomaria o
+  // bot do primeiro. `null` significa "não estou em pareamento" e devolve o
+  // fluxo à rejeição normal.
+  const parear = !deps.persistirAllowlist
+    ? undefined
+    : (chatId: number): string | null => {
+        if (!emPareamento(cfg.chatsPermitidos)) return null;
+        // MEMÓRIA PRIMEIRO, e in-place: `permitido` fecha sobre ESTE array, e
+        // reatribuir `cfg.chatsPermitidos` deixaria o closure vendo o antigo —
+        // o bot diria "pareado" e rejeitaria a mensagem seguinte até reiniciar.
+        cfg.chatsPermitidos.splice(0, cfg.chatsPermitidos.length, chatId);
+        log(`gateway: pareado — chat ${chatId} virou dono do bot`);
+        try {
+          deps.persistirAllowlist?.(cfg.chatsPermitidos);
+        } catch (erro) {
+          // Disco read-only não pode custar a sessão: o chat continua valendo
+          // até o próximo restart, e o log diz o que pôr no .env na mão.
+          const detalhe = erro instanceof Error ? erro.message : String(erro);
+          log(`gateway: pareado em memória, mas falhei ao gravar o .env (${detalhe}) — ponha ALLOWED_CHAT_IDS=${chatId} à mão`);
+        }
+        return mensagemDePareamento(chatId);
+      };
+
   bot.on('message:text', async (ctx) => {
     const pedacos = await rotear(
       { chatId: ctx.chat.id, texto: ctx.message.text },
-      { permitido, aoComando: deps.aoComando, log },
+      { permitido, aoComando: deps.aoComando, log, parear },
     );
     await enviarPedacos(async (pedaco) => { await ctx.reply(pedaco); }, pedacos);
   });

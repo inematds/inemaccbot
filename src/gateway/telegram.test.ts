@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { Bot } from 'grammy';
 import { cortar, rotear, criarBot, enviarPedacos } from './telegram.js';
 import type { Config } from '../config.js';
 
@@ -121,6 +122,18 @@ describe('rotear', () => {
 
     expect(r).toEqual([]);
     expect(parear).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith('gateway: mensagem rejeitada — chat 4242 fora da allowlist');
+  });
+
+  it('`parear` devolvendo null (bot já tem dono) cai na rejeição normal', async () => {
+    const log = vi.fn();
+
+    const r = await rotear(
+      { chatId: 4242, texto: '/ping' },
+      { permitido: () => false, aoComando: vi.fn(), log, parear: () => null },
+    );
+
+    expect(r).toEqual([]);
     expect(log).toHaveBeenCalledWith('gateway: mensagem rejeitada — chat 4242 fora da allowlist');
   });
 
@@ -260,5 +273,118 @@ describe('criarBot', () => {
     });
 
     expect(linhas).toEqual(['gateway: mensagem rejeitada — chat 999 fora da allowlist']);
+  });
+
+  // --- pareamento pela fiação real: cfg vivo + persistência injetada ---
+
+  /** Config mínima com a allowlist que o teste quiser. Os demais campos não
+   *  participam do pareamento — só precisam existir. */
+  function cfgCom(chatsPermitidos: number[]): Config {
+    return {
+      botToken: '123456:AAAA-fake-token-nao-real-1234567890AB',
+      queueDb: ':memory:',
+      stateDir: '/tmp',
+      logFile: '/tmp/log',
+      chatsPermitidos,
+      motorPadrao: 'claude',
+      modeloPadrao: 'sonnet',
+      esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
+      projetosDir: '/tmp/projetos-inexistente',
+      heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
+    };
+  }
+
+  /** Despacha um texto pelo caminho real do grammy, sem rede: `botInfo` evita o
+   *  getMe(), e o transformer intercepta o sendMessage que o `ctx.reply` faria. */
+  async function simularTexto(bot: Bot, chatId: number, texto: string): Promise<string[]> {
+    const enviados: string[] = [];
+    bot.botInfo = {
+      id: 1, is_bot: true, first_name: 'teste', username: 'teste_bot',
+      can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false,
+      can_connect_to_business: false, has_main_web_app: false,
+      has_topics_enabled: false, allows_users_to_create_topics: false,
+      can_manage_bots: false, supports_join_request_queries: false,
+    };
+    bot.api.config.use(async (_prev, metodo, carga) => {
+      if (metodo === 'sendMessage') enviados.push(String((carga as { text: string }).text));
+      return { ok: true, result: { message_id: 1 } } as never;
+    });
+    await bot.handleUpdate({
+      update_id: 1,
+      message: {
+        message_id: 1,
+        date: Date.now() / 1000,
+        chat: { id: chatId, type: 'private', first_name: 'x' },
+        from: { id: chatId, is_bot: false, first_name: 'x' },
+        text: texto,
+      },
+    });
+    return enviados;
+  }
+
+  it('pareia: muta a allowlist em memória e persiste, e o comando não roda nessa mensagem', async () => {
+    const cfg = cfgCom([0]);
+    const persistirAllowlist = vi.fn();
+    const aoComando = vi.fn(async () => 'pong');
+
+    const { bot } = criarBot(cfg, { aoComando, log: vi.fn(), persistirAllowlist });
+    const enviados = await simularTexto(bot, 4242, '/ping');
+
+    expect(cfg.chatsPermitidos).toEqual([4242]);
+    expect(persistirAllowlist).toHaveBeenCalledWith([4242]);
+    expect(enviados.join('')).toContain('4242');
+    expect(aoComando).not.toHaveBeenCalled();
+  });
+
+  it('a allowlist mutada vale NA HORA: a mensagem seguinte do mesmo chat já roda o comando', async () => {
+    // É o bug que este desenho existe pra evitar — persistir só no arquivo faria
+    // o bot dizer "pareado" e rejeitar a próxima mensagem até reiniciar.
+    const cfg = cfgCom([0]);
+    const aoComando = vi.fn(async () => 'pong');
+
+    const { bot } = criarBot(cfg, { aoComando, log: vi.fn(), persistirAllowlist: vi.fn() });
+    await simularTexto(bot, 4242, '/ping');
+    await simularTexto(bot, 4242, '/fila');
+
+    expect(aoComando).toHaveBeenCalledWith(4242, '/fila');
+  });
+
+  it('depois de pareado, um segundo chat NÃO entra', async () => {
+    const cfg = cfgCom([0]);
+    const { bot } = criarBot(cfg, { aoComando: vi.fn(async () => 'pong'), log: vi.fn(), persistirAllowlist: vi.fn() });
+
+    await simularTexto(bot, 4242, '/ping');
+    const enviados = await simularTexto(bot, 9999, '/ping');
+
+    expect(cfg.chatsPermitidos).toEqual([4242]);
+    expect(enviados).toEqual([]);
+  });
+
+  it('falha ao persistir NÃO derruba o pareamento em memória, e loga o valor a pôr na mão', async () => {
+    const linhas: string[] = [];
+    const cfg = cfgCom([0]);
+    const persistirAllowlist = vi.fn(() => { throw new Error('EROFS'); });
+
+    const { bot } = criarBot(cfg, {
+      aoComando: vi.fn(async () => 'pong'),
+      log: (m) => linhas.push(m),
+      persistirAllowlist,
+    });
+    await simularTexto(bot, 4242, '/ping');
+
+    expect(cfg.chatsPermitidos).toEqual([4242]);
+    expect(linhas.some((l) => l.includes('EROFS') && l.includes('ALLOWED_CHAT_IDS=4242'))).toBe(true);
+  });
+
+  it('allowlist real não abre pareamento: chat desconhecido continua no silêncio', async () => {
+    const cfg = cfgCom([123]);
+    const persistirAllowlist = vi.fn();
+
+    const { bot } = criarBot(cfg, { aoComando: vi.fn(async () => 'pong'), log: vi.fn(), persistirAllowlist });
+    const enviados = await simularTexto(bot, 4242, '/ping');
+
+    expect(enviados).toEqual([]);
+    expect(persistirAllowlist).not.toHaveBeenCalled();
+    expect(cfg.chatsPermitidos).toEqual([123]);
   });
 });
