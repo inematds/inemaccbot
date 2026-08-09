@@ -190,14 +190,28 @@ Se `/ping` não responde mas o serviço está `active`, é allowlist — volte a
 ### 9. Atualizar depois
 
 ```bash
-git pull && npm install && npm run build
-sqlite3 inemaccbot.db "select id,fila,tarefa,status from jobs where status in ('queued','running');"
-systemctl --user restart inemaccbot
+./atualizar.sh                # traz, compila e reinicia — recusando se houver job em voo
+./atualizar.sh --sem-restart  # atualiza e compila, sem tocar no serviço
+./atualizar.sh --agora        # reinicia mesmo com job rodando (você assume)
 ```
 
-**A consulta não é opcional.** Reiniciar com job em voo mata o processo com SIGTERM e
-gasta uma tentativa dele — é a seção [`código 143`](#código-143-não-é-erro-do-agente--é-restart).
-Fila vazia → reinicie à vontade.
+Ele faz o que a atualização na mão exigia lembrar, e nesta ordem: guarda edições
+locais com `stash`, `git pull --ff-only`, `npm ci` **forçando `NODE_ENV=development`**
+(senão as devDeps somem e o build morre em `tsc: not found`), `npm run build`, e só
+então reinicia — **detectando** se a unidade é de usuário ou de sistema, em vez de
+assumir.
+
+**A consulta de job em voo não é opcional, e por isso ela virou uma recusa.**
+Reiniciar com render rodando mata o processo com SIGTERM e gasta uma tentativa do
+job — é a seção [`código 143`](#código-143-não-é-erro-do-agente--é-restart). Quando
+isso acontece, o código novo **já está compilado**: só o restart fica pendente.
+
+**Clone anterior a 2026-08-08:** o script detecta e explica. Naquela data o repo foi
+partido e o público renasceu de um commit órfão — quem clonou antes não tem ancestral
+comum com o `origin`, e nenhum `git pull` traz o código novo (o sintoma é "puxei e não
+veio nada", com `start.sh` simplesmente ausente). O script imprime a receita de
+migração com os caminhos já preenchidos, preservando `.env`, banco e arquivos não
+rastreados. O histórico velho continua em `inematds/inemaccbotx` (privado).
 
 ### 10. Numa VPS: onde cada arquivo mora
 
