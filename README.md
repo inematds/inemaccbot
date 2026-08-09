@@ -34,10 +34,19 @@ se quiser entender ou fazer na mão.
 | **`claude` no PATH, e LOGADO** | motor padrão dos jobs de agente (`src/fila/runner-claude.ts`) | o bot sobe, mas todo job de agente falha. Instalado ≠ autenticado: confira com `claude auth status` (espere `"loggedIn":true`) |
 | **`ffmpeg`** | tarefa `ffmpeg.thumb` e o áudio/vídeo das skills | thumbnail e render falham |
 | **`python3` + `bash`** | a fase de reel dispara o `montar-reel.py` destacado | a fase `reel.montar` falha |
-| **Chromium do Playwright** | `scripts/heygen-estudio.mjs` (`chromium.launchPersistentContext`) | a rota `\| estudio` falha. `npx playwright install --with-deps chromium` — a versão do Playwright está travada no `package.json` |
+| **Chromium do Playwright** | `scripts/heygen-estudio.mjs` (`chromium.launchPersistentContext`) | a rota `\| estudio` falha. `npx playwright install chromium` — a versão do Playwright está travada no `package.json` |
 | **`sqlite3` (CLI)** | opcional — inspecionar a fila na mão (`select ... from jobs`) | só perde o diagnóstico manual |
 
 O banco em si é o `better-sqlite3` (compila no `npm install`), não a CLI.
+
+**Playwright em SO recém-lançado (ex.: Ubuntu 26.04):** não use `--with-deps`. A lista
+de pacotes dele é por versão de SO, e num SO novo demais ele falha na largada — foi o
+que travou a instalação numa VPS 26.04. Baixe só o browser (`npx playwright install
+chromium`); se o Chromium não subir por falta de biblioteca, tente `npx playwright
+install-deps`, sabendo que ele também pode não ter receita para o seu SO. Nesse caso o
+pin `playwright@1.57.0` é velho demais para a máquina e o caminho é subir a versão —
+com teste da rota `| estudio`, porque ela automatiza uma UI e depende de timing.
+Nada disso afeta o resto do bot: sem Chromium, só a rota `| estudio` fica fora.
 
 ### 1. Clonar e instalar
 
@@ -111,22 +120,44 @@ chmod 600 .env
 Preencha as cinco obrigatórias (tabela completa em [`.env`](#env)) e troque `/CAMINHO/PARA`
 pelos caminhos reais. As opcionais têm default derivado do `$HOME` — a linha pode sair fora.
 
-**Como descobrir o `ALLOWED_CHAT_IDS`**, já que sem ele o bot ignora você: deixe
-`ALLOWED_CHAT_IDS=0`, suba (passo 7), mande qualquer mensagem pro bot e leia o `LOG_FILE`:
+#### Como descobrir o chat id do Telegram (você não precisa saber de antemão)
 
-```
-gateway: mensagem rejeitada — chat 123456789 fora da allowlist
-```
+Deixe `ALLOWED_CHAT_IDS=0` no `.env`. Isso é o **modo pareamento**: o bot ainda não
+tem dono. Suba (passo 7), abra o seu bot no Telegram e mande `/ping`.
 
-Esse número é o seu. Ponha no `.env` e reinicie. (Vários chats: separados por vírgula.)
+O primeiro `/ping` que chegar cadastra aquele chat como dono: o bot responde
+confirmando com o id, grava esse id em `ALLOWED_CHAT_IDS` no `.env` (só essa linha
+muda — comentários e o resto do arquivo ficam intactos) e **fecha a porta**. O
+segundo chat que tentar já é rejeitado em silêncio.
+
+O cadastro vale na hora, sem reiniciar: a próxima mensagem desse chat já roda
+comando normalmente.
+
+**O que isso significa, dito claramente:** enquanto a allowlist for `0`, quem mandar
+`/ping` primeiro leva o bot. Se o token vazou, ou se alguém sabe o @nome do bot,
+pareie antes de deixar rodando. Só `/ping` em texto pareia — anexo, foto e qualquer
+outra mensagem, não.
+
+**Trocar de dono:** ponha `ALLOWED_CHAT_IDS=0` de volta no `.env`, reinicie
+(`systemctl --user restart inemaccbot`) e mande `/ping` do chat novo. Para autorizar
+mais de um chat, edite a lista à mão: `ALLOWED_CHAT_IDS=111,222`.
+
+Deixar `ALLOWED_CHAT_IDS` **vazio** não é pareamento — é erro de boot, de propósito:
+a allowlist é a única barreira entre o bot e o Telegram inteiro, e configuração
+inválida tem que derrubar o serviço na largada, não virar porta aberta.
 
 ### 7. Subir — primeiro na mão, depois como serviço
 
 Na mão, pra ver o boot falhar alto se algo estiver errado:
 
 ```bash
-node dist/index.js       # Ctrl-C encerra pelo caminho normal (SIGINT → drenar)
+./start.sh       # log na tela; Ctrl-C encerra pelo caminho normal (SIGINT → drenar)
 ```
+
+O `start.sh` recompila se o `dist/` estiver mais velho que o `src/`, e **recusa subir
+se o serviço systemd já estiver rodando**: dois processos no mesmo `BOT_TOKEN`
+disputam o `getUpdates` e o bot passa a perder mensagens alternadamente — sintoma
+caro de diagnosticar. Para ignorar a recusa: `./start.sh --forcar`.
 
 Boot saudável imprime a linha de recuperação de leases
 (`boot: recuperação de leases — requeued=N failed=M`). Erro de config ou migration
@@ -177,7 +208,7 @@ de um render.
 | o quê | onde | se faltar |
 |---|---|---|
 | **Token do Telegram** | `BOT_TOKEN` no `.env` (BotFather) | o boot falha na hora: `config: falta BOT_TOKEN` |
-| **Allowlist de chat** | `ALLOWED_CHAT_IDS` no `.env` | o boot falha igual. E com o id errado o bot fica mudo: toda mensagem vira `rejeitada — fora da allowlist` no log |
+| **Allowlist de chat** | `ALLOWED_CHAT_IDS` no `.env` — ou `0` para parear no primeiro `/ping` (passo 6) | vazio derruba o boot. Com o id errado o bot fica mudo: toda mensagem vira `rejeitada — fora da allowlist` no log |
 | **Login do Claude** | `claude auth status` → `loggedIn: true` | o bot sobe e aceita comandos, mas **todo job de agente falha** — é a falha mais confusa de diagnosticar, porque tudo *parece* certo |
 | **CTA `cta-9x16.mp4`** | versionado nos dois repos de domínio, em `cta/` (passo 3) | 2 testes falham, e nenhum reel fecha: a última fase concatena o CTA no fim |
 | **Perfil Chromium logado no HeyGen** | `HEYGEN_PERFIL_CHROME` (default `~/.cache/inemaccbot/perfil-heygen`) — você loga **uma vez, na mão**, naquele perfil | a rota `\| estudio` falha. É caminho, não segredo: os cookies moram dentro da pasta, fora do repo |
