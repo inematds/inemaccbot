@@ -91,6 +91,50 @@ describe('rotear', () => {
     expect(resultado[0]).not.toContain(erroReal);
     expect(logs.some((l) => l.includes(erroReal))).toBe(true);
   });
+
+  // --- pareamento: a exceção à rejeição, só enquanto o bot não tem dono ---
+
+  it('em pareamento, /ping de chat desconhecido pareia e responde', async () => {
+    const log = vi.fn();
+    const parear = vi.fn(() => 'Pareado. id 4242');
+    const aoComando = vi.fn();
+
+    const r = await rotear(
+      { chatId: 4242, texto: '/ping' },
+      { permitido: () => false, aoComando, log, parear },
+    );
+
+    expect(r).toEqual(['Pareado. id 4242']);
+    expect(parear).toHaveBeenCalledWith(4242);
+    // O comando NÃO roda nesta mensagem: parear é o efeito, e só.
+    expect(aoComando).not.toHaveBeenCalled();
+  });
+
+  it('em pareamento, mensagem que não é /ping continua rejeitada em silêncio', async () => {
+    const log = vi.fn();
+    const parear = vi.fn(() => 'nunca');
+
+    const r = await rotear(
+      { chatId: 4242, texto: '/fila' },
+      { permitido: () => false, aoComando: vi.fn(), log, parear },
+    );
+
+    expect(r).toEqual([]);
+    expect(parear).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith('gateway: mensagem rejeitada — chat 4242 fora da allowlist');
+  });
+
+  it('sem `parear` (fora de pareamento), /ping de desconhecido é silêncio — nunca ecoa o id', async () => {
+    const log = vi.fn();
+
+    const r = await rotear(
+      { chatId: 4242, texto: '/ping' },
+      { permitido: () => false, aoComando: vi.fn(), log },
+    );
+
+    expect(r).toEqual([]);
+    expect(log).toHaveBeenCalledWith('gateway: mensagem rejeitada — chat 4242 fora da allowlist');
+  });
 });
 
 // --- enviarPedacos: drena os pedaços sequencialmente, na ordem ---

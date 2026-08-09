@@ -4,6 +4,7 @@
 import { Bot, InputFile } from 'grammy';
 import type { Config } from '../config.js';
 import { comandoDeAnexo, type BaixarAnexo } from './midia.js';
+import { ehPingDePareamento, emPareamento, mensagemDePareamento } from './pareamento.js';
 
 /** Telegram rejeita qualquer mensagem acima de 4096 chars (UTF-16 code units) com
  * "400: Bad Request: message is too long". `limit` fica um pouco abaixo disso de propósito —
@@ -78,11 +79,22 @@ const MENSAGEM_ERRO_GENERICA = 'Deu erro por aqui. Já ficou registrado, tenta d
  * `aoComando` lançando: um pedaço genérico (nunca o erro verbatim) + log do erro real. */
 export async function rotear(
   entrada: { chatId: number; texto: string },
-  deps: { permitido: (chatId: number) => boolean; aoComando: (chatId: number, texto: string) => Promise<string>; log: (m: string) => void },
+  deps: {
+    permitido: (chatId: number) => boolean;
+    aoComando: (chatId: number, texto: string) => Promise<string>;
+    log: (m: string) => void;
+    /** Presente SÓ enquanto o bot está sem dono (allowlist `[0]`). Ausente é o
+     *  caso normal, e aí a rejeição é exatamente a de sempre: silêncio. É o que
+     *  garante que um bot já pareado nunca ecoe chat id para estranho. */
+    parear?: (chatId: number) => string;
+  },
 ): Promise<string[]> {
   const { chatId, texto } = entrada;
 
   if (!deps.permitido(chatId)) {
+    if (deps.parear && ehPingDePareamento(texto)) {
+      return cortar(deps.parear(chatId));
+    }
     deps.log(`gateway: mensagem rejeitada — chat ${chatId} fora da allowlist`);
     return [];
   }
