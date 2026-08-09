@@ -212,13 +212,20 @@ de um render.
 | **Login do Claude** | `claude auth status` → `loggedIn: true` | o bot sobe e aceita comandos, mas **todo job de agente falha** — é a falha mais confusa de diagnosticar, porque tudo *parece* certo |
 | **CTA `cta-9x16.mp4`** | versionado nos dois repos de domínio, em `cta/` (passo 3) | 2 testes falham, e nenhum reel fecha: a última fase concatena o CTA no fim |
 | **Perfil Chromium logado no HeyGen** | `HEYGEN_PERFIL_CHROME` (default `~/.cache/inemaccbot/perfil-heygen`) — você loga **uma vez, na mão**, naquele perfil | a rota `\| estudio` falha. É caminho, não segredo: os cookies moram dentro da pasta, fora do repo |
-| **API key do HeyGen** | **não fica neste `.env`** — mora no arquivo apontado por `HEYGEN_ENV_PATH` (default `~/projetos/openpcbotv2/.env`) | as rotas `\| api` e `\| creditos` falham |
+| **API key do HeyGen** | no arquivo apontado por `HEYGEN_ENV_PATH` (default `~/projetos/openpcbotv2/.env`) — qualquer arquivo com uma linha `HEYGEN_API_KEY=` serve. Em máquina sem o `openpcbotv2` (VPS), crie um só dela; ver `.env.example` | as rotas `\| api` e `\| creditos` falham |
 | **CLI do HeyGen** | binário `heygen` no PATH, ou o caminho em `HEYGEN_CLI` | idem |
 | **Servidor do link final** | `PUBLICO_DIR` (a pasta servida) + `PUBLICO_URLS` (as bases de URL) | o vídeo é produzido, mas a mensagem chega sem link para baixar. São **duas** URLs porque a máquina fica em duas redes ao mesmo tempo |
 | **Repos de domínio** | `promoavatar` e `promoavatar3` como irmãos (passo 2) | os fluxos quebram na primeira fase |
 
 Regra geral: **`.env` guarda caminho e id; segredo de terceiro mora no arquivo do
 dono dele.** É por isso que a key do HeyGen não foi copiada para cá.
+
+Numa máquina onde esse "arquivo do dono" não existe — uma VPS, por exemplo — o
+recomendado continua sendo um arquivo só dela
+(`~/.config/inemaccbot/heygen.env`, `chmod 600`) apontado pelo `HEYGEN_ENV_PATH`.
+Se preferir juntar tudo, o `HEYGEN_ENV_PATH` pode apontar para o **próprio `.env`**
+do bot e a chave mora aqui: funciona sem mudar código, ao custo de misturar segredo
+com config. O `.env.example` traz as duas receitas.
 
 ## Uso no chat
 
