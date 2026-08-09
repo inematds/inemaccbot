@@ -6,6 +6,15 @@
 #   ./atualizar.sh              # atualiza; recusa reiniciar com job rodando
 #   ./atualizar.sh --agora      # reinicia mesmo com job rodando (você assume)
 #   ./atualizar.sh --sem-restart  # atualiza e compila, mas não encosta no serviço
+#   ./atualizar.sh --sem-dominios # não atualiza promoavatar/promoavatar3
+#
+# Atualiza o BOT **e os REPOS DE DOMÍNIO** declarados em `config/fluxos.json`. O
+# domínio carrega o flow.json, os prompts, os templates e o motor do reel — bot
+# novo com domínio velho roda prompt antigo e produz vídeo errado, sem erro
+# nenhum no boot.
+#
+# AVISO: edições locais NÃO commitadas deste repo vão para o `git stash` antes do
+# pull (recupere com `git stash pop`). Inclusive edições neste próprio arquivo.
 #
 # Funciona nos dois modos de serviço: unidade de USUÁRIO (máquina de trabalho) e
 # de SISTEMA (VPS). Detecta qual existe em vez de assumir.
@@ -14,11 +23,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 RESTART=1
 FORCAR=0
+DOMINIOS=1
 for a in "$@"; do
   case "$a" in
     --agora) FORCAR=1 ;;
     --sem-restart) RESTART=0 ;;
-    *) echo "opção desconhecida: $a (use --agora ou --sem-restart)" >&2; exit 2 ;;
+    --sem-dominios) DOMINIOS=0 ;;
+    *) echo "opção desconhecida: $a (use --agora, --sem-restart ou --sem-dominios)" >&2; exit 2 ;;
   esac
 done
 
@@ -100,6 +111,45 @@ if [ "$ANTES" = "$DEPOIS" ]; then
 else
   verde "código: $ANTES → $DEPOIS"
   git log --oneline "$ANTES..$DEPOIS" | sed 's/^/  /'
+fi
+
+# --- repos de domínio ---------------------------------------------------------
+# Atualizar só o bot deixa a metade que decide COMO o trabalho é feito parada:
+# flow.json, prompts, templates, o motor do reel e o adaptador de imagem moram
+# nos domínios. Um bot novo com domínio velho roda prompt antigo e não conhece
+# IMG_PROVEDOR — e o sintoma aparece no vídeo, não no boot.
+#
+# A lista sai de config/fluxos.json, que é a MESMA fonte que o bot lê para
+# carregar os fluxos: manter uma segunda lista aqui divergiria no primeiro
+# domínio novo.
+if [ "$DOMINIOS" = 1 ] && [ -f config/fluxos.json ]; then
+  RAIZ="${PROJETOS_DIR:-$(dirname "$PWD")}"
+  echo
+  amarelo "--- repos de domínio (em $RAIZ)"
+  for repo in $(python3 -c "
+import json
+print(' '.join(sorted({f['repo'] for f in json.load(open('config/fluxos.json')) if f.get('repo')})))
+" 2>/dev/null); do
+    dir="$RAIZ/$repo"
+    if [ ! -d "$dir/.git" ]; then
+      erro "  $repo: não está clonado em $dir — os fluxos dele quebram na primeira fase"
+      continue
+    fi
+    # Domínio sujo NÃO leva stash: ali dentro moram os textos gerados pelos
+    # fluxos, e mexer neles às cegas é perder trabalho de verdade.
+    if [ -n "$(git -C "$dir" status --porcelain)" ]; then
+      amarelo "  $repo: tem mudanças locais — PULADO (commite ou descarte e rode de novo)"
+      continue
+    fi
+    de="$(git -C "$dir" rev-parse --short HEAD)"
+    if git -C "$dir" pull --ff-only --quiet 2>/dev/null; then
+      para="$(git -C "$dir" rev-parse --short HEAD)"
+      [ "$de" = "$para" ] && verde "  $repo: já atualizado ($para)" \
+                          || verde "  $repo: $de → $para"
+    else
+      erro "  $repo: o pull falhou (rode 'git -C $dir pull' para ver o motivo)"
+    fi
+  done
 fi
 
 # --- dependências e build ----------------------------------------------------
