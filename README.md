@@ -220,6 +220,23 @@ Numa VPS rodando como `root`:
 Os repos de domínio (`promoavatar`, `promoavatar3`) **não têm `.env` nenhum**: eles
 leem tudo do ambiente que o bot repassa aos scripts filhos.
 
+**Serviço na VPS: use o unit de SISTEMA.** A unidade de usuário
+(`deploy/inemaccbot.service`) pressupõe sessão e linger — em servidor, o certo é
+`deploy/inemaccbot-sistema.service`, que tem `User=`, caminhos absolutos e alvo
+`multi-user.target`:
+
+```bash
+sudo cp deploy/inemaccbot-sistema.service /etc/systemd/system/inemaccbot.service
+sudo systemctl daemon-reload && sudo systemctl enable --now inemaccbot
+sudo systemctl stop|restart|status inemaccbot     # é isto que substitui um "stop.sh"
+sudo journalctl -u inemaccbot -f
+```
+
+Ajuste `User=`, `WorkingDirectory` e `EnvironmentFile` antes — no escopo de sistema,
+`%h` resolve para `/root` mesmo quando o serviço roda como outro usuário, e essa é a
+pegadinha clássica de quem migra do unit de usuário. Os dois units **não** podem
+rodar juntos com o mesmo `BOT_TOKEN`.
+
 E é por isso que existe atalho: como o `.env` é publicado no ambiente do processo
 (`exportarParaAmbiente`), você pode pôr `GROQ_API_KEY` e `INEMAIMG_HOST` direto nele
 e pular os arquivos separados. Um arquivo só, ao custo de misturar segredo com

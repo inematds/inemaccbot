@@ -1,0 +1,48 @@
+# Unit de SISTEMA — para servidor/VPS, onde não há sessão gráfica nem linger.
+#
+# Use ESTE quando o bot roda numa máquina dedicada (típico: VPS como root ou
+# como um usuário de serviço). Na máquina de trabalho continue com o
+# `inemaccbot.service` (unidade de USUÁRIO): lá o bot acompanha a sua sessão.
+#
+# Os dois NÃO devem rodar ao mesmo tempo com o mesmo BOT_TOKEN: dois processos
+# disputam o getUpdates do Telegram e cada um recebe metade das mensagens.
+#
+# Diferenças em relação ao unit de usuário, e por quê:
+#   - `User=` e `Group=` existem aqui (no escopo de sistema ninguém herda quem
+#     você é);
+#   - caminhos são ABSOLUTOS — `%h` no escopo de sistema resolve para /root
+#     mesmo quando o serviço roda como outro usuário, o que é a pegadinha
+#     clássica desta migração;
+#   - alvo é `multi-user.target`, que existe no escopo de sistema (o
+#     `default.target` do unit de usuário não serviria aqui).
+#
+# Instalar (ajuste os TRÊS caminhos e o User antes):
+#   sudo cp deploy/inemaccbot-sistema.service /etc/systemd/system/inemaccbot.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now inemaccbot
+#   sudo systemctl stop|restart|status inemaccbot
+#   sudo journalctl -u inemaccbot -f
+#
+# `TimeoutStopSec=120` acompanha o `timeoutDrenoMs: 110_000` do src/index.ts —
+# 110s de dreno mais 10s de folga antes do SIGKILL. Não baixe este número sem
+# baixar o outro junto: cortar o dreno mata job em voo.
+
+[Unit]
+Description=inemaccbot — gateway Telegram + fila durável
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/projetos/inemaccbot
+EnvironmentFile=/root/projetos/inemaccbot/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
