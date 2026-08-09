@@ -190,13 +190,21 @@ Se `/ping` não responde mas o serviço está `active`, é allowlist — volte a
 ### 9. Atualizar depois
 
 ```bash
-./atualizar.sh                # traz, compila e reinicia — recusando se houver job em voo
-./atualizar.sh --sem-restart  # atualiza e compila, sem tocar no serviço
-./atualizar.sh --agora        # reinicia mesmo com job rodando (você assume)
+./atualizar.sh                 # bot + domínios, compila e reinicia
+./atualizar.sh --sem-restart   # atualiza e compila, sem tocar no serviço
+./atualizar.sh --agora         # reinicia mesmo com job rodando (você assume)
+./atualizar.sh --sem-dominios  # só o bot
 ```
 
+**Ele atualiza os repos de domínio também** — e isso não é conveniência: o domínio
+carrega `flow.json`, prompts, templates e o motor do reel. Bot novo com domínio
+velho roda prompt antigo e produz vídeo errado, **sem erro nenhum no boot**. A lista
+sai de `config/fluxos.json`, a mesma fonte que o bot lê. Domínio com mudança local é
+**pulado**, nunca stashado: ali dentro moram os textos gerados pelos fluxos.
+
 Ele faz o que a atualização na mão exigia lembrar, e nesta ordem: guarda edições
-locais com `stash`, `git pull --ff-only`, `npm ci` **forçando `NODE_ENV=development`**
+locais **deste repo** com `stash` (inclusive edições no próprio `atualizar.sh` — se
+sumirem, estão em `git stash list`), `git pull --ff-only`, `npm ci` **forçando `NODE_ENV=development`**
 (senão as devDeps somem e o build morre em `tsc: not found`), `npm run build`, e só
 então reinicia — **detectando** se a unidade é de usuário ou de sistema, em vez de
 assumir.
