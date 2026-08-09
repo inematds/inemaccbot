@@ -15,3 +15,8 @@ backups/
 # Nenhum .env entra no repo — um .env.bak vazou o BOT_TOKEN em 2026-08-08.
 .env*
 !.env.example
+
+# `doc/` (singular) é a pasta PRIVADA: anotação que não pode ser lida de fora,
+# porque o `origin` é público. `docs/` (plural) é a documentação que vai junto.
+# Um caractere separa as duas — daí o comentário.
+doc/
