@@ -47,8 +47,13 @@ cd ~/projetos/inemaccbot
 npm ci            # `ci`, não `install`: instalação reproduzível pelo lockfile
 ```
 
-**Ainda não rode `npm test`.** A suíte só fecha depois dos passos 2 e 3 — sem eles,
-dezenas de testes falham por `flow.json` ausente, e mais 2 por falta do CTA.
+**Ainda não rode `npm test`.** A suíte só fecha depois do passo 2 — sem os repos de
+domínio, dezenas de testes falham por `flow.json` ausente.
+
+Se `npm run build` disser `tsc: not found`, o `npm ci` pulou as devDependencies (é o que
+`NODE_ENV=production` faz sozinho, comum em servidor). Refaça com
+`NODE_ENV=development npm ci --include=dev`. O aviso do `npm audit` é ruído de
+transitivas: **não** rode `audit fix --force`, ele desfaz o pin do Playwright.
 
 ### 2. Repos de domínio (irmãos, não submódulos)
 
@@ -65,19 +70,23 @@ git clone https://github.com/inematds/promoavatar3.git
 Sem eles o boot sobe, mas dezenas de testes falham e `/promoavatar` e `/promoavatar3`
 quebram na primeira fase.
 
-### 3. O CTA (ativo externo, fora do git)
+### 3. O CTA (já vem no clone desde 2026-08-08)
 
-`promoavatar` e `promoavatar3` exigem `cta/cta-9x16.mp4`, e os dois repos ignoram
-`*.mp4` — o arquivo **não existe no clone nem no histórico**. Copie o CTA oficial para
-os dois caminhos:
+`promoavatar` e `promoavatar3` exigem `cta/cta-9x16.mp4`. Ele era ativo externo — os
+dois repos ignoram `*.mp4` e o arquivo não vinha no clone, o que fazia **2 testes
+falharem** numa máquina nova. Agora está versionado nos dois, por uma exceção explícita
+no `.gitignore` deles (`!cta/*.mp4`): são 60 KB e o arquivo não é regenerável.
 
 ```text
 ~/projetos/promoavatar/cta/cta-9x16.mp4
 ~/projetos/promoavatar3/cta/cta-9x16.mp4
 ```
 
+**Nada a fazer neste passo** — só confira que os dois caminhos existem depois do passo 2.
+Se estiverem faltando, seu clone é anterior à mudança: `git pull` em cada repo.
+
 Formato esperado: 1080x1920, H.264/`yuv420p`/30 fps, AAC 48 kHz estéreo — o pipeline
-concatena sem reencodar quando os parâmetros batem. Sem o arquivo, **2 testes falham**.
+concatena sem reencodar quando os parâmetros batem.
 
 ### 4. Testar e compilar
 
@@ -170,7 +179,7 @@ de um render.
 | **Token do Telegram** | `BOT_TOKEN` no `.env` (BotFather) | o boot falha na hora: `config: falta BOT_TOKEN` |
 | **Allowlist de chat** | `ALLOWED_CHAT_IDS` no `.env` | o boot falha igual. E com o id errado o bot fica mudo: toda mensagem vira `rejeitada — fora da allowlist` no log |
 | **Login do Claude** | `claude auth status` → `loggedIn: true` | o bot sobe e aceita comandos, mas **todo job de agente falha** — é a falha mais confusa de diagnosticar, porque tudo *parece* certo |
-| **CTA `cta-9x16.mp4`** | `~/projetos/promoavatar/cta/` e `~/projetos/promoavatar3/cta/` (passo 3) | 2 testes falham, e nenhum reel fecha: a última fase concatena o CTA no fim |
+| **CTA `cta-9x16.mp4`** | versionado nos dois repos de domínio, em `cta/` (passo 3) | 2 testes falham, e nenhum reel fecha: a última fase concatena o CTA no fim |
 | **Perfil Chromium logado no HeyGen** | `HEYGEN_PERFIL_CHROME` (default `~/.cache/inemaccbot/perfil-heygen`) — você loga **uma vez, na mão**, naquele perfil | a rota `\| estudio` falha. É caminho, não segredo: os cookies moram dentro da pasta, fora do repo |
 | **API key do HeyGen** | **não fica neste `.env`** — mora no arquivo apontado por `HEYGEN_ENV_PATH` (default `~/projetos/openpcbotv2/.env`) | as rotas `\| api` e `\| creditos` falham |
 | **CLI do HeyGen** | binário `heygen` no PATH, ou o caminho em `HEYGEN_CLI` | idem |
