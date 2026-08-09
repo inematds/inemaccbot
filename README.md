@@ -199,6 +199,43 @@ systemctl --user restart inemaccbot
 gasta uma tentativa dele — é a seção [`código 143`](#código-143-não-é-erro-do-agente--é-restart).
 Fila vazia → reinicie à vontade.
 
+### 10. Numa VPS: onde cada arquivo mora
+
+O `.env` do bot vai na **raiz do clone**, e isso não é preferência: `main()` lê
+`resolve(process.cwd(), '.env')` e a unidade systemd usa `WorkingDirectory` +
+`EnvironmentFile` apontando para a mesma pasta. Clonou em outro lugar? Edite **as
+duas** linhas do unit, para o mesmo diretório — se divergirem, o systemd injeta um
+`.env` e o `main()` lê outro, e o sintoma é confuso.
+
+Numa VPS rodando como `root`:
+
+| arquivo | quem lê | caminho |
+|---|---|---|
+| `.env` do bot | `main()` + systemd | `/root/projetos/inemaccbot/.env` (`chmod 600`) |
+| chave do HeyGen | `HEYGEN_ENV_PATH` | `/root/.config/inemaccbot/heygen.env` — ou o próprio `.env` |
+| chave do Groq | `GROQ_ENV_PATH` | `/root/.config/inemaccbot/groq.env` — ou `GROQ_API_KEY` no `.env` |
+| login do Claude | CLI `claude` | `/root/.claude/.credentials.json` (`chmod 600`) |
+| perfil do HeyGen (rota `\| estudio`) | `HEYGEN_PERFIL_CHROME` | `/root/.cache/inemaccbot/perfil-heygen` |
+
+Os repos de domínio (`promoavatar`, `promoavatar3`) **não têm `.env` nenhum**: eles
+leem tudo do ambiente que o bot repassa aos scripts filhos.
+
+E é por isso que existe atalho: como o `.env` é publicado no ambiente do processo
+(`exportarParaAmbiente`), você pode pôr `GROQ_API_KEY` e `INEMAIMG_HOST` direto nele
+e pular os arquivos separados. Um arquivo só, ao custo de misturar segredo com
+config — o `.env.example` mostra as duas formas.
+
+**O que muda de máquina** (o resto do `.env` é igual): `BOT_TOKEN` — use um bot
+próprio, senão as duas instâncias disputam o `getUpdates` e cada uma pega metade das
+mensagens; `ALLOWED_CHAT_IDS=0` para parear no primeiro `/ping`; `PUBLICO_URLS`, que
+aqui são nomes da rede local e lá precisam do IP/domínio da VPS; e
+`HYPERFRAMES_BROWSER_PATH`, que aponta para um snap que a VPS provavelmente não tem
+(apague a linha e o default volta a valer).
+
+O login do Claude e o do HeyGen **não** exigem navegador na VPS — os dois são
+arquivo, e viajam por `scp`. O caso difícil é só a rota `| estudio`, cuja sessão
+esbarra no Cloudflare por causa do IP; está levantado em `doc/` (fora do git).
+
 ## Configuração: o que só VOCÊ pode providenciar
 
 Nada disto o bot resolve sozinho — são segredos, contas e ativos que moram fora do
@@ -722,6 +759,19 @@ sem uma delas o boot falha alto e cedo, antes de subir qualquer worker:
 propósito (`CHAVE=valor`, `#` comenta, aspas opcionais) — não é `dotenv`, é o suficiente pro boot.
 O ambiente real do processo (systemd `EnvironmentFile`, ou override manual) sempre vence o que está
 escrito no arquivo quando os dois definem a mesma chave.
+
+**O `.env` também é publicado no ambiente do processo** (`exportarParaAmbiente`, chamado
+por `main()`), e não só lido para o `Config`. Isso existe porque os scripts das fases
+herdam o ambiente do bot (o `spawn` de `reel.ts` não passa `env:`), e sem essa publicação
+o bot ficava assimétrico: sob systemd o `EnvironmentFile` já resolvia, mas pelo `./start.sh`
+os filhos não viam nada. Estas **não** são lidas por `carregarConfig` — só repassadas:
+
+| variável | default | quem usa |
+|---|---|---|
+| `INEMAIMG_HOST` | `http://localhost:8000` | `gen-imagem.py` (imagens do reel). Numa VPS, túnel para a GPU de casa: `ssh -R 8000:localhost:8000 <vps>` |
+| `INEMAIMG_MODEL` | `flux2-klein` | idem. Apontar para kie/fal/agnes **não** funciona: provedor de nuvem muda corpo e resposta, exige adaptador |
+| `GROQ_ENV_PATH` | `~/projetos/openpcbotv2/.env` | `transcribe-groq.sh`. Alternativa: `GROQ_API_KEY` direto no ambiente, que tem precedência |
+| `HEYGEN_API_KEY` | — | só se `HEYGEN_ENV_PATH` apontar para o próprio `.env` (ver `.env.example`) |
 
 ## Boot: a ordem importa
 
