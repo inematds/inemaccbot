@@ -610,7 +610,9 @@ os filhos não viam nada. Estas **não** são lidas por `carregarConfig` — só
 | variável | default | quem usa |
 |---|---|---|
 | `INEMAIMG_HOST` | `http://localhost:8000` | `gen-imagem.py` (imagens do reel). Numa VPS, túnel para a GPU de casa: `ssh -R 8000:localhost:8000 <vps>` |
-| `INEMAIMG_MODEL` | `flux2-klein` | idem. Apontar para kie/fal/agnes **não** funciona: provedor de nuvem muda corpo e resposta, exige adaptador |
+| `INEMAIMG_MODEL` | `flux2-klein` | idem |
+| `IMG_PROVEDOR` | `inemaimg` | quem gera a imagem: `inemaimg` (GPU local, **seed respeitado**) ou `agnes` (API, US$ 0, **sem seed** — o determinismo do reel cai). `kie`/`fal` recusam: não implementados |
+| `IMG_ENV_PATH` | — | arquivo com a chave do provedor (ex.: `AGNES_API_KEY=`). Alternativa: a variável direto no ambiente |
 | `GROQ_ENV_PATH` | `~/projetos/openpcbotv2/.env` | `transcribe-groq.sh`. Alternativa: `GROQ_API_KEY` direto no ambiente, que tem precedência |
 | `HEYGEN_API_KEY` | — | só se `HEYGEN_ENV_PATH` apontar para o próprio `.env` (ver `.env.example`) |
 
