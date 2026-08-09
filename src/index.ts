@@ -8,12 +8,13 @@
 //   `main`         — lê o .env do disco, monta as deps reais, liga os sinais.
 // `main` só roda quando o módulo é EXECUTADO; nunca no import (os testes
 // importam este arquivo).
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { type Config, carregarConfig } from './config.js';
+import { type EscritaEnv, gravarEnv, trocarValorEnv } from './env-arquivo.js';
 import { abrirDb } from './db/abrir.js';
 import { redatorPadrao } from './dominio/redacao.js';
 import { carregarSkills as carregarSkillsPadrao, type SkillDef } from './dominio/registry.js';
@@ -612,6 +613,30 @@ export function lerEnv(texto: string): Record<string, string> {
   return saida;
 }
 
+/**
+ * Persistência do pareamento: grava a allowlist nova no `.env`, que é de onde
+ * ela vai ser lida no próximo boot (o systemd relê o `EnvironmentFile` no
+ * start). I/O injetado pelo mesmo motivo do resto do arquivo — teste não
+ * escreve no `.env` de ninguém.
+ */
+export function persistirAllowlistNoEnv(
+  caminho: string,
+  ids: number[],
+  io: EscritaEnv & { ler(caminho: string): string },
+): void {
+  // Vírgula sem espaço: é exatamente o formato que `carregarConfig` parseia.
+  const texto = trocarValorEnv(io.ler(caminho), 'ALLOWED_CHAT_IDS', ids.join(','));
+  gravarEnv(caminho, texto, io);
+}
+
+/** As operações de disco reais por trás de `persistirAllowlistNoEnv`. */
+const ESCRITA_ENV_REAL = {
+  ler: (c: string): string => readFileSync(c, 'utf8'),
+  escrever: (c: string, t: string): void => { writeFileSync(c, t, { mode: 0o600 }); },
+  renomear: (de: string, para: string): void => { renameSync(de, para); },
+  permissao: (c: string, m: number): void => { chmodSync(c, m); },
+};
+
 /** Transporte real. `bot.start()` NÃO é aguardado: no grammy ele só assenta
  * quando o bot PARA — esperar por ele travaria o boot antes do primeiro
  * `passo()`. `bot.init()` é o que falha rápido (token inválido). */
@@ -657,11 +682,16 @@ function criarTransporteReal(
     aoComando: (chatId: number, texto: string) => Promise<string>;
     log: (m: string) => void;
     aoFalhaFatal: (e: Error) => void;
+    /** O `.env` que `main` leu — destino do id quando o bot é pareado. */
+    caminhoEnv: string;
   },
 ): TransporteServico {
   const { bot, transporte } = criarBot(cfg, {
     aoComando: deps.aoComando,
     log: deps.log,
+    persistirAllowlist: (ids: number[]): void => {
+      persistirAllowlistNoEnv(deps.caminhoEnv, ids, ESCRITA_ENV_REAL);
+    },
     // Anexo cai em `state/midia`, que é a raiz que o `ffmpeg.thumb` já exige —
     // é o que torna aquele comando alcançável na prática.
     baixarAnexo: criarBaixadorTelegram(
@@ -693,7 +723,9 @@ export async function main(): Promise<void> {
 
   const svc = criarServico(cfg, {
     agora: () => Math.floor(Date.now() / 1000),
-    criarTransporte: criarTransporteReal,
+    // O caminho do `.env` entra por aqui: `criarServico` não precisa conhecê-lo,
+    // e o pareamento precisa saber onde gravar o id do dono.
+    criarTransporte: (c, d) => criarTransporteReal(c, { ...d, caminhoEnv: arquivo }),
     log,
     intervaloOciosoMs: 1_000,
     heartbeatMs: 20_000,

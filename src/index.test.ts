@@ -16,7 +16,7 @@ import { FilaSqlite } from './fila/store.js';
 import type { Tarefa } from './fila/worker.js';
 import type { Config } from './config.js';
 import type { Transporte } from './gateway/telegram.js';
-import { criarServico, ligarPolling } from './index.js';
+import { criarServico, ligarPolling, persistirAllowlistNoEnv } from './index.js';
 import type { BotMinimo } from './index.js';
 import type { DepsServico, Servico } from './index.js';
 
@@ -468,5 +468,36 @@ describe('gateway caído depois do boot', () => {
     expect(linhas.join('\n')).toMatch(/polling caiu.*401/);
     await ciclo.parar();
     expect(parou).toBe(1);
+  });
+});
+
+// --- persistência do pareamento: o .env vira a memória de quem é o dono ---
+
+describe('persistirAllowlistNoEnv', () => {
+  it('lê o .env, troca só a allowlist e grava atômico', () => {
+    const escritas: Array<[string, string]> = [];
+    const renomeios: Array<[string, string]> = [];
+
+    persistirAllowlistNoEnv('/casa/.env', [4242], {
+      ler: () => '# dono\nBOT_TOKEN=1\nALLOWED_CHAT_IDS=0\n',
+      escrever: (c, t) => { escritas.push([c, t]); },
+      renomear: (de, para) => { renomeios.push([de, para]); },
+      permissao: () => {},
+    });
+
+    expect(escritas[0]?.[0]).toBe('/casa/.env.tmp');
+    expect(escritas[0]?.[1]).toBe('# dono\nBOT_TOKEN=1\nALLOWED_CHAT_IDS=4242\n');
+    expect(renomeios[0]).toEqual(['/casa/.env.tmp', '/casa/.env']);
+  });
+
+  it('grava vários ids separados por vírgula, no formato que carregarConfig lê', () => {
+    const escritas: string[] = [];
+    persistirAllowlistNoEnv('/casa/.env', [1, 2], {
+      ler: () => 'ALLOWED_CHAT_IDS=0\n',
+      escrever: (_c, t) => { escritas.push(t); },
+      renomear: () => {},
+      permissao: () => {},
+    });
+    expect(escritas[0]).toBe('ALLOWED_CHAT_IDS=1,2\n');
   });
 });
