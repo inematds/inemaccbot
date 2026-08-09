@@ -16,7 +16,7 @@ import { FilaSqlite } from './fila/store.js';
 import type { Tarefa } from './fila/worker.js';
 import type { Config } from './config.js';
 import type { Transporte } from './gateway/telegram.js';
-import { criarServico, ligarPolling, persistirAllowlistNoEnv } from './index.js';
+import { criarServico, exportarParaAmbiente, ligarPolling, persistirAllowlistNoEnv } from './index.js';
 import type { BotMinimo } from './index.js';
 import type { DepsServico, Servico } from './index.js';
 
@@ -499,5 +499,30 @@ describe('persistirAllowlistNoEnv', () => {
       permissao: () => {},
     });
     expect(escritas[0]).toBe('ALLOWED_CHAT_IDS=1,2\n');
+  });
+});
+
+// --- o .env precisa CHEGAR ao processo filho, não só ao Config ---
+
+describe('exportarParaAmbiente', () => {
+  it('põe no ambiente as chaves do .env que ainda não estão lá', () => {
+    const env: NodeJS.ProcessEnv = {};
+    exportarParaAmbiente({ INEMAIMG_HOST: 'http://gpu:8000' }, env);
+    expect(env.INEMAIMG_HOST).toBe('http://gpu:8000');
+  });
+
+  it('NÃO sobrescreve o que o ambiente já define — o processo vence o arquivo', () => {
+    // Mesma precedência que `carregarConfig` já usa; inverter aqui faria o
+    // systemd (EnvironmentFile) e o start.sh discordarem sobre quem manda.
+    const env: NodeJS.ProcessEnv = { INEMAIMG_HOST: 'http://mandou-quem-subiu:1' };
+    exportarParaAmbiente({ INEMAIMG_HOST: 'http://do-arquivo:2' }, env);
+    expect(env.INEMAIMG_HOST).toBe('http://mandou-quem-subiu:1');
+  });
+
+  it('é o que faz um script filho enxergar GROQ_ENV_PATH vindo do .env', () => {
+    const env: NodeJS.ProcessEnv = {};
+    exportarParaAmbiente({ GROQ_ENV_PATH: '/root/.config/groq.env', BOT_TOKEN: 'x' }, env);
+    expect(env.GROQ_ENV_PATH).toBe('/root/.config/groq.env');
+    expect(env.BOT_TOKEN).toBe('x');
   });
 });

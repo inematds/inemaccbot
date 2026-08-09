@@ -614,6 +614,28 @@ export function lerEnv(texto: string): Record<string, string> {
 }
 
 /**
+ * Publica as chaves do `.env` no ambiente do PROCESSO — não só no `Config`.
+ *
+ * Sem isto o bot fica assimétrico e o sintoma é difícil de ler: sob systemd o
+ * `EnvironmentFile=` já põe tudo em `process.env`, e os scripts filhos
+ * (`montar-reel.py`, `gen-imagem.py`, `transcribe-groq.sh` — que herdam o
+ * ambiente porque o `spawn` não passa `env:`) enxergam `INEMAIMG_HOST`,
+ * `GROQ_ENV_PATH` e afins. Rodando pelo `./start.sh`, o `main()` lia o arquivo
+ * para um objeto e os filhos NÃO viam nada — a mesma máquina, a mesma config,
+ * comportamento diferente conforme quem subiu o processo.
+ *
+ * O que já está no ambiente VENCE o arquivo, igual a `carregarConfig`.
+ */
+export function exportarParaAmbiente(
+  doArquivo: Record<string, string>,
+  env: NodeJS.ProcessEnv,
+): void {
+  for (const [chave, valor] of Object.entries(doArquivo)) {
+    if (env[chave] === undefined) env[chave] = valor;
+  }
+}
+
+/**
  * Persistência do pareamento: grava a allowlist nova no `.env`, que é de onde
  * ela vai ser lida no próximo boot (o systemd relê o `EnvironmentFile` no
  * start). I/O injetado pelo mesmo motivo do resto do arquivo — teste não
@@ -709,6 +731,8 @@ export async function main(): Promise<void> {
   const doArquivo = existsSync(arquivo) ? lerEnv(readFileSync(arquivo, 'utf8')) : {};
   // O ambiente do processo vence o arquivo (systemd/override manual).
   const cfg = carregarConfig({ ...doArquivo, ...process.env });
+  // E o arquivo tem que chegar aos scripts filhos, não só ao Config.
+  exportarParaAmbiente(doArquivo, process.env);
 
   mkdirSync(dirname(cfg.logFile), { recursive: true });
   const log = (m: string): void => {
