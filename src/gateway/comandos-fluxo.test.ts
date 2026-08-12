@@ -579,6 +579,34 @@ describe('/status P#N', () => {
       expect(r).toContain('jovens-aut');
     });
 
+    // Pedido do dono (2026-08-12): com 1 rodando de 36, "1 ▶️ rodando" não diz
+    // QUAL, e é justamente a que ele quer olhar — o fluxo está vivo, então não
+    // há falha para nomear e o `/refazer` (com razão) não tem o que fazer.
+    it('o que está RODANDO é nomeado, mesmo no meio de 30', () => {
+      // MESMA fase dos 30: com fase própria seriam 1 alvo, que cai no ramo
+      // "poucos alvos" e nomeia de qualquer jeito — o teste passaria sem provar nada.
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'profissionais-aut', 'rodando')]), false);
+      expect(r).toContain('profissionais-aut');
+    });
+
+    // O contrário do pedido: `pendente` NÃO é nomeado. Com 35 na fila a lista
+    // vira a parede de nomes que a contagem existe para evitar.
+    it('o que está na FILA continua só contado', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'so-na-fila', 'pendente')]), false);
+      expect(r).not.toContain('so-na-fila');
+    });
+
+    // Nomear sem teto reintroduz a parede: 20 rodando ao mesmo tempo (a fila
+    // `io` roda em paralelo) sairiam em uma linha só, quebrada no meio da
+    // palavra pelo Telegram.
+    it('nomeação tem teto, e diz quantos ficaram de fora', () => {
+      const muitos = Array.from({ length: 20 }, (_, i) => fase('reel', `alvo-rodando-${i}`, 'rodando'));
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), ...muitos]), false);
+      expect(r).toContain('alvo-rodando-0');
+      expect(r).not.toContain('alvo-rodando-19');
+      expect(r).toMatch(/\+\d+/);
+    });
+
     it('o que espera VOCÊ é nomeado', () => {
       const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'mulheres-pro', 'aguardando-ok')]), false);
       expect(r).toContain('mulheres-pro');

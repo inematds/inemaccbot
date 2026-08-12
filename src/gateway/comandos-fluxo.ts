@@ -534,9 +534,22 @@ const NOME_ESTADO: Record<Fase['estado'], string> = {
   falhou: 'falhou', pulado: 'pulado',
 };
 
-/** Estados que EXIGEM o nome do alvo, mesmo no meio de 36: são os dois que
- *  pedem uma decisão sua. O resto é contagem. */
-const NOMEAR_SEMPRE: Fase['estado'][] = ['falhou', 'aguardando-ok'];
+/** Estados que EXIGEM o nome do alvo, mesmo no meio de 36.
+ *
+ * Dois pedem decisão sua (`falhou`, `aguardando-ok`). `rodando` entrou depois
+ * (2026-08-12), por um pedido com motivo claro: com 35/36 prontos e 1 rodando,
+ * "1 ▶️ rodando" não diz QUAL — e é exatamente a que se quer olhar, porque o
+ * fluxo está vivo, não há falha para nomear e o `/refazer` (com razão) responde
+ * "nada a refazer".
+ *
+ * `pendente` continua de fora de propósito: 35 na fila viram a parede de nomes
+ * que a contagem existe para evitar. */
+const NOMEAR_SEMPRE: Fase['estado'][] = ['falhou', 'aguardando-ok', 'rodando'];
+
+/** Teto de nomes por estado. Sem ele, 20 jobs em paralelo na fila `io` sairiam
+ *  numa linha só, quebrada no meio da palavra pelo Telegram — a parede de volta
+ *  por outra porta. O excedente vira `+N`, nunca some calado. */
+const NOMES_NA_LINHA = 6;
 
 function linhasDaFase(fase: string, lista: Fase[]): string[] {
   if (lista.length <= ALVOS_ANTES_DE_CONTAR) {
@@ -563,7 +576,9 @@ function linhasDaFase(fase: string, lista: Fase[]): string[] {
   for (const estado of NOMEAR_SEMPRE) {
     const fs = porEstado.get(estado);
     if (fs?.length) {
-      linhas.push(`  ${ICONE[estado]} ${fs.map((f) => f.alvo || '(todos)').join(', ')}`);
+      const nomes = fs.slice(0, NOMES_NA_LINHA).map((f) => f.alvo || '(todos)');
+      const sobra = fs.length - nomes.length;
+      linhas.push(`  ${ICONE[estado]} ${nomes.join(', ')}${sobra ? ` +${sobra}` : ''}`);
     }
   }
   return linhas;
