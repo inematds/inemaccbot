@@ -574,9 +574,19 @@ describe('/status P#N', () => {
       expect(r).toMatch(/1 .*(pendente|fila)/);
     });
 
-    it('o que FALHOU é nomeado, mesmo no meio de 30', () => {
-      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'jovens-aut', 'falhou')]), false);
+    // Mudou em 2026-08-13: a falha deixou de ser nomeada NA LINHA DA FASE e
+    // passou a ter seção própria, agrupada por causa — só no detalhe. No painel
+    // fica a contagem, que é o pedido de quem olha vários fluxos de relance.
+    it('o que FALHOU aparece no detalhe, na seção de falhas', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'jovens-aut', 'falhou')]), true);
       expect(r).toContain('jovens-aut');
+      expect(r).toContain('Falhas (1)');
+    });
+
+    it('o que FALHOU NÃO é nomeado no painel — lá é contagem', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'jovens-aut', 'falhou')]), false);
+      expect(r).not.toContain('jovens-aut');
+      expect(r).toMatch(/1 ❌/);
     });
 
     // Pedido do dono (2026-08-12): com 1 rodando de 36, "1 ▶️ rodando" não diz
@@ -969,5 +979,78 @@ describe('parseCapa', () => {
 
   it('sem nada devolve ref indefinida em vez de explodir', () => {
     expect(parseCapa('capa:').ref).toBeUndefined();
+  });
+});
+
+// --- Falhas no detalhe: lista completa e agrupada; no painel, só contagem ---
+//
+// Caso real (C#61, 2026-08-13): 25 falhas, 21 delas na fase `estudio` com só
+// TRÊS mensagens distintas, e cada linha repetindo "heygen.estudio: C61-<alvo>-v1 —"
+// antes do que importa. A lista era ilegível justamente onde precisava ser lida.
+describe('falhas: agrupadas no detalhe, contadas no painel', () => {
+  const fase = (nome: string, alvo: string, estado: string, erro: string | null = null) =>
+    ({ fase: nome, alvo, estado, erro } as never);
+  const visaoCom = (fases: unknown[]) => ({
+    fluxo: { prefixo: 'C', id: 61, tipo: 'promoavatar3', assunto: 'assunto', status: 'falhou', versao_def: 1 },
+    fases,
+  } as never);
+
+  const doisCards = (a: string) =>
+    fase('estudio', a, 'falhou', `heygen.estudio: C61-${a}-v1 — 2 cards com o nome exato "TEMPLATE-AVATAR" (esperado 1)`);
+  const zeroCards = (a: string) =>
+    fase('estudio', a, 'falhou', `heygen.estudio: C61-${a}-v1 — 0 cards com o nome exato "TEMPLATE-AVATAR" (esperado 1)`);
+  const fetchFail = (a: string) => fase('baixar', a, 'falhou', 'fetch failed');
+
+  const c61 = () => visaoCom([
+    ...['40mais-aut', 'criadores-aut', 'criadores-pro'].map(doisCards),
+    ...['educadores-alc', 'educadores-aut', 'jovens-alc', 'jovens-aut'].map(zeroCards),
+    fase('estudio', '60mais-pro', 'falhou', 'heygen.estudio: C61-60mais-pro-v1 — locator.click: Timeout 45000ms exceeded.'),
+    ...['criadores-alc', 'familia-pro', 'profissionais-alc', 'tecnicos-alc'].map(fetchFail),
+  ]);
+
+  it('detalhe: agrupa por mensagem e mostra TODOS os alvos, sem cortar', () => {
+    const r = tabelaFluxo(c61(), true);
+    // os 4 alvos da mesma causa numa linha só, e nenhum some
+    for (const a of ['educadores-alc', 'educadores-aut', 'jovens-alc', 'jovens-aut']) {
+      expect(r).toContain(a);
+    }
+    for (const a of ['criadores-alc', 'familia-pro', 'profissionais-alc', 'tecnicos-alc']) {
+      expect(r).toContain(a);
+    }
+  });
+
+  it('detalhe: a mensagem repetida aparece UMA vez, com a contagem', () => {
+    const r = tabelaFluxo(c61(), true);
+    const ocorrencias = r.split('0 cards com o nome exato').length - 1;
+    expect(ocorrencias).toBe(1);
+    expect(r).toMatch(/0 cards[^\n]*\(4\)|\(4\)[^\n]*0 cards/);
+  });
+
+  it('detalhe: some o prefixo repetido (tarefa e título do estúdio)', () => {
+    const r = tabelaFluxo(c61(), true);
+    expect(r).not.toContain('C61-educadores-alc-v1');
+    expect(r).not.toContain('heygen.estudio:');
+  });
+
+  it('detalhe: separa por fase, porque a causa e o conserto são por fase', () => {
+    const r = tabelaFluxo(c61(), true);
+    expect(r).toMatch(/estudio.*\(8\)/s);
+    expect(r).toMatch(/baixar.*\(4\)/s);
+  });
+
+  it('painel: nenhuma lista de falha — só a contagem da fase', () => {
+    const r = tabelaFluxo(c61(), false);
+    expect(r).not.toContain('Falhas');
+    expect(r).not.toContain('educadores-alc');
+    expect(r).toMatch(/estudio:.*8 ❌/);
+  });
+
+  it('painel de UM alvo que falhou também não vira lista', () => {
+    const r = tabelaFluxo(visaoCom([fase('reel', 'jovens-aut', 'falhou', 'estourou')]), false);
+    expect(r).not.toContain('Falhas');
+  });
+
+  it('detalhe continua oferecendo o /refazer', () => {
+    expect(tabelaFluxo(c61(), true)).toContain('/refazer C#61');
   });
 });

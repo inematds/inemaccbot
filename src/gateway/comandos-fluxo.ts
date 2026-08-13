@@ -502,13 +502,70 @@ export function tabelaFluxo(
       ? `⏸️ esperando você em "${esperando[0]!.fase}" — libere com /aprovar ${fluxo.prefixo}#${fluxo.id}`
       : `⏸️ esperando você em "${esperando[0]!.fase}"`);
   }
+  // A lista de falhas é do DETALHE (`/status C#61`). No painel de vários fluxos
+  // ela não entra: 25 falhas empurrariam os outros fluxos para fora da tela, e
+  // a contagem por fase (`estudio: 8 ❌ falhou`) já diz que há o que olhar.
   const falhas = fases.filter((f) => f.estado === 'falhou');
-  if (falhas.length) {
-    linhas.push('', 'Falhas:');
-    for (const f of falhas) linhas.push(`  ${f.alvo || '(todos)'}/${f.fase}: ${(f.erro ?? '').slice(0, 200)}`);
-    if (comandos) linhas.push(`Retentar: /refazer ${fluxo.prefixo}#${fluxo.id} [alvo]`);
+  if (falhas.length && comandos) {
+    linhas.push('', ...linhasDeFalhas(falhas));
+    linhas.push(`Retentar: /refazer ${fluxo.prefixo}#${fluxo.id} [alvo]`);
   }
   return linhas.join('\n');
+}
+
+/**
+ * A mensagem de erro SEM o que se repete em todas as linhas.
+ *
+ * O erro chega assim: `heygen.estudio: C61-jovens-alc-v1 — 0 cards com o nome
+ * exato "TEMPLATE-AVATAR"`. Numa lista de 21, o nome da tarefa e o título do
+ * estúdio ocupam metade da largura do celular em toda linha e não distinguem
+ * nada — o que distingue vem depois do travessão. Some os dois, e o que sobra é
+ * a causa, que é o que se agrupa.
+ */
+export function causaDaFalha(erro: string | null, alvo: string): string {
+  let m = (erro ?? '').replace(/\s+/g, ' ').trim();
+  if (!m) return '(sem mensagem)';
+  // `heygen.estudio: `, `reel.montar: ` — nome da tarefa, igual na fase inteira.
+  m = m.replace(/^[a-z][\w.-]*\.[a-z][\w-]*:\s*/i, '');
+  // `C61-jovens-alc-v1 — ` — o título do estúdio, que já contém o alvo.
+  const alvoEscapado = alvo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  m = m.replace(new RegExp(`^\\w*-?${alvoEscapado}-v\\d+\\s*[—-]\\s*`, 'i'), '');
+  m = m.replace(/^[A-Z]\d+-[\w-]+-v\d+\s*[—-]\s*/, '');
+  return m;
+}
+
+/** Teto do texto da causa. Acima disto o Telegram quebra a linha e a lista
+ *  deixa de ser varrível; o log tem a mensagem inteira. */
+const CAUSA_MAX = 90;
+
+/**
+ * As falhas agrupadas: por fase, e dentro dela por CAUSA.
+ *
+ * Vinte e cinco falhas com três causas distintas são três problemas, não vinte
+ * e cinco — e é assim que se conserta. Todos os alvos são nomeados, sem teto:
+ * aqui o usuário pediu o detalhe explicitamente, e cortar seria esconder
+ * justamente o que ele veio ver.
+ */
+function linhasDeFalhas(falhas: Fase[]): string[] {
+  const porFase = new Map<string, Fase[]>();
+  for (const f of falhas) porFase.set(f.fase, [...(porFase.get(f.fase) ?? []), f]);
+
+  const linhas = [`Falhas (${falhas.length}):`];
+  for (const [fase, lista] of porFase) {
+    linhas.push(`${fase} (${lista.length}):`);
+    const porCausa = new Map<string, string[]>();
+    for (const f of lista) {
+      const causa = causaDaFalha(f.erro, f.alvo || '').slice(0, CAUSA_MAX);
+      porCausa.set(causa, [...(porCausa.get(causa) ?? []), f.alvo || '(todos)']);
+    }
+    // Causa que atinge mais alvos primeiro: é a que paga mais por ser resolvida.
+    const ordenadas = [...porCausa.entries()].sort((a, b) => b[1].length - a[1].length);
+    for (const [causa, alvos] of ordenadas) {
+      linhas.push(`  ${causa} (${alvos.length})`);
+      linhas.push(`    ${alvos.join(', ')}`);
+    }
+  }
+  return linhas;
 }
 
 /**
@@ -536,15 +593,19 @@ const NOME_ESTADO: Record<Fase['estado'], string> = {
 
 /** Estados que EXIGEM o nome do alvo, mesmo no meio de 36.
  *
- * Dois pedem decisão sua (`falhou`, `aguardando-ok`). `rodando` entrou depois
- * (2026-08-12), por um pedido com motivo claro: com 35/36 prontos e 1 rodando,
- * "1 ▶️ rodando" não diz QUAL — e é exatamente a que se quer olhar, porque o
- * fluxo está vivo, não há falha para nomear e o `/refazer` (com razão) responde
- * "nada a refazer".
+ * `aguardando-ok` pede decisão sua. `rodando` entrou em 2026-08-12: com 35/36
+ * prontos e 1 rodando, "1 ▶️ rodando" não diz QUAL — e é exatamente a que se
+ * quer olhar, porque o fluxo está vivo, não há falha para nomear e o `/refazer`
+ * (com razão) responde "nada a refazer".
+ *
+ * `falhou` SAIU em 2026-08-13: as falhas passaram a ter seção própria no
+ * detalhe (`linhasDeFalhas`), agrupada por causa e com todos os alvos. Nomeá-las
+ * aqui também duplicaria a informação no detalhe e encheria o painel — onde o
+ * pedido é o oposto, só a contagem.
  *
  * `pendente` continua de fora de propósito: 35 na fila viram a parede de nomes
  * que a contagem existe para evitar. */
-const NOMEAR_SEMPRE: Fase['estado'][] = ['falhou', 'aguardando-ok', 'rodando'];
+const NOMEAR_SEMPRE: Fase['estado'][] = ['aguardando-ok', 'rodando'];
 
 /** Teto de nomes por estado. Sem ele, 20 jobs em paralelo na fila `io` sairiam
  *  numa linha só, quebrada no meio da palavra pelo Telegram — a parede de volta
