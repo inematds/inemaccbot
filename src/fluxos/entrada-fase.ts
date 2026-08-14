@@ -14,6 +14,7 @@ import { join } from 'node:path';
 
 import { resolverDestino } from '../dominio/destinos.js';
 import { primeiraFala } from '../dominio/roteiro.js';
+import { ctaDaDefinicao } from '../dominio/flow.js';
 import type { FaseDef, FlowDef } from '../dominio/flow.js';
 import type { Fluxo } from './estado.js';
 
@@ -150,6 +151,13 @@ export function montarInput(ctx: ContextoEntrada): string {
       // ...e por isso o `flow.json` do DOMÍNIO viaja junto: é dele que saem os
       // templates e o layout padrão, não do repo onde o script mora.
       ...(ctx.repoDominio ? { flow: join(ctx.repoDominio, 'flow.json') } : {}),
+      // O clipe de encerramento sai da definição CONGELADA, não do disco: um
+      // fluxo criado como viral tem que terminar com o clipe da variante mesmo
+      // que alguém edite o `flow.json` do domínio no meio da execução (§3.4).
+      // Sem declaração, nada é passado e vale o default do `montar-reel.py`.
+      ...(ctx.repoDominio && ctaDaDefinicao(def)
+        ? { cta: join(ctx.repoDominio, ctaDaDefinicao(def) as string) }
+        : {}),
       // O canal do público, resolvido para uma pasta pelo registry de destinos
       // (§3.2: o domínio diz para QUEM, o bot sabe ONDE). Sem isto o reel fica
       // no artefato do bot e NÃO chega ao canal — foi o que aconteceu com o

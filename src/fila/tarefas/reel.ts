@@ -50,6 +50,9 @@ export interface EntradaReel {
   /** `<yt-pub-livesN>/imports/videos` — a pasta que o projeto do canal importa.
    *  Ausente quando o público não declara canal. */
   destino?: string;
+  /** Clipe de encerramento, quando o domínio declara um por variante. Ausente =
+   *  o `montar-reel.py` usa o default dele (o `cta/cta-9x16.mp4` do domínio). */
+  cta?: string;
   espera?: { intervalo: number; timeout: number };
 }
 
@@ -77,6 +80,7 @@ export function montarComando(e: EntradaReel): string {
     '--textos', q(e.textos),
     '--saida', q(e.saida),
     ...(e.flow ? ['--flow', q(e.flow)] : []),
+    ...(e.cta ? ['--cta', q(e.cta)] : []),
   ].join(' ');
   return `echo $$ > ${q(`${e.saida}.pid`)}; ${py} || touch ${q(`${e.saida}.err`)}`;
 }

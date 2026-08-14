@@ -8,6 +8,23 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.3.0 — 2026-08-14
+
+### Adicionado
+
+- **Clipe de encerramento por variante.** O domínio declara
+  `cta: {padrao: …, viral: …}` no `flow.json`; o bot resolve pela variante do
+  fluxo e passa `--cta` ao `montar-reel.py`. Sem `cta` declarado nada é
+  passado, e vale o default do motor — comportamento inalterado para quem não
+  declara.
+  Motivo: o clipe padrão é um CTA ("saiba mais em inema.club") e a variante
+  viral se organiza inteira em torno de UM pedido de engajamento; um segundo
+  pedido três segundos depois compete com ele. O clipe do viral é só a marca.
+- **A variante escolhida fica gravada na definição congelada** (`variante`),
+  e não em `opcoes` — `opcoes` é o mapa que filtra fase opcional por nome, e
+  variante não é fase. É de lá que a fase de reel lê o clipe, horas depois da
+  criação, sem reler o disco do domínio.
+
 ## 0.2.0 — 2026-08-13
 
 ### Adicionado

@@ -98,6 +98,30 @@ export interface FlowDef {
   versao_def: number;
   alvos: Record<string, AlvoDef>;
   fases: FaseDef[];
+  /**
+   * Clipe de encerramento concatenado no fim do reel, POR VARIANTE:
+   * `{ padrao: "cta/cta-9x16.mp4", viral: "cta/marca-9x16.mp4" }`.
+   *
+   * Existe porque o clipe padrão é um CTA ("saiba mais em inema.club") e a
+   * variante viral se organiza inteira em torno de UM pedido de engajamento —
+   * um segundo pedido três segundos depois compete com ele. O clipe da variante
+   * é só a marca: mantém a atribuição sem dar outra ordem.
+   *
+   * Ausente = o `montar-reel.py` usa o default dele (`cta/cta-9x16.mp4` do
+   * domínio), que é o comportamento de sempre.
+   */
+  cta?: Record<string, string>;
+  /**
+   * A variante com que ESTE fluxo foi criado (`| prompt=viral`), gravada na
+   * definição congelada por `aplicarVariante`.
+   *
+   * Fica aqui, e não em `opcoes`, porque `opcoes` é o mapa que
+   * `definicaoEfetiva` usa para FILTRAR fase opcional pelo nome — variante não
+   * é fase. E porque a definição congelada já é o lugar de "este fluxo nasceu
+   * com estas regras": é dela que a fase de reel lê qual clipe usar, muitas
+   * horas depois da criação.
+   */
+  variante?: string;
   /** Quem fala, quando a fase de avatar é feita pela API (`| api`). Fica no
    *  DOMÍNIO porque é decisão dele — o bot só sabe chamar a HeyGen. Um alvo
    *  pode sobrescrever qualquer um dos dois (ver `AlvoDef`). */
@@ -353,8 +377,35 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
     };
   });
 
+  // O clipe de encerramento, por variante. Chaves aceitas: `padrao` e o nome de
+  // uma variante declarada em alguma fase — assim um erro de digitação
+  // (`cta.virall`) é recusado aqui e não vira "usou o clipe errado" no render.
+  let cta: Record<string, string> | undefined;
+  if (d.cta !== undefined) {
+    if (typeof d.cta !== 'object' || d.cta === null || Array.isArray(d.cta)) {
+      erro('cta', 'objeto no formato {padrao: caminho, <variante>: caminho}');
+    }
+    const nomes = new Set(['padrao', ...fases.flatMap((f) => Object.keys(f.variantes ?? {}))]);
+    const pares = Object.entries(d.cta as Record<string, unknown>).map(([chave, bruto]) => {
+      if (!nomes.has(chave)) {
+        erro('cta', `"${chave}" não é "padrao" nem variante declarada (${[...nomes].join(', ')})`);
+      }
+      const rel = texto(bruto, `cta.${chave}`);
+      if (isAbsolute(rel) || rel.includes('..')) {
+        erro(`cta.${chave}`, 'precisa ser relativo ao repo de domínio, sem ".."');
+      }
+      const cam = join(raiz, rel);
+      if (!existsSync(cam) || statSync(cam).size === 0) {
+        erro(`cta.${chave}`, `arquivo ausente ou vazio: ${rel}`);
+      }
+      return [chave, rel] as const;
+    });
+    if (pares.length) cta = Object.fromEntries(pares);
+  }
+
   return {
     nome, prefixo, versao_def, alvos, fases,
+    ...(cta ? { cta } : {}),
     ...(avatar_id ? { avatar_id } : {}),
     ...(voice_id ? { voice_id } : {}),
     ...(engine ? { engine } : {}),
@@ -405,10 +456,20 @@ export function aplicarVariante(def: FlowDef, nome: string): FlowDef {
   }
   return {
     ...def,
+    variante: nome,
     fases: def.fases.map((f) => (f.variantes?.[nome]
       ? { ...f, prompt: f.variantes[nome] }
       : f)),
   };
+}
+
+/**
+ * O clipe de encerramento deste fluxo: o da variante, se o domínio declarou um
+ * para ela; senão o `padrao`; senão nenhum (e o motor usa o default dele).
+ */
+export function ctaDaDefinicao(def: FlowDef): string | undefined {
+  if (!def.cta) return undefined;
+  return (def.variante ? def.cta[def.variante] : undefined) ?? def.cta.padrao;
 }
 
 /**

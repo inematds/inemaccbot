@@ -109,3 +109,15 @@ describe('variantes de prompt declaradas', () => {
     }
   });
 });
+
+// O clipe de encerramento é declarado por variante: o padrão é o CTA
+// ("saiba mais em inema.club"), o do viral é só a marca.
+describe('clipe de encerramento por variante', () => {
+  it('declara padrao e viral, e são arquivos diferentes que existem', () => {
+    expect(def.cta?.padrao).toBe('cta/cta-9x16.mp4');
+    expect(def.cta?.viral).toBe('cta/marca-9x16.mp4');
+    for (const rel of Object.values(def.cta ?? {})) {
+      expect(existsSync(join(REPO_DOMINIO, rel)), rel).toBe(true);
+    }
+  });
+});

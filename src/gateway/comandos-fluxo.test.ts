@@ -12,6 +12,7 @@ import { FakeRunner } from '../fila/runner.js';
 import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
 import { Fluxos } from '../fluxos/runtime.js';
+import { ctaDaDefinicao, type FlowDef } from '../dominio/flow.js';
 import { definirCapaFluxo, parseCapa, tabelaFluxo } from './comandos-fluxo.js';
 import { tratarMensagem, type DepsMensagem } from './mensagem.js';
 
@@ -1194,5 +1195,83 @@ describe('validação de `variantes` no flow.json', () => {
       prompt: 'prompts/a.md', variantes: { 'promoção': 'prompts/a.md' },
     }]);
     expect(await manda('/brinquedo Assunto')).toMatch(/nome inválido/);
+  });
+});
+
+// O clipe de encerramento por variante. O clipe padrão é um CTA ("saiba mais
+// em inema.club") e a variante viral se organiza em torno de UM pedido de
+// engajamento — um segundo pedido 3s depois compete com ele.
+describe('cta por variante', () => {
+  function comCta(): void {
+    for (const n of ['viral.md', 'a.md']) writeFileSync(join(repo, 'prompts', n), `P ${n} {{input}} {{saida}}`);
+    mkdirSync(join(repo, 'cta'), { recursive: true });
+    writeFileSync(join(repo, 'cta', 'cta-9x16.mp4'), 'x');
+    writeFileSync(join(repo, 'cta', 'marca-9x16.mp4'), 'y');
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+      alvos: { um: { canal: 'lives1' } },
+      cta: { padrao: 'cta/cta-9x16.mp4', viral: 'cta/marca-9x16.mp4' },
+      fases: [{
+        id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+        prompt: 'prompts/a.md', variantes: { viral: 'prompts/viral.md' },
+      }],
+    }));
+  }
+  const defDe = (id: number) => JSON.parse(fluxos.status(id)!.fluxo.definicao_json) as FlowDef;
+
+  beforeEach(() => { comCta(); });
+
+  it('a definição congelada grava QUAL variante nasceu', async () => {
+    await manda('/brinquedo Assunto | prompt=viral');
+    expect(defDe(1).variante).toBe('viral');
+  });
+
+  it('sem variante, nada de `variante` na definição', async () => {
+    await manda('/brinquedo Assunto');
+    expect(defDe(1).variante).toBeUndefined();
+  });
+
+  it('viral escolhe o clipe da marca; sem flag, o padrão', async () => {
+    await manda('/brinquedo Assunto | prompt=viral');
+    await manda('/brinquedo Assunto');
+    expect(ctaDaDefinicao(defDe(1))).toBe('cta/marca-9x16.mp4');
+    expect(ctaDaDefinicao(defDe(2))).toBe('cta/cta-9x16.mp4');
+  });
+
+  // Chave errada em `cta` seria "usou o clipe errado" descoberto no vídeo
+  // pronto — cara e silenciosa. Recusar na criação é o barato.
+  it('chave de cta que não é variante declarada é recusada', async () => {
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+      alvos: { um: { canal: 'lives1' } },
+      cta: { padrao: 'cta/cta-9x16.mp4', virall: 'cta/marca-9x16.mp4' },
+      fases: [{
+        id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+        prompt: 'prompts/a.md', variantes: { viral: 'prompts/viral.md' },
+      }],
+    }));
+    expect(await manda('/brinquedo Assunto')).toMatch(/virall/);
+  });
+
+  it('arquivo de cta ausente é recusado na criação', async () => {
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+      alvos: { um: { canal: 'lives1' } },
+      cta: { padrao: 'cta/nao-existe.mp4' },
+      fases: [{ id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md' }],
+    }));
+    expect(await manda('/brinquedo Assunto')).toMatch(/cta.padrao/);
+  });
+
+  // Domínio que não declara `cta` continua exatamente como antes: nada é
+  // passado ao motor e vale o default do `montar-reel.py`.
+  it('sem `cta` no flow.json, nenhum clipe é escolhido pelo bot', async () => {
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+      alvos: { um: { canal: 'lives1' } },
+      fases: [{ id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md' }],
+    }));
+    await manda('/brinquedo Assunto');
+    expect(ctaDaDefinicao(defDe(1))).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AindaNao, type ContextoTarefa } from '../types.js';
-import { criarReelMontar } from './reel.js';
+import { criarReelMontar, montarComando } from './reel.js';
 
 /** Vigília rápida: em produção valem os padrões (5s de poll, 12s de estabilidade). */
 const VIGIA = { intervaloMs: 10, estavelMs: 20 };
@@ -181,5 +181,28 @@ describe('reel.montar: dispara o pipeline sem agente', () => {
     await expect(tarefa(ctx(entrada({ saida })))).rejects.toThrow();
     expect(existsSync(`${saida}.err`)).toBe(false);
     expect(existsSync(`${saida}.log`)).toBe(false);
+  });
+});
+
+// O último elo: o clipe escolhido na criação precisa virar argumento do
+// `montar-reel.py`. Sem `--cta`, o script usa o default dele e a escolha por
+// variante morre em silêncio no caminho.
+describe('--cta', () => {
+  const base = {
+    avatar: '/a.mp4', alvo: 'jovens', textos: '/t.md', saida: '/s.mp4',
+    ws: '/ws', script: '/m.py',
+  };
+
+  it('entra no comando quando a entrada traz o clipe', () => {
+    expect(montarComando({ ...base, cta: '/dom/cta/marca-9x16.mp4' }))
+      .toContain(`--cta '/dom/cta/marca-9x16.mp4'`);
+  });
+
+  it('some quando não há clipe declarado', () => {
+    expect(montarComando(base)).not.toContain('--cta');
+  });
+
+  it('caminho com aspas não vira comando', () => {
+    expect(montarComando({ ...base, cta: "/dom/it's.mp4" })).toContain(`'/dom/it'\\''s.mp4'`);
   });
 });
