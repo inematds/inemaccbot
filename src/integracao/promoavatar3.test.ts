@@ -91,3 +91,21 @@ describe('promoavatar3: motor compartilhado, domínio próprio', () => {
     expect(fase.prompt_texto).toContain('hook:');
   });
 });
+
+// As variantes de prompt são declaradas pelo DOMÍNIO — é isso que faz
+// `| prompt=viral` existir no bot sem o bot conhecer nome de arquivo nenhum.
+describe('variantes de prompt declaradas', () => {
+  const texto = () => def.fases.find((f) => f.id === 'texto')!;
+
+  it('a fase de texto declara manifesto (promocao) e viral', () => {
+    expect(Object.keys(texto().variantes ?? {}).sort()).toEqual(['promocao', 'viral']);
+  });
+
+  // O validador já exige que o arquivo exista; isto protege o que ele NÃO vê:
+  // que a variante não aponte de volta para o prompt padrão por copiar-e-colar.
+  it('nenhuma variante aponta para o prompt padrão', () => {
+    for (const caminho of Object.values(texto().variantes ?? {})) {
+      expect(caminho).not.toBe(texto().prompt);
+    }
+  });
+});

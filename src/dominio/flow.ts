@@ -24,6 +24,20 @@ export interface FaseDef {
   /** Caminho do prompt, relativo à raiz do repo de domínio. Só em `kind=agent`. */
   prompt?: string;
   /**
+   * Prompts ALTERNATIVOS desta fase, `{ nome: caminho }` — a mesma fase escrita
+   * com outra estratégia (`{ viral: "prompts/fase1-viral.md" }`).
+   *
+   * Quem declara é o DOMÍNIO, como já acontece com `opcional`: o bot não adivinha
+   * nome de arquivo por convenção. Isso é o que faz `| prompt=X` ser recusado com
+   * a lista certa num domínio que não declarou nenhuma, faz o `help` derivado
+   * listar as que existem sem ninguém reescrever texto, e faz renomear uma
+   * variante ser uma linha no `flow.json` em vez de mexer no bot.
+   *
+   * A troca acontece ANTES do congelamento (`aplicarVariante`), então o
+   * `prompt_texto` congelado e o `hash` já são os da variante escolhida.
+   */
+  variantes?: Record<string, string>;
+  /**
    * O CONTEÚDO do prompt, preenchido no congelamento. É ele que vai para o job,
    * não o caminho: ler o arquivo na hora de executar seria exatamente o que o
    * §3.4 proíbe — um prompt editado no meio da execução mudaria as regras de um
@@ -275,6 +289,35 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       }
     }
 
+    let variantes: Record<string, string> | undefined;
+    if (f.variantes !== undefined) {
+      // Fora de uma fase com prompt próprio a variante não teria o que trocar —
+      // e um campo aceito em silêncio que não faz nada é pior que a recusa.
+      if (!prompt) erro(`fases[${i}].variantes`, 'só em fase com prompt próprio (kind=agent)');
+      const v = f.variantes;
+      if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+        erro(`fases[${i}].variantes`, 'objeto no formato {nome: caminho}');
+      }
+      const pares = Object.entries(v as Record<string, unknown>).map(([nome, bruto]) => {
+        // O nome é digitado no chat (`| prompt=viral`): sem acento e sem espaço,
+        // senão a flag vira uma adivinhação de como o dono escreveu a chave.
+        if (!/^[a-z0-9-]+$/.test(nome)) {
+          erro(`fases[${i}].variantes`, `nome inválido: "${nome}" — minúsculas, dígitos e hífen`);
+        }
+        const rel = texto(bruto, `fases[${i}].variantes.${nome}`);
+        if (isAbsolute(rel) || rel.includes('..')) {
+          erro(`fases[${i}].variantes.${nome}`, 'precisa ser relativo ao repo de domínio, sem ".."');
+        }
+        const cam = join(raiz, rel);
+        if (!existsSync(cam) || statSync(cam).size === 0) {
+          erro(`fases[${i}].variantes.${nome}`, `arquivo ausente ou vazio: ${rel}`);
+        }
+        return [nome, rel] as const;
+      });
+      if (!pares.length) erro(`fases[${i}].variantes`, 'declarado e vazio — remova o campo ou declare uma');
+      variantes = Object.fromEntries(pares);
+    }
+
     const max_tentativas = f.max_tentativas === undefined ? 1 : f.max_tentativas;
     if (typeof max_tentativas !== 'number' || !Number.isInteger(max_tentativas) || max_tentativas <= 0) {
       erro(`fases[${i}].max_tentativas`, 'inteiro > 0');
@@ -300,6 +343,7 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       kind,
       tarefa,
       ...(prompt ? { prompt } : {}),
+      ...(variantes ? { variantes } : {}),
       max_tentativas,
       ...(espera ? { espera } : {}),
       ...(typeof f.entrega === 'string' ? { entrega: f.entrega } : {}),
@@ -334,6 +378,37 @@ export function carregarFlow(raiz: string, skills: string[] = []): FlowDef {
     if ((e as Error).message.startsWith('flow.json')) throw e;
     throw new Error(`flow.json: JSON inválido em ${caminho}: ${(e as Error).message}`);
   }
+}
+
+/** As variantes declaradas pelo domínio, na ordem em que ele as escreveu. */
+export function variantesDe(def: FlowDef): string[] {
+  return [...new Set(def.fases.flatMap((f) => Object.keys(f.variantes ?? {})))];
+}
+
+/**
+ * Troca o prompt das fases que declaram a variante `nome`.
+ *
+ * Roda ANTES de `hashDefinicao` e `congelar`: é o que faz o texto congelado e o
+ * hash serem os da variante escolhida. Feito depois, o `prompt_texto` seria o do
+ * prompt padrão e a flag não mudaria nada — o defeito silencioso que este
+ * comentário existe para evitar.
+ *
+ * Fase que não declara a variante fica intacta: um domínio pode ter variante só
+ * na fase de texto sem que as outras precisem saber que ela existe.
+ */
+export function aplicarVariante(def: FlowDef, nome: string): FlowDef {
+  const disponiveis = variantesDe(def);
+  if (!disponiveis.includes(nome)) {
+    throw new Error(disponiveis.length
+      ? `variante desconhecida: "${nome}" — este fluxo tem: ${disponiveis.join(', ')}`
+      : 'este fluxo não declara variantes de prompt (`variantes` no flow.json)');
+  }
+  return {
+    ...def,
+    fases: def.fases.map((f) => (f.variantes?.[nome]
+      ? { ...f, prompt: f.variantes[nome] }
+      : f)),
+  };
 }
 
 /**

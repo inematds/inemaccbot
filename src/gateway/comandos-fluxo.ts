@@ -8,7 +8,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { carregarFlow, congelar, hashDefinicao, parseRef, type FlowDef } from '../dominio/flow.js';
+import {
+  aplicarVariante, carregarFlow, congelar, hashDefinicao, parseRef, variantesDe,
+  type FlowDef,
+} from '../dominio/flow.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
 import type { Fase, Fluxo } from '../fluxos/estado.js';
 import type { Fluxos } from '../fluxos/runtime.js';
@@ -85,6 +88,11 @@ export function ajudaDoFluxo(
     '  | legenda=nao desliga a legenda do reel (padrão: COM, palavra a palavra)',
     '  | versao=N    versão do assunto',
     '  | sombra      mostra o plano sem enfileirar nada',
+    // Derivada do `variantes` das fases: um domínio sem variante não vê a linha,
+    // e renomear uma variante no flow.json reescreve o help sozinho.
+    ...(variantesDe(def).length
+      ? [`  | prompt=${variantesDe(def).join('|')}  escreve o texto com outra estratégia`
+        + ' (padrão: o prompt normal)'] : []),
     ...(def.fases.some((f) => f.opcional === 'api')
       ? ['  | api        o BOT gera (carteira em US$)'] : []),
     ...(def.fases.some((f) => f.opcional === 'creditos')
@@ -235,13 +243,16 @@ interface ArgumentoFluxo {
   estudio: boolean;
   /** Tira o portão humano. Default NÃO: o fluxo continua parando. */
   semPortao: boolean;
+  /** Variante de prompt pedida (`| prompt=viral`). Quais existem é o domínio
+   *  que diz, no `variantes` da fase — aqui só chega o nome digitado. */
+  prompt?: string;
 }
 
 /** Nomes de campo que o comando entende. Uma fonte só: a guarda de digitação
  * abaixo casa contra ESTA lista, senão ela envelhece sozinha quando alguém
  * acrescentar um campo. */
 const CAMPOS = [
-  'alvos', 'alvo', 'versao', 'versão', 'de', 'legenda',
+  'alvos', 'alvo', 'versao', 'versão', 'de', 'legenda', 'prompt',
   'api', 'creditos', 'créditos', 'navega', 'estudio', 'estúdio',
   'sem-portao', 'sem-portão',
 ] as const;
@@ -279,6 +290,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   let alvos: string[] | undefined;
   let versao: number | undefined;
   let de: string | undefined;
+  let prompt: string | undefined;
   let sombra = false;
   let legenda = true;  // default LIGADA desde 2026-08-07 — ver `resolverOpcoes`
   let api = false;
@@ -300,6 +312,9 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
       return;
     }
     if (chave === 'de') { de = valor; return; }
+    // Qual variante existe é o `flow.json` que diz — validar aqui obrigaria o
+    // parser a conhecer o domínio, e ele nem leu o disco ainda. Só normaliza.
+    if (chave === 'prompt') { prompt = valor.toLowerCase(); return; }
     // As três bandeiras aceitam `=nao` para desligar explicitamente — quem
     // escreve `| api=nao` está dizendo o que quer, não errando.
     const ligado = !/^(n|não|nao|0|false)/i.test(valor);
@@ -337,7 +352,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     // `est[uú]dio` faltava aqui: estava em CAMPOS e em BANDEIRAS, mas sem esta
     // alternação `| estudio=nao` caía como campo desconhecido. Toda flag nova
     // precisa entrar nos TRÊS lugares.
-    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda|api|cr[eé]ditos|navega|est[uú]dio|sem-porta[oõ])\s*=\s*(.+)$/i);
+    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda|prompt|api|cr[eé]ditos|navega|est[uú]dio|sem-porta[oõ])\s*=\s*(.+)$/i);
     if (m) {
       acrescentar(m[1], m[2]);
       if (erro) return { erro };
@@ -347,7 +362,8 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     if (BANDEIRAS.has(campo.toLowerCase())) { acrescentar(campo, 'sim'); continue; }
     return {
       erro: `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase>`
-        + ' · legenda · api · creditos · navega · sem-portao · sombra',
+        + ' · prompt=<variante> · legenda · api · creditos · navega · estudio'
+        + ' · sem-portao · sombra',
     };
   }
 
@@ -384,6 +400,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
 
   return {
     assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, estudio, semPortao,
+    ...(prompt ? { prompt } : {}),
   };
 }
 
@@ -396,6 +413,7 @@ export function criarFluxo(
     : lido.erro;
   const {
     assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, estudio, semPortao,
+    prompt: variante,
   } = lido;
 
   // A definição é lida do disco AQUI e congelada na criação. Um `flow.json`
@@ -403,7 +421,13 @@ export function criarFluxo(
   let definicao;
   let hash: string;
   try {
-    const doDisco = carregarFlow(registrado.repo, deps.skills ?? []);
+    // A variante troca o CAMINHO do prompt antes do hash e do congelamento —
+    // é o que faz o texto congelado e o hash serem os da variante pedida. Se a
+    // troca viesse depois de `congelar`, o `prompt_texto` seria o do padrão e a
+    // flag não mudaria nada, em silêncio.
+    const doDisco = variante
+      ? aplicarVariante(carregarFlow(registrado.repo, deps.skills ?? []), variante)
+      : carregarFlow(registrado.repo, deps.skills ?? []);
     hash = hashDefinicao(doDisco, registrado.repo);
     // Congela AQUI: daqui para frente o fluxo não depende mais do disco do repo
     // de domínio, nem para o texto dos prompts.
@@ -411,7 +435,12 @@ export function criarFluxo(
       congelar(doDisco, registrado.repo), registrado.repo, { legenda, api, semPortao },
     );
   } catch (e) {
-    return `não consegui ler a definição do fluxo: ${(e as Error).message}`;
+    const msg = (e as Error).message;
+    // Variante errada é erro de QUEM DIGITOU, não definição ilegível: embrulhá-lo
+    // em "não consegui ler a definição" mandaria a pessoa procurar defeito no
+    // flow.json quando o conserto é trocar uma palavra no comando.
+    if (/^(variante desconhecida|este fluxo não declara)/.test(msg)) return msg;
+    return `não consegui ler a definição do fluxo: ${msg}`;
   }
 
   const pedido = {
@@ -434,6 +463,7 @@ export function criarFluxo(
     const total = Object.keys(definicao.alvos).length;
     const linhas = [
       `criado: ${fluxo.prefixo}#${fluxo.id} (${alvos?.length ?? total} alvo(s))`
+      + `${variante ? `, variante "${variante}"` : ''}`
       + `${de ? `, começando em "${de}"` : ''} — acompanhe com /status ${fluxo.prefixo}#${fluxo.id}`,
     ];
     // Quando o fluxo começa no meio, quem gera o material FORA precisa saber os

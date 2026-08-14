@@ -1054,3 +1054,137 @@ describe('falhas: agrupadas no detalhe, contadas no painel', () => {
     expect(tabelaFluxo(c61(), true)).toContain('/refazer C#61');
   });
 });
+
+// `| prompt=<variante>`: a MESMA fase escrita com outra estratégia. Quais
+// existem é o DOMÍNIO que declara (`variantes` na fase), como já acontece com
+// `opcional` — o bot não adivinha nome de arquivo por convenção.
+describe('| prompt=<variante>', () => {
+  /** O repo de brinquedo com duas variantes declaradas na fase de texto. */
+  function comVariantes(): void {
+    writeFileSync(join(repo, 'prompts', 'viral.md'), 'ESCREVA VIRAL: {{input}} em {{saida}}');
+    writeFileSync(join(repo, 'prompts', 'promocao.md'), 'ESCREVA MANIFESTO: {{input}} em {{saida}}');
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+      alvos: { um: { canal: 'lives1' } },
+      fases: [
+        {
+          id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+          prompt: 'prompts/a.md',
+          variantes: { promocao: 'prompts/promocao.md', viral: 'prompts/viral.md' },
+        },
+      ],
+    }));
+  }
+
+  const defDe = (id: number) => JSON.parse(fluxos.status(id)!.fluxo.definicao_json) as {
+    fases: { id: string; prompt?: string; prompt_texto?: string }[];
+  };
+
+  beforeEach(() => { comVariantes(); });
+
+  // O defeito que a flag existiria para ter em silêncio: trocar o caminho DEPOIS
+  // do congelamento deixaria o `prompt_texto` sendo o do prompt padrão, e o
+  // fluxo rodaria o texto errado sem ninguém perceber.
+  it('congela o TEXTO da variante, não o do prompt padrão', async () => {
+    await manda('/brinquedo Assunto | prompt=viral');
+    const texto = defDe(1).fases.find((f) => f.id === 'texto');
+    expect(texto?.prompt).toBe('prompts/viral.md');
+    expect(texto?.prompt_texto).toContain('ESCREVA VIRAL');
+    expect(texto?.prompt_texto).not.toContain('faça');
+  });
+
+  it('sem a flag, continua exatamente o de antes', async () => {
+    await manda('/brinquedo Assunto');
+    const texto = defDe(1).fases.find((f) => f.id === 'texto');
+    expect(texto?.prompt).toBe('prompts/a.md');
+    expect(texto?.prompt_texto).toContain('faça');
+  });
+
+  // O hash cobre o JSON MAIS o conteúdo dos prompts. Se ele fosse calculado
+  // antes da troca, dois fluxos de estratégias opostas teriam o mesmo hash.
+  it('o hash muda com a variante', async () => {
+    await manda('/brinquedo Assunto | prompt=viral');
+    await manda('/brinquedo Assunto');
+    expect(fluxos.status(1)!.fluxo.definicao_hash)
+      .not.toBe(fluxos.status(2)!.fluxo.definicao_hash);
+  });
+
+  it('a resposta da criação diz qual variante nasceu', async () => {
+    expect(await manda('/brinquedo Assunto | prompt=viral')).toContain('viral');
+  });
+
+  it('aceita a forma de bandeira e normaliza a caixa', async () => {
+    await manda('/brinquedo Assunto --prompt=VIRAL');
+    expect(defDe(1).fases[0].prompt).toBe('prompts/viral.md');
+  });
+
+  it('variante desconhecida é recusada COM a lista, sem enfileirar nada', async () => {
+    const r = await manda('/brinquedo Assunto | prompt=nao-existe');
+    expect(r).toContain('promocao');
+    expect(r).toContain('viral');
+    expect(r).not.toContain('não consegui ler a definição');
+    expect(fila.listar()).toHaveLength(0);
+    expect(fluxos.status(1)).toBeUndefined();
+  });
+
+  it('num domínio SEM variantes, a flag é recusada explicando isso', async () => {
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+      alvos: { um: { canal: 'lives1' } },
+      fases: [{ id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md' }],
+    }));
+    const r = await manda('/brinquedo Assunto | prompt=viral');
+    expect(r).toMatch(/não declara variantes/);
+    expect(fluxos.status(1)).toBeUndefined();
+  });
+
+  it('o help lista as variantes declaradas', async () => {
+    expect(await manda('/brinquedo help')).toContain('| prompt=promocao|viral');
+  });
+
+  it('o help NÃO inventa a linha num domínio sem variantes', async () => {
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+      alvos: { um: { canal: 'lives1' } },
+      fases: [{ id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md' }],
+    }));
+    expect(await manda('/brinquedo help')).not.toContain('| prompt=');
+  });
+});
+
+// O validador recusa `variantes` malformado na CRIAÇÃO, com o usuário na frente
+// — e não no primeiro job, quando o fluxo já nasceu.
+describe('validação de `variantes` no flow.json', () => {
+  const comFases = (fases: unknown[]) => writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+    nome: 'brinquedo', prefixo: 'B', versao_def: 3,
+    alvos: { um: { canal: 'lives1' } }, fases,
+  }));
+
+  it('arquivo de variante ausente é recusado, nomeando a variante', async () => {
+    comFases([{
+      id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+      prompt: 'prompts/a.md', variantes: { viral: 'prompts/nao-existe.md' },
+    }]);
+    const r = await manda('/brinquedo Assunto');
+    expect(r).toContain('variantes.viral');
+    expect(fluxos.status(1)).toBeUndefined();
+  });
+
+  // Aceitar em silêncio um campo que não tem o que trocar é pior que recusar:
+  // o dono acharia que declarou uma variante e ela nunca entraria.
+  it('`variantes` numa fase sem prompt próprio é recusado', async () => {
+    comFases([
+      { id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md' },
+      { id: 'reel', escopo: 'alvo', fila: 'render', kind: 'function', tarefa: 'reel.montar', variantes: { viral: 'prompts/a.md' } },
+    ]);
+    expect(await manda('/brinquedo Assunto')).toMatch(/variantes.*prompt próprio/s);
+  });
+
+  it('nome de variante com acento ou espaço é recusado', async () => {
+    comFases([{
+      id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+      prompt: 'prompts/a.md', variantes: { 'promoção': 'prompts/a.md' },
+    }]);
+    expect(await manda('/brinquedo Assunto')).toMatch(/nome inválido/);
+  });
+});
