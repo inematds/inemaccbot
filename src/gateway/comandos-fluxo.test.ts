@@ -1139,7 +1139,15 @@ describe('| prompt=<variante>', () => {
   });
 
   it('o help lista as variantes declaradas', async () => {
-    expect(await manda('/brinquedo help')).toContain('| prompt=promocao|viral');
+    const r = await manda('/brinquedo help');
+    expect(r).toContain('| prompt=<variante>');
+    expect(r).toContain('promocao ou viral');
+  });
+
+  // O "|" é o separador de CAMPOS: `prompt=promocao|viral` no help viraria um
+  // campo "viral" inexistente na mão de quem copia a linha inteira.
+  it('o help NÃO separa as variantes com "|"', async () => {
+    expect(await manda('/brinquedo help')).not.toContain('promocao|viral');
   });
 
   it('o help NÃO inventa a linha num domínio sem variantes', async () => {

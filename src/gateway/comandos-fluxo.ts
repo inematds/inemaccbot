@@ -90,9 +90,12 @@ export function ajudaDoFluxo(
     '  | sombra      mostra o plano sem enfileirar nada',
     // Derivada do `variantes` das fases: um domínio sem variante não vê a linha,
     // e renomear uma variante no flow.json reescreve o help sozinho.
+    // Separadas por " ou ", NÃO por "|": o "|" é o separador de CAMPOS, e quem
+    // copiasse `prompt=promocao|viral` do help mandaria um campo "viral" que não
+    // existe. A linha de ajuda tem que ser colável.
     ...(variantesDe(def).length
-      ? [`  | prompt=${variantesDe(def).join('|')}  escreve o texto com outra estratégia`
-        + ' (padrão: o prompt normal)'] : []),
+      ? [`  | prompt=<variante>  escreve o texto com outra estratégia — `
+        + `${variantesDe(def).join(' ou ')} (padrão: o prompt normal)`] : []),
     ...(def.fases.some((f) => f.opcional === 'api')
       ? ['  | api        o BOT gera (carteira em US$)'] : []),
     ...(def.fases.some((f) => f.opcional === 'creditos')
