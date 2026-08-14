@@ -97,8 +97,8 @@ describe('promoavatar3: motor compartilhado, domínio próprio', () => {
 describe('variantes de prompt declaradas', () => {
   const texto = () => def.fases.find((f) => f.id === 'texto')!;
 
-  it('a fase de texto declara manifesto (promocao) e viral', () => {
-    expect(Object.keys(texto().variantes ?? {}).sort()).toEqual(['promocao', 'viral']);
+  it('a fase de texto declara manifesto e viral', () => {
+    expect(Object.keys(texto().variantes ?? {}).sort()).toEqual(['manifesto', 'viral']);
   });
 
   // O validador já exige que o arquivo exista; isto protege o que ele NÃO vê:

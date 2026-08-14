@@ -38,6 +38,16 @@ import { nomeDeEntrega } from './gateway/entrega.js';
 import { criarNotificador } from './gateway/notificar.js';
 import { type Transporte, criarBot } from './gateway/telegram.js';
 
+/**
+ * A versão sai do `package.json`, não de uma constante ao lado: duas cópias do
+ * número divergem no primeiro bump com pressa, e a que aparece no log de boot
+ * seria a mentira mais barata de produzir. Resolve tanto de `dist/` quanto de
+ * `src/` — os dois estão um nível abaixo da raiz do repo.
+ */
+const VERSAO = (JSON.parse(
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+) as { version: string }).version;
+
 // A lista de filas e suas concorrências vivem em `fila/filas.ts` — o gateway
 // precisa da MESMA lista para o `/fila`, e ele não pode importar daqui.
 // Reexportado porque os testes da etapa 1 e o deploy já apontavam para cá.
@@ -780,7 +790,7 @@ export async function main(): Promise<void> {
   }
 
   await svc.iniciar();
-  log(`serviço no ar (filas: ${FILAS.join(', ')})`);
+  log(`serviço no ar v${VERSAO} (filas: ${FILAS.join(', ')})`);
 }
 
 // Só quando EXECUTADO — nunca no import (os testes importam este módulo).
