@@ -102,9 +102,12 @@ function tratarComandoDeFluxo(
   // `/ajuda` geral (a lista de comandos), tratado adiante.
   if ((verbo === '/ajuda' || verbo === '/help') && argumento.trim()
       && !AJUDA_COMPLETA.has(argumento.trim().toLowerCase())) {
-    const nome = argumento.trim().toLowerCase().replace(/^\//, '');
+    // `/ajuda <fluxo> [seção]`: o que vem depois do nome é a seção, para as duas
+    // formas responderem igual (`/ajuda promoavatar3 variantes`).
+    const [primeiro = '', ...resto] = argumento.trim().split(/\s+/);
+    const nome = primeiro.toLowerCase().replace(/^\//, '');
     const fluxo = registrados.find((f) => f.command === nome);
-    if (fluxo) return ajudaDoFluxo(fluxo, depsFluxo.skills);
+    if (fluxo) return ajudaDoFluxo(fluxo, depsFluxo.skills, resto.join(' ') || undefined);
     const skill = deps.defs.find((d) => d.command === nome);
     if (skill) return ajudaDaSkill(skill, RAIZ_REPO);
     return `não conheço "${nome}". Veja /skills e /fluxos.`;
@@ -168,8 +171,10 @@ function tratarComandoDeFluxo(
   if (registrado) {
     // `/<fluxo> help` (ou `ajuda`) — antes de tratar como assunto, senão alguém
     // que quer a ajuda dispara um fluxo com o assunto "help".
-    if (/^(help|ajuda|\?)$/i.test(argumento.trim())) {
-      return ajudaDoFluxo(registrado, depsFluxo.skills);
+    // `/<fluxo> help [seção]` — a seção é opcional e vem depois da palavra.
+    const pedido = /^(?:help|ajuda|\?)(?:\s+(.+))?$/i.exec(argumento.trim());
+    if (pedido) {
+      return ajudaDoFluxo(registrado, depsFluxo.skills, pedido[1]?.trim());
     }
     return criarFluxo(registrado, argumento, depsFluxo);
   }

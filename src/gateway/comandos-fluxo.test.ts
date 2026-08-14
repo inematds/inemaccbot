@@ -572,7 +572,7 @@ describe('/status P#N', () => {
     it('mistura de estados vira contagem por estado', () => {
       const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'sobrou', 'pendente')]), false);
       expect(r).toMatch(/30\/31/);
-      expect(r).toMatch(/1 .*(pendente|fila)/);
+      expect(r).toMatch(/01 ⏳/);
     });
 
     // Mudou em 2026-08-13: a falha deixou de ser nomeada NA LINHA DA FASE e
@@ -590,14 +590,20 @@ describe('/status P#N', () => {
       expect(r).toMatch(/1 ❌/);
     });
 
-    // Pedido do dono (2026-08-12): com 1 rodando de 36, "1 ▶️ rodando" não diz
-    // QUAL, e é justamente a que ele quer olhar — o fluxo está vivo, então não
-    // há falha para nomear e o `/refazer` (com razão) não tem o que fazer.
-    it('o que está RODANDO é nomeado, mesmo no meio de 30', () => {
+    // Nomear o que RODA entrou em 2026-08-12 e virou pedido do DETALHE em
+    // 2026-08-14: no painel de vários fluxos, `rodando` + `esperando você` com
+    // 36 alvos empurravam o fluxo seguinte para fora da tela.
+    it('o que está RODANDO é nomeado no DETALHE, mesmo no meio de 30', () => {
       // MESMA fase dos 30: com fase própria seriam 1 alvo, que cai no ramo
       // "poucos alvos" e nomeia de qualquer jeito — o teste passaria sem provar nada.
-      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'profissionais-aut', 'rodando')]), false);
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'profissionais-aut', 'rodando')]), true);
       expect(r).toContain('profissionais-aut');
+    });
+
+    it('...e NÃO é nomeado no painel — lá é só número', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'profissionais-aut', 'rodando')]), false);
+      expect(r).not.toContain('profissionais-aut');
+      expect(r).toMatch(/01 ▶️/);
     });
 
     // O contrário do pedido: `pendente` NÃO é nomeado. Com 35 na fila a lista
@@ -612,23 +618,36 @@ describe('/status P#N', () => {
     // palavra pelo Telegram.
     it('nomeação tem teto, e diz quantos ficaram de fora', () => {
       const muitos = Array.from({ length: 20 }, (_, i) => fase('reel', `alvo-rodando-${i}`, 'rodando'));
-      const r = tabelaFluxo(visaoCom([...trinta('feito'), ...muitos]), false);
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), ...muitos]), true);
       expect(r).toContain('alvo-rodando-0');
       expect(r).not.toContain('alvo-rodando-19');
       expect(r).toMatch(/\+\d+/);
     });
 
-    it('o que espera VOCÊ é nomeado', () => {
-      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'mulheres-pro', 'aguardando-ok')]), false);
+    it('o que espera VOCÊ é nomeado no detalhe', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'mulheres-pro', 'aguardando-ok')]), true);
       expect(r).toContain('mulheres-pro');
     });
 
-    // Poucos alvos continuam nomeados: contar "2/2" esconderia QUAIS, e nesse
-    // tamanho a lista cabe na tela sem virar parede.
-    it('com poucos alvos, continua listando nome por nome', () => {
-      const r = tabelaFluxo(visaoCom([fase('render', 'um', 'feito'), fase('render', 'dois', 'feito')]), false);
+    // No painel a linha "⏸️ esperando você em <fase>" continua — ela é a AÇÃO,
+    // não a lista. O que sai é a enumeração dos alvos.
+    it('no painel, quem espera vira número mais a linha de ação', () => {
+      const r = tabelaFluxo(visaoCom([...trinta('feito'), fase('reel', 'mulheres-pro', 'aguardando-ok')]), false);
+      expect(r).not.toContain('mulheres-pro');
+      expect(r).toContain('esperando você em "reel"');
+    });
+
+    // Poucos alvos continuam nomeados NO DETALHE: contar "02/02" esconderia
+    // QUAIS, e nesse tamanho a lista cabe na tela sem virar parede.
+    it('com poucos alvos, o detalhe continua listando nome por nome', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', 'um', 'feito'), fase('render', 'dois', 'feito')]), true);
       expect(r).toContain('um');
       expect(r).toContain('dois');
+    });
+
+    it('o painel conta mesmo com poucos alvos, com dois algarismos', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', 'um', 'feito'), fase('render', 'dois', 'feito')]), false);
+      expect(r).toContain('02/02 ✅');
     });
 
     // O celular quebra por volta de 40 colunas. O assunto tem uma linha só para
@@ -1043,7 +1062,7 @@ describe('falhas: agrupadas no detalhe, contadas no painel', () => {
     const r = tabelaFluxo(c61(), false);
     expect(r).not.toContain('Falhas');
     expect(r).not.toContain('educadores-alc');
-    expect(r).toMatch(/estudio:.*8 ❌/);
+    expect(r).toMatch(/estudio.*08 ❌/);
   });
 
   it('painel de UM alvo que falhou também não vira lista', () => {
@@ -1273,5 +1292,73 @@ describe('cta por variante', () => {
     }));
     await manda('/brinquedo Assunto');
     expect(ctaDaDefinicao(defDe(1))).toBeUndefined();
+  });
+});
+
+// A ajuda do domínio em DUAS CAMADAS: cartão por padrão, seção sob demanda.
+// O HELP.md do promoavatar3 tem ~180 linhas — numa mensagem só, o que a pessoa
+// veio buscar (como se chama o comando) fica no meio de uma parede.
+describe('ajuda de fluxo em duas camadas', () => {
+  const comSecoes = () => writeFileSync(join(repo, 'HELP.md'), [
+    'meufluxo — o cartão',
+    '',
+    '  /meufluxo <assunto>',
+    '',
+    '## VARIANTES de texto',
+    '',
+    'corpo das variantes',
+    '',
+    '## LEGENDA — ligada por default',
+    '',
+    'corpo da legenda',
+  ].join('\n'));
+
+  it('sem seção, responde o cartão e o menu — não o arquivo inteiro', async () => {
+    comSecoes();
+    const r = await manda('/brinquedo help');
+    expect(r).toContain('o cartão');
+    expect(r).not.toContain('corpo das variantes');
+    expect(r).toContain('variantes · legenda');
+  });
+
+  it('com seção, responde só ela e o caminho de volta', async () => {
+    comSecoes();
+    const r = await manda('/brinquedo help variantes');
+    expect(r).toContain('corpo das variantes');
+    expect(r).not.toContain('corpo da legenda');
+    expect(r).toContain('/brinquedo help');
+  });
+
+  // O `##` é marcação de arquivo; o bot manda texto puro.
+  it('o título da seção sai sem os cerquilhas', async () => {
+    comSecoes();
+    const r = await manda('/brinquedo help legenda');
+    expect(r).toContain('LEGENDA — ligada por default');
+    expect(r).not.toContain('##');
+  });
+
+  it('casa sem acento e por prefixo', async () => {
+    writeFileSync(join(repo, 'HELP.md'), 'cartão\n\n## PORTÃO — conferir antes\n\ncorpo do portão');
+    expect(await manda('/brinquedo help portao')).toContain('corpo do portão');
+  });
+
+  it('seção inexistente diz quais existem, em vez de calar', async () => {
+    comSecoes();
+    const r = await manda('/brinquedo help inventada');
+    expect(r).toContain('não achei');
+    expect(r).toContain('variantes');
+  });
+
+  // O promoavatar não tem seções, e não faz sentido obrigá-lo a se reorganizar
+  // para continuar respondendo.
+  it('HELP.md sem seção nenhuma volta inteiro, como antes', async () => {
+    writeFileSync(join(repo, 'HELP.md'), 'ajuda antiga, sem cabeçalho nenhum');
+    const r = await manda('/brinquedo help');
+    expect(r).toBe('ajuda antiga, sem cabeçalho nenhum');
+  });
+
+  it('/ajuda <fluxo> <seção> responde igual à outra forma', async () => {
+    comSecoes();
+    expect(await manda('/ajuda brinquedo variantes')).toContain('corpo das variantes');
   });
 });

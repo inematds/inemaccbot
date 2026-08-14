@@ -8,6 +8,24 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.4.0 — 2026-08-14
+
+### Mudado
+
+- **Painel de fluxos: só número.** As linhas com os nomes dos alvos `rodando` e
+  `esperando você` saíram do painel e ficaram só no detalhe (`/status C#67`).
+  Com 36 alvos elas empurravam o fluxo seguinte para fora da tela — o painel
+  passou de 13 para 8 linhas por fluxo.
+  As contagens ganharam dois algarismos (`01/36`, `07/36`) para os números
+  começarem na mesma coluna, e a palavra de cada estado virou uma legenda única
+  no rodapé. `pendente` ganhou ícone próprio no painel (⏳): o dele era `·`, o
+  mesmo separador da linha, e sem a palavra ao lado `29 ·` não significava nada.
+- **Ajuda de domínio em duas camadas.** `/<fluxo> help` responde o cartão mais o
+  menu de seções; `/<fluxo> help <seção>` responde só ela. As seções são os
+  `## ` do próprio `HELP.md` — casam sem acento e por prefixo. `HELP.md` sem
+  `## ` nenhum volta inteiro, como antes (é o caso do promoavatar).
+  Vale para `/ajuda <fluxo> <seção>` também.
+
 ## 0.3.0 — 2026-08-14
 
 ### Adicionado

@@ -33,6 +33,53 @@ const ICONE: Record<Fase['estado'], string> = {
   falhou: '❌', pulado: '⏭️',
 };
 
+/** Nome de seção comparável: sem acento, minúsculo. Quem digita `| prompt=` no
+ *  chat não vai acertar "VARIANTES DE TEXTO" — acerta "variantes". */
+function chaveSecao(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+/**
+ * A ajuda do domínio em DUAS CAMADAS.
+ *
+ * O `HELP.md` do promoavatar3 tem ~150 linhas: numa mensagem só, o Telegram
+ * entrega uma parede que ninguém lê até o fim, e o que a pessoa veio buscar
+ * (como se chama o comando) fica no meio. Então o arquivo vira cartão + seções:
+ * tudo antes do primeiro `## ` é o cartão, cada `## NOME` é uma seção pedível
+ * com `/<fluxo> help <nome>`.
+ *
+ * Arquivo SEM `## ` nenhum volta inteiro — é o caso do promoavatar, e não faz
+ * sentido obrigar um domínio a se reorganizar para continuar respondendo.
+ */
+function recortarAjuda(texto: string, comando: string, pedida?: string): string {
+  const linhas = texto.split('\n');
+  const inicios = linhas
+    .map((l, i) => ({ i, m: /^##\s+(.+?)\s*$/.exec(l) }))
+    .filter((x) => x.m) as { i: number; m: RegExpExecArray }[];
+  if (!inicios.length) return texto;
+
+  const secoes = inicios.map((x, k) => {
+    const bloco = linhas.slice(x.i, k + 1 < inicios.length ? inicios[k + 1]!.i : linhas.length);
+    // O `##` é marcação de arquivo, não de chat: o bot manda texto puro e o
+    // Telegram mostraria os dois cerquilhas na cara do título.
+    bloco[0] = x.m[1];
+    return { titulo: x.m[1], corpo: bloco.join('\n').trimEnd() };
+  });
+  const menu = secoes.map((s) => chaveSecao(s.titulo).split(/\s+/)[0]).join(' · ');
+
+  if (pedida) {
+    const alvo = chaveSecao(pedida);
+    const achada = secoes.find((s) => chaveSecao(s.titulo) === alvo)
+      ?? secoes.find((s) => chaveSecao(s.titulo).startsWith(alvo))
+      ?? secoes.find((s) => chaveSecao(s.titulo).includes(alvo));
+    if (achada) return `${achada.corpo}\n\nVoltar: /${comando} help`;
+    return `não achei a seção "${pedida}" na ajuda do /${comando}.\nTem: ${menu}`;
+  }
+
+  const cartao = linhas.slice(0, inicios[0]!.i).join('\n').trimEnd();
+  return `${cartao}\n\nMais: /${comando} help <seção>\n  ${menu}`;
+}
+
 /**
  * `/<fluxo> help` — a ajuda COMPLETA, que mora no repo de domínio.
  *
@@ -50,10 +97,10 @@ const ICONE: Record<Fase['estado'], string> = {
  * escrito nada.
  */
 export function ajudaDoFluxo(
-  registrado: FluxoRegistrado, skills: string[], ler = lerArquivo,
+  registrado: FluxoRegistrado, skills: string[], secao?: string, ler = lerArquivo,
 ): string {
   const doDominio = ler(join(registrado.repo, 'HELP.md'));
-  if (doDominio?.trim()) return doDominio.trim();
+  if (doDominio?.trim()) return recortarAjuda(doDominio.trim(), registrado.command, secao);
 
   let def: FlowDef;
   try {
@@ -527,7 +574,14 @@ export function tabelaFluxo(
     porFase.set(f.fase, lista);
   }
   for (const [fase, lista] of porFase) {
-    linhas.push(...linhasDaFase(fase, lista));
+    linhas.push(...linhasDaFase(fase, lista, comandos));
+  }
+  // A legenda entra UMA vez, no fim do bloco, e só no painel — é o que paga a
+  // remoção da palavra de cada estado em cada linha de cada fluxo.
+  if (!comandos && fases.length) {
+    // Cabe na régua de 42: a legenda é a linha mais larga do painel, e se ela
+    // quebrar, quebra em todo fluxo listado.
+    linhas.push('  ✅ feito · ▶️ rodando · ⏸️ você · ⏳ fila');
   }
   const esperando = fases.filter((f) => f.estado === 'aguardando-ok');
   if (esperando.length) {
@@ -645,28 +699,52 @@ const NOMEAR_SEMPRE: Fase['estado'][] = ['aguardando-ok', 'rodando'];
  *  por outra porta. O excedente vira `+N`, nunca some calado. */
 const NOMES_NA_LINHA = 6;
 
-function linhasDaFase(fase: string, lista: Fase[]): string[] {
-  if (lista.length <= ALVOS_ANTES_DE_CONTAR) {
+/**
+ * Contagem com dois algarismos (`01/36`, `07/36`).
+ *
+ * Sem isso `1/36` e `36/36` começam em colunas diferentes e a pilha de fases
+ * deixa de ser varrível de cima a baixo — que é a única coisa que o painel
+ * precisa fazer bem. Acima de 99 o número cresce: cortar seria mentir.
+ */
+function n2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Largura do nome da fase na pilha, para os números começarem juntos. A fonte
+ *  do Telegram é proporcional, então isto aproxima — não alinha ao pixel. */
+const LARGURA_FASE = 8;
+
+function linhasDaFase(fase: string, lista: Fase[], detalhe: boolean): string[] {
+  const rotulo = fase.padEnd(LARGURA_FASE);
+  if (lista.length <= ALVOS_ANTES_DE_CONTAR && detalhe) {
     const alvos = lista.map((f) => `${ICONE[f.estado]} ${f.alvo || '(todos)'}`).join(' · ');
-    return [`${fase}: ${alvos}`];
+    return [`${rotulo} ${alvos}`];
   }
 
   const porEstado = new Map<Fase['estado'], Fase[]>();
   for (const f of lista) porEstado.set(f.estado, [...(porEstado.get(f.estado) ?? []), f]);
 
   const feitos = porEstado.get('feito')?.length ?? 0;
-  const partes = [`${feitos}/${lista.length} ✅`];
+  const partes = [`${n2(feitos)}/${n2(lista.length)} ✅`];
   for (const [estado, fs] of porEstado) {
     if (estado === 'feito') continue;
-    // `pendente` não leva ícone: o dele é `·`, o mesmo separador da linha, e
-    // "29 · na fila" se lê como duas colunas em vez de uma contagem.
-    const icone = estado === 'pendente' ? '' : `${ICONE[estado]} `;
-    partes.push(`${fs.length} ${icone}${NOME_ESTADO[estado]}`);
+    // No painel a palavra do estado sai: ela se repete em toda fase de todo
+    // fluxo e o ícone já a carrega — a legenda no rodapé diz o que cada um é.
+    // No detalhe ela fica, porque ali não há repetição para cansar.
+    // `pendente` tem ícone PRÓPRIO no painel: o dele é `·`, o mesmo separador
+    // da linha, e sem a palavra ao lado "29 ·" deixa de significar coisa
+    // alguma. No detalhe a palavra volta e o `·` original serve.
+    const icone = !detalhe && estado === 'pendente' ? '⏳' : ICONE[estado];
+    partes.push(detalhe
+      ? `${n2(fs.length)} ${icone} ${NOME_ESTADO[estado]}`
+      : `${n2(fs.length)} ${icone}`);
   }
-  const linhas = [`${fase}: ${partes.join(' · ')}`];
+  const linhas = [`${rotulo} ${partes.join(' · ')}`];
 
-  // A exceção é nomeada: contar "2 ❌ falhou" sem dizer QUAIS obrigaria a pedir
-  // o detalhe de novo só para descobrir onde mexer.
+  // Os nomes são do DETALHE. No painel de vários fluxos eles são a parede que a
+  // contagem existe para evitar: com 36 alvos, `rodando` e `esperando você`
+  // sozinhos empurravam o fluxo seguinte para fora da tela.
+  if (!detalhe) return linhas;
   for (const estado of NOMEAR_SEMPRE) {
     const fs = porEstado.get(estado);
     if (fs?.length) {
