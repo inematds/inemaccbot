@@ -20,6 +20,8 @@ export interface Config {
   /** Perfil de Chromium JÁ LOGADO no HeyGen, usado pela rota `| estudio`.
    *  CAMINHO, não segredo — os cookies moram lá dentro e não no repo. */
   heygenPerfilChrome: string;
+  /** Binário do motor `claude`, por caminho — ver o porquê no `carregarConfig`. */
+  claudeBin: string;
   motorPadrao: string;
   modeloPadrao: string;
   esforcoPadrao: string;
@@ -69,6 +71,21 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     heygenEnvPath: env.HEYGEN_ENV_PATH?.trim()
       || join(env.HOME ?? homedir(), 'projetos', 'openpcbotv2', '.env'),
     heygenCli: env.HEYGEN_CLI?.trim() || 'heygen',
+    // O binário do motor `claude`, por CAMINHO e não pelo PATH.
+    //
+    // Custou o C#77 e o C#78: o serviço systemd roda com o PATH mínimo (sem
+    // `~/.local/bin`), então `claude` resolvia para `/usr/bin/claude` — uma
+    // instalação de MARÇO (2.1.63) que bloqueia `mkdir` e pede permissão a cada
+    // `Write`. Sem ninguém na frente do terminal, os dois fluxos terminaram sem
+    // escrever um arquivo sequer. Os fluxos anteriores só passaram porque
+    // aquele processo tinha sido iniciado de um shell, com o PATH do usuário —
+    // ou seja, qual CLI o bot usa dependia de COMO o serviço tinha subido.
+    //
+    // Default derivado do HOME (a instalação por usuário, que é a que se
+    // atualiza), e não a string `claude`: PATH é justamente o que não se pode
+    // confiar aqui.
+    claudeBin: env.CLAUDE_BIN?.trim()
+      || join(env.HOME ?? homedir(), '.local', 'bin', 'claude'),
     motorPadrao: env.MOTOR_PADRAO?.trim() || 'claude',
     modeloPadrao: env.MODELO_PADRAO?.trim() || 'sonnet',
     esforcoPadrao: env.ESFORCO_PADRAO?.trim() || 'low',

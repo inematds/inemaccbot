@@ -224,6 +224,8 @@ describe('criarBot', () => {
       motorPadrao: 'claude',
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
+    // Qualquer binário QUE EXISTA serve: o boot só confere a existência.
+    claudeBin: process.execPath,
       projetosDir: '/tmp/projetos-inexistente',
       heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
     };
@@ -245,6 +247,8 @@ describe('criarBot', () => {
       motorPadrao: 'claude',
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
+    // Qualquer binário QUE EXISTA serve: o boot só confere a existência.
+    claudeBin: process.execPath,
       projetosDir: '/tmp/projetos-inexistente',
       heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
     };
@@ -289,6 +293,8 @@ describe('criarBot', () => {
       motorPadrao: 'claude',
       modeloPadrao: 'sonnet',
       esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
+    // Qualquer binário QUE EXISTA serve: o boot só confere a existência.
+    claudeBin: process.execPath,
       projetosDir: '/tmp/projetos-inexistente',
       heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
     };

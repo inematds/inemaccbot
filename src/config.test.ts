@@ -30,6 +30,18 @@ describe('carregarConfig', () => {
     expect(c.esforcoPadrao).toBe('high');
   });
 
+  // O C#77 e o C#78 falharam porque o `claude` do PATH do systemd era uma
+  // instalação de março que pede permissão a cada `Write`. O binário passa a
+  // ser declarado, e o default é a instalação por usuário — nunca o PATH.
+  it('CLAUDE_BIN default aponta para a instalação do HOME, não para o PATH', () => {
+    const c = carregarConfig({ ...base, HOME: '/casa' });
+    expect(c.claudeBin).toBe('/casa/.local/bin/claude');
+  });
+
+  it('CLAUDE_BIN do ambiente manda', () => {
+    expect(carregarConfig({ ...base, CLAUDE_BIN: '/opt/claude' }).claudeBin).toBe('/opt/claude');
+  });
+
   it('falha alto quando falta variável essencial, nomeando qual', () => {
     const { BOT_TOKEN, ...semToken } = base;
     expect(() => carregarConfig(semToken)).toThrow(/BOT_TOKEN/);

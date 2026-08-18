@@ -27,7 +27,7 @@ import { aplicarMigrations } from './db/migrations.js';
 import { CONCORRENCIAS, FILAS } from './fila/filas.js';
 import { FilaSqlite } from './fila/store.js';
 import { RUNNERS } from './fila/runner.js';
-import './fila/runner-claude.js'; // efeito colateral: registra RUNNERS.claude
+import { ClaudeRunner } from './fila/runner-claude.js'; // o import também registra RUNNERS.claude (sobrescrito no boot com CLAUDE_BIN)
 import './fila/runner-chrome.js'; // idem: RUNNERS.chrome (fase de navegador)
 import { criarTarefas as criarTarefasPadrao } from './fila/tarefas/index.js';
 import type { Agora, Job } from './fila/types.js';
@@ -134,6 +134,18 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   const db = abrirDb(cfg.queueDb);
   const fila = new FilaSqlite(db, deps.agora);
   const leaseSegundos = deps.leaseSegundos ?? LEASE_PADRAO_SEGUNDOS;
+
+  // O runner do Claude passa a usar o binário da CONFIG, não o que o PATH do
+  // processo achar. Ver `claudeBin` em `config.ts`: com o PATH do systemd o
+  // `claude` caía numa instalação de março que pede permissão a cada `Write`,
+  // e as fases de texto terminavam sem escrever nada (C#77, C#78).
+  //
+  // Se o binário declarado não existe, o boot cai AQUI, com o caminho na
+  // mensagem — e não mais fase por fase, com um erro que não fala do assunto.
+  if (!existsSync(cfg.claudeBin)) {
+    throw new Error(`CLAUDE_BIN não existe: ${cfg.claudeBin}`);
+  }
+  RUNNERS.claude = new ClaudeRunner(cfg.claudeBin);
 
   /** Identidade DESTA instância — é contra isto que as guardas de posse
    * (`concluir`/`falhar`/`renovar`) comparam. Calculado uma vez. */

@@ -40,6 +40,8 @@ function criarCfg(): Config {
     motorPadrao: 'claude',
     modeloPadrao: 'sonnet',
     esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
+    // Qualquer binário QUE EXISTA serve: o boot só confere a existência.
+    claudeBin: process.execPath,
     projetosDir: '/tmp/projetos-inexistente',
     heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
   };
@@ -143,6 +145,24 @@ async function ate(cond: () => boolean, limiteMs = 3_000): Promise<void> {
 }
 
 const OK: Record<string, Tarefa> = { 'fake.ok': async () => 'pronto' };
+
+// O boot conferia tudo menos o motor. O C#77/C#78 rodaram 4 vezes contra um
+// `claude` de março (o do PATH do systemd), que pede permissão a cada `Write`:
+// nenhuma fase escreveu arquivo e o erro não falava do assunto.
+describe('binário do motor', () => {
+  it('recusa subir quando CLAUDE_BIN não existe, nomeando o caminho', () => {
+    const { criar } = fakeTransporte(0);
+    expect(() => criarServico({ ...criarCfg(), claudeBin: '/nao/existe/claude' }, {
+      agora,
+      criarTransporte: criar,
+      log: () => {},
+      intervaloOciosoMs: 2,
+      heartbeatMs: 5,
+      timeoutDrenoMs: 2_000,
+      carregarFluxos: () => [],
+    })).toThrow(/CLAUDE_BIN não existe: \/nao\/existe\/claude/);
+  });
+});
 
 describe('boot', () => {
   it('sobe com DB vazio, sem erro, e cria a raiz de mídia', async () => {
