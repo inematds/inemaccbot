@@ -50,6 +50,21 @@ export interface WorkerOpts {
   aoAckar?: GanchoTransacional;
   /** Espera entre checagens de uma tarefa de poll (`aindaNao`). */
   intervaloPollSegundos?: number;
+  /**
+   * Guarda o stdout CRU de um agente que quebrou o contrato de saída, e devolve
+   * o caminho onde guardou (ou `undefined` se não conseguiu).
+   *
+   * Existe porque o C#77 e o C#78 falharam com "terminou sem declarar RESULT:"
+   * e não sobrou NADA para diagnosticar: `interpretarSaida` lança, o `bruto`
+   * morre na pilha, e as duas tentativas se perderam. Sem isto a única coisa
+   * que se sabe de uma falha de contrato é que ela aconteceu — não dá para
+   * distinguir recusa do modelo, limite de uso, sandbox negando escrita e
+   * agente que só se enrolou.
+   *
+   * Injetada porque `fila/` não escolhe caminho em disco; quem liga é o
+   * `src/index.ts` com a raiz de `state/`.
+   */
+  guardarSaidaBruta?: (job: Job, bruto: string) => string | undefined;
 }
 
 /**
@@ -292,13 +307,36 @@ export class Worker {
       // chat. Uma exceção aqui é falha do job, e é o comportamento correto:
       // agente que não declarou onde gravou é indistinguível de agente que não
       // gravou nada.
-      const saida = ctx.interpretarSaida ? ctx.interpretarSaida(bruto) : bruto;
+      const saida = ctx.interpretarSaida ? this.interpretar(job, ctx.interpretarSaida, bruto) : bruto;
       // Trabalho destacado: o agente só DISPAROU. Continuamos segurando o job
       // (e o slot da fila) enquanto o artefato não aparece.
       if (ctx.aguardarArtefato) return this.esperarArtefato(job, ctx.aguardarArtefato, saida);
       return saida;
     } finally {
       await exec.limpar();
+    }
+  }
+
+  /**
+   * `interpretarSaida` com a evidência preservada: se o contrato quebrou, o
+   * stdout cru vai para disco ANTES de a exceção subir, e o caminho entra na
+   * mensagem de erro — que é o que chega ao chat e ao log.
+   *
+   * O arquivo não substitui a mensagem: a mensagem continua sendo a do domínio
+   * (é ela que diz o que faltou); o caminho é só o "e o resto está aqui".
+   * Falha ao guardar não pode virar a falha reportada — o erro do agente é mais
+   * importante que o erro de escrever o log dele.
+   */
+  private interpretar(job: Job, interpretar: (b: string) => string, bruto: string): string {
+    try {
+      return interpretar(bruto);
+    } catch (err) {
+      let onde: string | undefined;
+      try { onde = this.opts.guardarSaidaBruta?.(job, bruto); } catch { /* ver doc */ }
+      if (onde === undefined) throw err;
+      const e = err as Error;
+      e.message = `${e.message} — saída do agente em ${onde}`;
+      throw e;
     }
   }
 

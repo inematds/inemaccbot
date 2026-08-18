@@ -463,3 +463,36 @@ describe('aoTerminar', () => {
     expect(fila.obter(job.id)!.status).toBe('done');
   });
 });
+
+// O C#77 falhou com "terminou sem declarar RESULT:" e não sobrou nada para
+// diagnosticar: o stdout do agente morria na pilha quando `interpretarSaida`
+// lançava. Sem a evidência, recusa do modelo, limite de uso e sandbox negando
+// escrita são a MESMA mensagem.
+describe('saída bruta de agente que quebrou o contrato', () => {
+  const promptDe = async (job: Job) => ({
+    prompt: job.input, cwd: '/tmp',
+    perfil: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
+    vars: {},
+    interpretarSaida: (): string => { throw new Error('sem RESULT:'); },
+  });
+
+  it('guarda o stdout e aponta o caminho no erro', async () => {
+    const guardadas: Array<[number, string]> = [];
+    const job = fila.enfileirar({ fila: 'io', kind: 'agent', tarefa: 'x', input: 'p' });
+    await novoWorker({
+      promptDe,
+      guardarSaidaBruta: (j, bruto) => { guardadas.push([j.id, bruto]); return `/tmp/${j.id}.log`; },
+    }).passo();
+    expect(guardadas).toEqual([[job.id, 'saida do agente']]);
+    expect(fila.obter(job.id)!.erro).toBe(`sem RESULT: — saída do agente em /tmp/${job.id}.log`);
+  });
+
+  it('erro ao guardar não substitui o erro do agente', async () => {
+    const job = fila.enfileirar({ fila: 'io', kind: 'agent', tarefa: 'x', input: 'p' });
+    await novoWorker({
+      promptDe,
+      guardarSaidaBruta: () => { throw new Error('disco cheio'); },
+    }).passo();
+    expect(fila.obter(job.id)!.erro).toBe('sem RESULT:');
+  });
+});

@@ -483,6 +483,18 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
           log: deps.log,
           aoTerminar: notificar ?? undefined,
           redigir,
+          // Evidência de falha de contrato: `state/saidas/<job>-t<n>.log`.
+          // Um arquivo por TENTATIVA — o C#77 falhou duas vezes e as duas
+          // saídas importam (a segunda pode ter quebrado por outro motivo).
+          // Redigido, porque este arquivo tem o mesmo destino que o erro: olho
+          // humano, com prompt e caminhos dentro.
+          guardarSaidaBruta: (job, bruto) => {
+            const dir = join(cfg.stateDir, 'saidas');
+            mkdirSync(dir, { recursive: true });
+            const caminho = join(dir, `${job.id}-t${job.tentativas}.log`);
+            writeFileSync(caminho, redigir(bruto), 'utf8');
+            return caminho;
+          },
           // O avanço do fluxo acontece DENTRO da transação do ack.
           aoAckar: (job) => fluxos?.avancar(job),
         },
