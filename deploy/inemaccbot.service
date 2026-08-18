@@ -25,11 +25,22 @@
 [Unit]
 Description=inemaccbot — gateway Telegram + fila durável
 After=network-online.target
+# A rota `| estudio` dirige um Chromium COM JANELA (o HeyGen barra headless —
+# ver o comentário no `scripts/heygen-estudio.mjs`), e a janela precisa de uma
+# tela. O `stack99` é o Xvfb `:99` desta máquina. `Wants` e não `Requires`: sem
+# ele o bot sobe igual e só a fase de estúdio falha — as outras não têm por que
+# ficar de fora.
+Wants=stack99.service
+After=stack99.service
 
 [Service]
 Type=simple
 WorkingDirectory=%h/projetos/inemaccbot
 EnvironmentFile=%h/projetos/inemaccbot/.env
+# A tela onde o Chromium da fase de estúdio abre. Sem `DISPLAY` o script cai no
+# headless de antes — que é o que se quer numa VPS sem Xvfb, e o que NÃO se quer
+# aqui.
+Environment=DISPLAY=:99
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=5

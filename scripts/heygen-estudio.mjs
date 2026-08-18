@@ -50,8 +50,23 @@ const morrer = async (m) => {
   process.exit(3);
 };
 
+// COM JANELA sempre que houver uma tela — nem que a tela seja um Xvfb que
+// ninguém olha.
+//
+// Custou o C#77: o HeyGen passou a barrar navegador headless. Ele não redireciona
+// para o login — carrega a app INTEIRA, com avatar e nome da conta, e joga o
+// modal "Continuar com o Google" por cima. Como a prova de sessão daqui é a
+// barra de busca da tela de Projetos, o script lia isso como "não está logada
+// neste perfil", e a fase morria acusando a credencial — que estava certa o
+// tempo todo. Medido lado a lado no MESMO perfil: `headless: true` → modal de
+// login; `headless: false` → logado, tanto na tela real quanto no Xvfb.
+//
+// Sem `DISPLAY` (VPS pelada, CI) cai no headless de antes: melhor tentar e
+// falhar com a mensagem de sempre do que não rodar.
+const COM_TELA = Boolean(process.env.DISPLAY);
+passo(COM_TELA ? `com janela (DISPLAY=${process.env.DISPLAY})` : 'sem DISPLAY — headless');
 ctx = await chromium.launchPersistentContext(PERFIL, {
-  headless: true,
+  headless: !COM_TELA,
   // `--password-store=basic`: é assim que o Chromium do snap cifra os cookies.
   // Sem isto a sessão do HeyGen parece deslogada.
   args: ['--password-store=basic', '--no-first-run', '--no-default-browser-check'],
