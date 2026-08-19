@@ -57,3 +57,19 @@ describe('pareamento ponta a ponta', () => {
     expect(() => carregarConfig(lerEnv(vazio))).toThrow(/ALLOWED_CHAT_IDS/);
   });
 });
+
+describe('lerEnv e o `#`', () => {
+  it('corta comentário no fim da linha (o que derrubava o boot na VPS)', () => {
+    const e = lerEnv('PROJETOS_DIR=/root/projetos   # default: $HOME/projetos\n');
+    expect(e.PROJETOS_DIR).toBe('/root/projetos');
+  });
+
+  it('preserva o `#` que é dado, colado no valor', () => {
+    expect(lerEnv('SENHA=s3nh#a\n').SENHA).toBe('s3nh#a');
+    expect(lerEnv('URL=http://x/y#z\n').URL).toBe('http://x/y#z');
+  });
+
+  it('aspas protegem um valor com espaço antes do `#`', () => {
+    expect(lerEnv('T="a #b"  # comentário\n').T).toBe('a #b');
+  });
+});

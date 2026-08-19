@@ -628,8 +628,15 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   };
 }
 
-/** Parser mínimo de .env: `CHAVE=valor`, `#` comenta a linha, aspas opcionais.
- * Não é dotenv — é o suficiente para o boot e não acrescenta dependência. */
+/** Parser mínimo de .env: `CHAVE=valor`, `#` comenta, aspas opcionais.
+ * Não é dotenv — é o suficiente para o boot e não acrescenta dependência.
+ *
+ * O `#` também comenta no FIM da linha, mas só quando vem depois de espaço e
+ * fora de aspas: `PROJETOS_DIR=/root/projetos   # default: ...` dava um caminho
+ * com o comentário dentro, e o boot morria dizendo que o diretório não existe.
+ * A exigência do espaço preserva o `#` que é DADO — uma senha `s3nh#a` ou um
+ * fragmento de URL colado no valor continuam inteiros; se o valor legítimo tem
+ * espaço antes do `#`, aspas resolvem. */
 export function lerEnv(texto: string): Record<string, string> {
   const saida: Record<string, string> = {};
   for (const linha of texto.split('\n')) {
@@ -639,8 +646,12 @@ export function lerEnv(texto: string): Record<string, string> {
     if (i <= 0) continue;
     const chave = limpa.slice(0, i).trim();
     let valor = limpa.slice(i + 1).trim();
-    if (valor.length >= 2 && (valor.startsWith('"') || valor.startsWith("'")) && valor.at(-1) === valor[0]) {
-      valor = valor.slice(1, -1);
+    const aspa = valor[0] === '"' || valor[0] === "'" ? valor[0] : '';
+    const fecha = aspa ? valor.indexOf(aspa, 1) : -1;
+    if (fecha > 0) {
+      valor = valor.slice(1, fecha);
+    } else if (!aspa) {
+      valor = valor.replace(/\s+#.*$/, '').trim();
     }
     saida[chave] = valor;
   }
