@@ -19,8 +19,12 @@ definição congelada, portão humano e retomada. O v1 (`inemaccvbot`, `mkivideo
 O que **não** existe de propósito: barreira entre fases, preempção de job, teto global de
 agentes, multiusuário. Ver §11 do spec — cada item com o gatilho para reconsiderar.
 
-**Vai plugar um domínio/skill novo no bot?** Cada rota tem o seu par de scripts,
-e ambas têm o passo a passo manual como leitura de fundo:
+**Vai plugar um domínio/skill novo no bot?** Comece pelo **porquê** —
+[`docs/integrar-um-repo.md`](docs/integrar-um-repo.md): por que o bot conhece a
+FICHA do repo e não o código dele, por que os scripts são um par (um caro com
+modelo, um barato determinístico), como entrada, saída e portões funcionam, e a
+tabela de modos de falha que já morderam. Depois, cada rota tem o seu par de
+scripts, e ambas têm o passo a passo manual como leitura de fundo:
 
 - **Skill** (um comando, um artefato) → [`docs/plugar-por-manifesto.md`](docs/plugar-por-manifesto.md)
   — `gerar-manifesto` uma vez, `plugar-repo` em cada máquina.
@@ -636,6 +640,10 @@ detalhe longo dentro deste arquivo, é bug de organização — abra um issue ou
   externo (o [`analisevideo`](https://github.com/inematds/analisevideo)) no bot, à mão,
   pelas duas rotas: skill de catálogo e repo de domínio. Serve de molde para qualquer
   outra integração.
+- [`docs/integrar-um-repo.md`](docs/integrar-um-repo.md) — **por que o manifesto e o
+  plugar existem**: o bot conhece a ficha do repo, não o código; a metade cara (modelo,
+  uma vez) e a barata (determinística, toda máquina); entrada, contrato de saída,
+  skill vs. fluxo, portões, e os modos de falha já vividos
 - [`docs/plugar-por-manifesto.md`](docs/plugar-por-manifesto.md) — a versão automática
   do de cima (rota A): o par `gerar-manifesto` (uma vez, com modelo) + `plugar-repo`
   (determinístico, em qualquer máquina), o esquema do manifesto e o que cada validação

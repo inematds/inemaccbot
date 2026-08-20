@@ -8,6 +8,19 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.10.4 — 2026-08-20
+
+### Adicionado
+
+- **`docs/integrar-um-repo.md`** — o **porquê** da integração por manifesto,
+  que faltava: o bot conhece a FICHA do repo e não o código dele; o par de
+  scripts (a metade CARA, com modelo, uma vez por repo; a BARATA,
+  determinística, em toda máquina); o que o `plugar` confere antes de escrever e
+  por qual defeito cada passo existe; entrada (`{{input}}`, `{{repo}}`, os três
+  nomes que se confundem), contrato de saída (`RESULT:`/`ERRO:`, artefato como
+  verdade), skill vs. fluxo, portões, e a tabela de modos de falha já vividos.
+  Ligado no README em dois pontos: o bloco de roteamento do topo e o índice.
+
 ## 0.9.4 — 2026-08-20
 
 ### Adicionado
