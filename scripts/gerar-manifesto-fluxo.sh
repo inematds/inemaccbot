@@ -47,11 +47,16 @@ if [ -d "$ALVO/.git" ]; then
 else
   URL="$ALVO"
   FONTE="$TMP/repo"
+  # O nome vem da URL, não da pasta temporária: `basename $TMP/repo` daria
+  # `repo`, e é esse nome que vira `repo.pasta` — onde o `plugar-fluxo`
+  # procura o clone. Um manifesto gerado por URL nascia apontando para
+  # ~/projetos/repo, e a falha só aparecia na hora de plugar.
+  NOME_URL="$(basename "$ALVO" .git)"
   git clone --depth 1 "$URL" "$FONTE" >/dev/null 2>&1 || morre "clone falhou: $URL"
   ok "clonado (temporário, some no fim): $URL"
 fi
 COMMIT="$(cd "$FONTE" && git rev-parse HEAD | cut -c1-7)"
-NOME="$(basename "$FONTE" .git)"
+NOME="${NOME_URL:-$(basename "$FONTE" .git)}"
 ok "nome: $NOME · commit: $COMMIT"
 
 if [ -f "$FONTE/flow.json" ]; then

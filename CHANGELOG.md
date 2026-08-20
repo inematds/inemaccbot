@@ -8,6 +8,16 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.8.4 — 2026-08-20
+
+### Corrigido
+
+- **`gerar-manifesto-fluxo.sh` por URL nascia com `repo.pasta: "repo"`** — o
+  mesmo `basename` da pasta temporária do clone que a 0.8.1 consertou no
+  `gerar-manifesto.sh` e que passou batido no irmão. O nome agora sai da URL.
+  A falha não aparecia na geração (a tela de revisão só mostrava `pasta repo`):
+  aparecia no `plugar-fluxo`, procurando o clone em `~/projetos/repo`.
+
 ## 0.8.3 — 2026-08-20
 
 ### Corrigido
