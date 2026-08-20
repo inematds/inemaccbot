@@ -386,7 +386,7 @@ describe('a fase roda pelo WORKER (não só por ack manual)', () => {
       fila: 'texto', dono: 'W', concorrencia: 1, leaseSegundos: 60,
       tarefas: {}, runners: { fake: runner },
       promptDe: criarPromptDe({
-        defs: [], raizRepo: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
+        defs: [], raizRepo: dir, projetosDir: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
         perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
       }),
       aoAckar: (job) => fluxos.avancar(job),
@@ -416,7 +416,7 @@ describe('a fase roda pelo WORKER (não só por ack manual)', () => {
       fila: 'texto', dono: 'W', concorrencia: 1, leaseSegundos: 60,
       tarefas: {}, runners: { fake: runner },
       promptDe: criarPromptDe({
-        defs: [], raizRepo: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
+        defs: [], raizRepo: dir, projetosDir: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
         perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
       }),
       aoAckar: (job) => fluxos.avancar(job),
@@ -466,7 +466,7 @@ describe('a fase roda pelo WORKER (não só por ack manual)', () => {
     concluirJob(fila.listar()[0]!.id);
     const jobRender = fila.listar().find((j) => j.flow_ref === 'B#1/mulheres/render')!;
     const ctx = await criarPromptDe({
-      defs: [], raizRepo: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
+      defs: [], raizRepo: dir, projetosDir: dir, raizArtefatos: join(dir, 'art'), cwd: dir,
       perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
     })(fila.obter(jobRender.id)!);
     // O template usa só {{input}} e {{saida}}; `canal` existe no job e NÃO é

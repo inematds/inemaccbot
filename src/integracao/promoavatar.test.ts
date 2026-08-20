@@ -117,7 +117,8 @@ describe('a fase de texto recebe a pasta ditada pelo bot', () => {
     const job = fila.listar().find((j) => j.flow_ref === `A#${id}//texto`)!;
     const ctx = await criarPromptDe({
       defs: carregarSkills(join(REPO_BOT, 'config', 'skills.json'), REPO_BOT),
-      raizRepo: REPO_BOT, raizArtefatos: join(dir, 'artefatos'), cwd: dir,
+      raizRepo: REPO_BOT,
+      projetosDir: REPO_BOT, raizArtefatos: join(dir, 'artefatos'), cwd: dir,
       perfilPadrao: { motor: 'claude', modelo: 'sonnet', esforco: 'low' },
     })(job);
     return { prompt: ctx.prompt, cwd: ctx.cwd };

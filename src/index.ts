@@ -409,6 +409,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     const promptDe = criarPromptDe({
       defs,
       raizRepo: RAIZ_REPO,
+      projetosDir: cfg.projetosDir,
       raizArtefatos,
       cwd: homedir(),
       log: deps.log,

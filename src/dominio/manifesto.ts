@@ -506,6 +506,10 @@ export function paraEntradaSkill(m: ManifestoSkill): Record<string, unknown> {
     fila: m.fila,
     kind: 'agent',
     prompt: m.prompt,
+    // A pasta do clone: é o que a execução resolve contra o `PROJETOS_DIR` para
+    // dar valor ao `{{repo}}` que o prompt gerado usa no lugar de um caminho de
+    // máquina. Sem isto o primeiro job morre em "placeholder sem valor: repo".
+    repo: m.repo.pasta ?? m.command,
     artefato_exts: m.artefato_exts,
     max_tentativas: m.max_tentativas,
     timeout_segundos: m.timeout_segundos,

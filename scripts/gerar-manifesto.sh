@@ -49,6 +49,11 @@ if [ -d "$ALVO/.git" ]; then
 else
   URL="$ALVO"
   FONTE="$TMP/repo"
+  # O nome vem da URL, não da pasta temporária: `basename $TMP/repo` daria
+  # `repo`, e `repo.pasta` é onde o `plugar-repo` procura o clone e o que dá
+  # valor ao `{{repo}}` do prompt — um manifesto gerado por URL nascia
+  # apontando para ~/projetos/repo.
+  NOME_URL="$(basename "$ALVO" .git)"
   git clone --depth 1 "$URL" "$FONTE" >/dev/null 2>&1 || morre "clone falhou: $URL"
   ok "clonado (temporário, some no fim): $URL"
 fi
@@ -62,7 +67,7 @@ if [ -z "$URL" ]; then
   aviso "sem remote — o manifesto vai sem repo.url (não faz falta dentro do repo)"
 fi
 COMMIT="$(cd "$FONTE" && git rev-parse HEAD | cut -c1-7)"
-NOME="$(basename "$FONTE" .git)"
+NOME="${NOME_URL:-$(basename "$FONTE" .git)}"
 ok "nome: $NOME · commit: $COMMIT"
 
 titulo "2. Leitura pelo modelo"

@@ -63,7 +63,7 @@ function worker(runner: FakeRunner): Worker {
     tarefas: {},
     runners: { fake: runner },
     promptDe: criarPromptDe({
-      defs, raizRepo: dir, raizArtefatos: join(dir, 'artefatos'), cwd: dir,
+      defs, raizRepo: dir, projetosDir: dir, raizArtefatos: join(dir, 'artefatos'), cwd: dir,
       perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
     }),
     aoTerminar: notificar,
@@ -132,5 +132,37 @@ describe('skill de agente, ponta a ponta', () => {
     await mandar('transcrever: https://exemplo/video');
     await worker(new FakeRunner({ respostas: ['ERRO: yt-dlp não achou o vídeo'] })).passo();
     expect(fila.obter(1)!.erro).toContain('yt-dlp');
+  });
+});
+
+// Skill plugada de um repo externo (`plugar-repo.sh`): o prompt gerado cita
+// `{{repo}}/script.sh` em vez de um caminho de máquina, porque `config/` é
+// versionado e roda também na VPS. Quem dá valor ao placeholder é a execução,
+// resolvendo o NOME da pasta contra o `PROJETOS_DIR` do boot.
+//
+// Sem isso o job morria em "placeholder sem valor: repo" no PRIMEIRO uso —
+// depois de a instalação inteira ter dito "plugado".
+describe('skill de repo externo', () => {
+  it('resolve {{repo}} contra o PROJETOS_DIR', async () => {
+    writeFileSync(join(dir, 'prompts', 'ext.md'), 'rode bash {{repo}}/x.sh "{{input}}" > {{saida}}');
+    const externas = validarSkills([{
+      command: 'analisa', fila: 'io', kind: 'agent', prompt: 'prompts/ext.md',
+      repo: 'ferramenta', artefato_exts: ['md'], max_tentativas: 1,
+      timeout_segundos: 60, aceita_destino: false, descricao: 'd', exemplo: 'ex',
+    }], dir);
+
+    const promptDe = criarPromptDe({
+      defs: externas, raizRepo: dir, projetosDir: join(dir, 'projetos'),
+      raizArtefatos: join(dir, 'artefatos'), cwd: dir,
+      perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
+    });
+    const job = fila.enfileirar({
+      fila: 'io', kind: 'agent', tarefa: 'analisa',
+      input: JSON.stringify({ entrada: 'https://exemplo/v' }), max_tentativas: 1,
+    });
+
+    const ctx = await promptDe(fila.obter(job.id)!);
+    expect(ctx.prompt).toContain(`bash ${join(dir, 'projetos', 'ferramenta')}/x.sh`);
+    expect(ctx.prompt).not.toContain('{{repo}}');
   });
 });

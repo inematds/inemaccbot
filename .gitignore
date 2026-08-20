@@ -20,3 +20,7 @@ backups/
 # porque o `origin` é público. `docs/` (plural) é a documentação que vai junto.
 # Um caractere separa as duas — daí o comentário.
 doc/
+
+# Backup que o `plugar-repo.sh` guarda antes de escrever (o `--desfazer` o
+# consome). É estado local de instalação, não fonte.
+config/*.bak-*

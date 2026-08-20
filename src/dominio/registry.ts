@@ -22,6 +22,17 @@ export interface SkillDef {
   kind: Kind;
   /** Caminho do arquivo de prompt, relativo à raiz do repo. */
   prompt: string;
+  /**
+   * Pasta do repo EXTERNO que esta skill dirige (quando ela veio de um
+   * manifesto de integração). É NOME DE PASTA, nunca caminho absoluto: quem
+   * resolve contra o `PROJETOS_DIR` é a execução — o mesmo contrato dos fluxos,
+   * e o que faz o `config/skills.json` versionado valer noutra máquina.
+   *
+   * Serve ao `{{repo}}` do prompt: o gerador de manifesto manda o prompt citar
+   * `{{repo}}/script.sh` em vez de caminho de máquina, e sem isto o placeholder
+   * chegaria sem valor — o job morria na montagem do prompt.
+   */
+  repo?: string;
   /** Extensões aceitas no `RESULT:` — a primeira é a preferida. */
   artefato_exts: string[];
   max_tentativas: number;
@@ -139,7 +150,7 @@ const NOME_CAMPO = /^[a-z][a-z0-9_]{0,20}$/;
 
 /** Nomes que a gramática já usa para outra coisa — declarar um deles faria o
  * campo da skill ser comido silenciosamente pelo parser. */
-const RESERVADOS = new Set(['motor', 'modelo', 'esforco', 'input', 'saida']);
+const RESERVADOS = new Set(['motor', 'modelo', 'esforco', 'input', 'saida', 'repo']);
 
 function validarCampos(v: unknown, i: number, command: string): Record<string, CampoDef> {
   if (v === undefined || v === null) return {};
@@ -211,6 +222,12 @@ export function validarSkills(dados: unknown, raiz: string): SkillDef[] {
     if (isAbsolute(prompt) || prompt.includes('..')) {
       erro(i, 'prompt', 'precisa ser caminho relativo à raiz do repo, sem ".."');
     }
+    if (d.repo !== undefined) {
+      const r = exigirTexto(d.repo, i, 'repo');
+      if (isAbsolute(r) || r.includes('..') || r.includes('/')) {
+        erro(i, 'repo', 'precisa ser só o NOME da pasta do clone (resolvido contra PROJETOS_DIR)');
+      }
+    }
     const caminhoPrompt = resolve(raiz, prompt);
     if (!existsSync(caminhoPrompt) || statSync(caminhoPrompt).size === 0) {
       erro(i, 'prompt', `arquivo ausente ou vazio: ${prompt}`);
@@ -230,6 +247,7 @@ export function validarSkills(dados: unknown, raiz: string): SkillDef[] {
       fila,
       kind,
       prompt,
+      ...(d.repo === undefined ? {} : { repo: d.repo as string }),
       artefato_exts,
       max_tentativas: exigirInteiroPositivo(d.max_tentativas, i, 'max_tentativas'),
       timeout_segundos: exigirInteiroPositivo(d.timeout_segundos, i, 'timeout_segundos'),

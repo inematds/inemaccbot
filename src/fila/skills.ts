@@ -86,6 +86,11 @@ export interface OpcoesSkills {
   defs: SkillDef[];
   /** Raiz do repo — os prompts do registry são relativos a ela. */
   raizRepo: string;
+  /**
+   * Árvore de projetos (`PROJETOS_DIR` do boot). É contra ela que o `repo` de
+   * uma skill plugada vira caminho — o `{{repo}}` do prompt.
+   */
+  projetosDir: string;
   /** Onde os artefatos de skill são gravados. */
   raizArtefatos: string;
   /** `cwd` dos processos de agente. Validado: tem que existir. */
@@ -351,6 +356,12 @@ export function criarPromptDe(opts: OpcoesSkills): (job: Job) => Promise<Context
       prompt: renderizarPrompt(template, {
         input: entrada.entrada,
         saida,
+        // Só entra quando o template pede: `renderizarPrompt` derruba o job se
+        // receber variável que o prompt não usa, e a maioria das skills não é
+        // de repo externo.
+        ...(def.repo !== undefined && /\{\{\s*repo\s*\}\}/i.test(template)
+          ? { repo: join(opts.projetosDir, def.repo) }
+          : {}),
         ...camposDeclarados(def, entrada.campos),
       }),
       cwd: opts.cwd,

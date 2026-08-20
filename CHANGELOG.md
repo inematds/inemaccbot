@@ -8,6 +8,29 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.8.1 — 2026-08-20
+
+### Adicionado
+
+- **O `{{repo}}` do prompt passou a ser RESOLVIDO de verdade.** O
+  `gerar-manifesto` sempre mandou o prompt citar `{{repo}}/script.sh` em vez de
+  um caminho de máquina — é o que faz o prompt viajar para a VPS — e o próprio
+  gerador dizia ao modelo que "o `{{repo}}` já vem resolvido pelo bot". Não
+  vinha: a montagem do prompt só conhecia `input`, `saida` e os campos
+  declarados, e `renderizarPrompt` derruba o job em placeholder sem valor.
+  Ou seja, TODA skill plugada por manifesto morreria no primeiro job real,
+  depois de a instalação inteira ter dito "plugado". Agora a entrada de
+  `config/skills.json` carrega `repo` (NOME da pasta do clone, nunca caminho
+  absoluto) e a execução o resolve contra o `PROJETOS_DIR` do boot — o mesmo
+  contrato dos fluxos. Pego pela suíte que o `plugar-repo` roda no fim, ao
+  plugar o `analisevideo`.
+- **`stop.sh`** na raiz, gêmeo do `start.sh`: para o serviço e mata um
+  `node dist/index.js` solto (um `start.sh` esquecido continua disputando o
+  `getUpdates` com a próxima subida). Recusa parar quando há job em voo —
+  restart mata render em andamento —, e `--forcar` passa por cima.
+- Skill `analisevideo` plugada: análise visual/cinematográfica de vídeo com
+  Gemini, fila `io`.
+
 ## 0.7.1 — 2026-08-20
 
 ### Adicionado

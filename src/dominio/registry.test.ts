@@ -120,7 +120,7 @@ describe('o registry REAL do repo', () => {
 
   it('é válido e tem as skills das etapas 2 e 3, mais as da Agnes', () => {
     expect(defs.map((d) => d.command).sort()).toEqual(
-      ['curso', 'demo', 'dublar', 'explicativo', 'historia', 'imagem',
+      ['analisevideo', 'curso', 'demo', 'dublar', 'explicativo', 'historia', 'imagem',
         'reel', 'reelinematds', 'reelpromo', 'transcrever'],
     );
     expect(acharSkill(defs, 'transcrever')?.fila).toBe('texto');
@@ -163,7 +163,13 @@ describe('o registry REAL do repo', () => {
       const usadas = new Set(
         [...template.matchAll(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi)].map((m) => m[1]),
       );
-      const declaradas = new Set(['input', 'saida', ...Object.keys(d.campos)]);
+      const declaradas = new Set([
+        'input', 'saida',
+        // Skill plugada de repo externo: o prompt cita `{{repo}}` e quem dá
+        // valor é a execução, resolvendo `repo` contra o PROJETOS_DIR.
+        ...(d.repo === undefined ? [] : ['repo']),
+        ...Object.keys(d.campos),
+      ]);
 
       for (const [nome, c] of Object.entries(d.campos)) {
         if (c.usa === 'entrega') {

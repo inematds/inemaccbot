@@ -49,7 +49,7 @@ function worker(runner: FakeRunner, over: Record<string, unknown> = {}): Worker 
     fila: 'render', dono: 'A', concorrencia: 1, leaseSegundos: 60,
     tarefas: {}, runners: { fake: runner },
     promptDe: criarPromptDe({
-      defs, raizRepo: dir, raizArtefatos: join(dir, 'artefatos'), cwd: dir,
+      defs, raizRepo: dir, projetosDir: dir, raizArtefatos: join(dir, 'artefatos'), cwd: dir,
       perfilPadrao: { motor: 'fake', modelo: 'sonnet', esforco: 'low' },
       // Janelas curtas: o comportamento sob teste é a ADOÇÃO e a posse do slot,
       // não a duração das janelas (essas têm teste próprio em render.test.ts).

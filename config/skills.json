@@ -267,5 +267,21 @@
     },
     "descricao": "gera uma imagem pela API Agnes (US$ 0 · skill imagens-agnes)",
     "exemplo": "imagem: uma raposa ruiva numa floresta nevada, cinematográfico | ratio=16:9"
+  },
+  {
+    "command": "analisevideo",
+    "fila": "io",
+    "kind": "agent",
+    "prompt": "prompts/analisevideo.md",
+    "repo": "analisevideo",
+    "artefato_exts": [
+      "md",
+      "json"
+    ],
+    "max_tentativas": 2,
+    "timeout_segundos": 1800,
+    "aceita_destino": false,
+    "descricao": "Análise visual/cinematográfica de vídeo (câmera, luz, montagem, trilha) com Gemini, arquivada num banco pesquisável.",
+    "exemplo": "analisevideo: https://youtube.com/watch?v=exemplo"
   }
 ]

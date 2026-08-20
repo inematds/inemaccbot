@@ -82,6 +82,11 @@ Os campos que carregam decisão de projeto:
   confere no cofre (`~/projetos/wifi/.env`), e **chave vazia conta como
   faltando**: `CHAVE=` passa em qualquer teste de existência e só falha no
   primeiro job, com um erro do provedor que não menciona o cofre.
+- **`repo.pasta`** (ou, na falta dele, o `command`) vira o campo `repo` da
+  entrada em `config/skills.json`, e é o que dá valor ao **`{{repo}}` do
+  prompt** na hora do job: a execução o resolve contra o `PROJETOS_DIR` do
+  boot. Por isso o prompt pode — e deve — citar `{{repo}}/script.sh` em vez de
+  um caminho de máquina, sem parar de funcionar na VPS.
 - **`repo.commit`** é proveniência: o manifesto foi escrito olhando **um**
   commit. Se o repo andou, o `plugar-repo` avisa em vez de aplicar às cegas.
 - **`gerado.confianca`** marca cada campo como `lido` (está escrito no repo) ou
