@@ -96,10 +96,33 @@ if [ -n "$M_COMMIT" ] && [ -d "$CLONE/.git" ]; then
 fi
 
 titulo "3. Dependências"
+# Sugestão de instalação por binário. É SUGESTÃO: o script não instala nada, nem
+# aqui nem no agente — quem decide o que entra na máquina é o dono. Mas dizer
+# "instale você" sem o comando é atrito puro numa VPS.
+comoInstalar() {
+  case "$1" in
+    yt-dlp)  # o do apt costuma ser velho demais para o YouTube de hoje
+      echo 'sudo apt install -y pipx && pipx install yt-dlp   # (o yt-dlp do apt envelhece rápido e quebra em site que muda)' ;;
+    ffmpeg|ffprobe) echo 'sudo apt install -y ffmpeg' ;;
+    jq)      echo 'sudo apt install -y jq' ;;
+    python3) echo 'sudo apt install -y python3' ;;
+    node)    echo 'NodeSource 22.x — ver README §0' ;;
+    *)       echo "sudo apt install -y $1   # (nome do pacote pode diferir do binário)" ;;
+  esac
+}
+FALTAM_BIN=""
 for b in $M_BIN; do
-  command -v "$b" >/dev/null && ok "$b" || morre "$b ausente — instale VOCÊ.
-     O prompt proíbe o agente de instalar: sem isto a fase morre com 'ERRO: falta $b'."
+  if command -v "$b" >/dev/null; then ok "$b"; else
+    printf '  \033[31m✗\033[0m %s ausente\n' "$b"
+    printf '      %s\n' "$(comoInstalar "$b")"
+    FALTAM_BIN="$FALTAM_BIN $b"
+  fi
 done
+if [ -n "${FALTAM_BIN// /}" ]; then
+  morre "faltando:${FALTAM_BIN}
+     Instale e rode de novo. O prompt PROÍBE o agente de instalar: sem isto a
+     fase não falha na instalação, falha no primeiro job com 'ERRO: falta <o quê>'."
+fi
 [ -z "$M_BIN" ] && ok "nenhum binário exigido"
 
 titulo "4. Chaves no cofre"

@@ -59,6 +59,17 @@ dependência ausente vira fase falhada, não instalação silenciosa.
 yt-dlp --version && ffmpeg -version | head -1 && ffprobe -version | head -1 && jq --version && python3 --version
 ```
 
+Faltando alguma, numa VPS Ubuntu:
+
+```bash
+sudo apt install -y ffmpeg jq python3
+sudo apt install -y pipx && pipx install yt-dlp
+```
+
+O `yt-dlp` vem do `pipx` e não do `apt` de propósito: o do repositório envelhece
+rápido e quebra assim que um site muda. (O `scripts/plugar-repo.sh` imprime essa
+mesma sugestão quando encontra o binário faltando.)
+
 ### 0.2 Clonar como irmão
 
 ```bash
