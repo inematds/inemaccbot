@@ -238,14 +238,54 @@ Numa VPS rodando como `root`:
 
 | arquivo | quem lê | caminho |
 |---|---|---|
-| `.env` do bot | `main()` + systemd | `/root/projetos/inemaccbot/.env` (`chmod 600`) |
-| chave do HeyGen | `HEYGEN_ENV_PATH` | `/root/.config/inemaccbot/heygen.env` — ou o próprio `.env` |
-| chave do Groq | `GROQ_ENV_PATH` | `/root/.config/inemaccbot/groq.env` — ou `GROQ_API_KEY` no `.env` |
+| `.env` do bot (**config**) | `main()` + systemd | `/root/projetos/inemaccbot/.env` (`chmod 600`) |
+| **cofre** (segredos de terceiros) | `HEYGEN_ENV_PATH`, `GROQ_ENV_PATH`, `IMG_ENV_PATH` | `/root/projetos/wifi/.env` (`chmod 600`) — é o **default**, criado pelo `scripts/instalar.sh` |
 | login do Claude | CLI `claude` | `/root/.claude/.credentials.json` (`chmod 600`) |
 | perfil do HeyGen (rota `\| estudio`) | `HEYGEN_PERFIL_CHROME` | `/root/.cache/inemaccbot/perfil-heygen` |
 
 Os repos de domínio (`promoavatar`, `promoavatar3`) **não têm `.env` nenhum**: eles
 leem tudo do ambiente que o bot repassa aos scripts filhos.
+
+**Dois arquivos, dois papéis** — confundi-los custa tempo: o `.env` do clone é
+CONFIG do bot (`BOT_TOKEN`, `ALLOWED_CHAT_IDS`, caminhos) e não pode sair de lá;
+o `wifi/.env` é o COFRE de segredo de terceiro (`HEYGEN_API_KEY`,
+`GROQ_API_KEY`, `GOOGLE_API_KEY`, `AGNES_API_KEY`), um arquivo por máquina,
+nunca versionado e nunca copiado por git. O `scripts/instalar.sh` cria o
+esqueleto do cofre com `chmod 600` e avisa quais chaves estão vazias — preencher
+é seu.
+
+#### O `root` não é obrigatório — e um usuário de sistema é mais correto
+
+Rodar como `root` é o caminho curto de VPS, e é o que o
+`deploy/inemaccbot-sistema.service` traz hoje. Não é o certo: o bot executa
+agentes que rodam comandos, e nada nele precisa de privilégio administrativo.
+Num servidor que faça mais coisa que este bot, crie um usuário de sistema
+dedicado:
+
+```bash
+sudo useradd --system --create-home --home-dir /srv/inemaccbot --shell /usr/sbin/nologin inemabot
+```
+
+**O que muda quando o usuário muda** — tudo que é derivado do `$HOME`, e é aqui
+que a migração falha pela metade:
+
+| item | valor com `root` | com um usuário dedicado |
+|---|---|---|
+| cofre (`HEYGEN_ENV_PATH` default) | `/root/projetos/wifi/.env` | `<home>/projetos/wifi/.env` |
+| login do Claude | `/root/.claude/` | `<home>/.claude/` — **é por usuário**, tem que ser refeito ou copiado com `chown` |
+| binário do Claude (`CLAUDE_BIN`) | `/root/.local/bin/claude` | o do novo `$HOME`, ou um caminho de sistema (`/usr/bin/claude`) |
+| perfil do Chrome (`\| estudio`) | `/root/.cache/inemaccbot/perfil-heygen` | `<home>/.cache/…` — a sessão do HeyGen também é por usuário |
+| clone, banco, `state/`, log | `/root/projetos/inemaccbot/` | onde você clonar — e o dono dos arquivos precisa ser o novo usuário (`chown -R`) |
+| `PROJETOS_DIR` | — | **não muda**: o default é a pasta que contém o clone, não o `$HOME` |
+
+E no unit: ajuste `User=`, `Group=`, `WorkingDirectory` e `EnvironmentFile`
+juntos. A pegadinha clássica é o `%h`, que no escopo de sistema resolve para
+`/root` **mesmo quando o serviço roda como outro usuário** — por isso a unidade
+de sistema usa caminho absoluto, não `%h`. Se o `$HOME` do serviço não for o que
+você imagina, o sintoma é sempre o mesmo: o cofre "não existe" e a chave "sumiu".
+
+Fazer essa migração no meio de fluxo em voo perde trabalho: o `state/` e o banco
+mudam de dono. Pare o serviço, confira `/status`, migre, e só então religue.
 
 **Serviço na VPS: use o unit de SISTEMA.** A unidade de usuário
 (`deploy/inemaccbot.service`) pressupõe sessão e linger — em servidor, o certo é
@@ -264,10 +304,11 @@ Ajuste `User=`, `WorkingDirectory` e `EnvironmentFile` antes — no escopo de si
 pegadinha clássica de quem migra do unit de usuário. Os dois units **não** podem
 rodar juntos com o mesmo `BOT_TOKEN`.
 
-E é por isso que existe atalho: como o `.env` é publicado no ambiente do processo
-(`exportarParaAmbiente`), você pode pôr `GROQ_API_KEY` e `INEMAIMG_HOST` direto nele
-e pular os arquivos separados. Um arquivo só, ao custo de misturar segredo com
-config — o `.env.example` mostra as duas formas.
+Há um atalho, e ele é o que a convenção do cofre desaconselha: como o `.env` é
+publicado no ambiente do processo (`exportarParaAmbiente`), dá para pôr
+`GROQ_API_KEY` direto nele e pular o cofre. Funciona, ao custo de misturar
+segredo com config num arquivo que o modo pareamento reescreve — prefira o
+cofre, e deixe o `.env` para configuração.
 
 **O que muda de máquina** (o resto do `.env` é igual): `BOT_TOKEN` — use um bot
 próprio, senão as duas instâncias disputam o `getUpdates` e cada uma pega metade das

@@ -93,6 +93,10 @@ nesta ordem, e o `wifi/.env` já é o segundo lugar.
 2. `$ROOT/.env`, onde `ROOT` é **dois níveis acima do script**;
 3. `~/projetos/wifi/.env`  ← **o padrão que adotamos**.
 
+Numa instalação nova o `scripts/instalar.sh` do bot já cria a pasta e o
+esqueleto do cofre (`chmod 600`) e avisa quais chaves estão vazias — ele nunca
+escreve chave, isso é seu. Se o cofre já existe, é só acrescentar a linha.
+
 Então, na VPS:
 
 ```bash
@@ -151,7 +155,9 @@ ls /root/projetos/output/analisevideo/teste-01/
 
 Onde o banco mora é configurável por `ANALISEVIDEO_BANCO` (default
 `$HOME/projetos/output/analisevideo`). O `$HOME` aqui é o do **usuário que roda
-o serviço** — sob systemd pode não ser o seu.
+o serviço** — sob systemd pode não ser o seu. É a mesma armadilha do cofre: se o
+serviço rodar como um usuário dedicado em vez de `root`, tudo que deriva do
+`$HOME` muda de lugar. O README, na §10, tem a tabela do que muda.
 
 ---
 

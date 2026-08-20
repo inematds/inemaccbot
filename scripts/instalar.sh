@@ -117,6 +117,40 @@ else
   erro ".env criado a partir do exemplo — preencha BOT_TOKEN, ALLOWED_CHAT_IDS e os caminhos"
 fi
 
+titulo "5.1 Cofre de segredos (~/projetos/wifi/.env)"
+# Segredo de TERCEIRO não mora no .env do bot: mora no cofre único do
+# ecossistema, um arquivo por MÁQUINA (nunca versionado, nunca copiado por git).
+# É o default de HEYGEN_ENV_PATH, e o que os scripts das fases procuram.
+# O script cria o esqueleto e para: preencher é seu, porque é segredo.
+COFRE="$PROJETOS/wifi/.env"
+if [ -f "$COFRE" ]; then
+  ok "cofre existe: $COFRE"
+  chmod 600 "$COFRE"
+else
+  if [ "$CHECAR" = 1 ]; then
+    aviso "(--checar) criaria o esqueleto do cofre em $COFRE"
+  else
+    mkdir -p "$(dirname "$COFRE")"
+    umask 077
+    cat > "$COFRE" <<'FIM'
+# Cofre de segredos desta MÁQUINA. Uma linha por chave, sem aspas.
+# Não versione, não copie entre máquinas: cada uma tem o seu.
+# Quem lê: o bot (HEYGEN_ENV_PATH aponta para cá por default) e os scripts
+# das fases (GROQ_ENV_PATH, IMG_ENV_PATH).
+HEYGEN_API_KEY=
+GROQ_API_KEY=
+GOOGLE_API_KEY=
+FIM
+    chmod 600 "$COFRE"
+    ok "esqueleto do cofre criado: $COFRE"
+  fi
+fi
+# Chave vazia é pior que ausente: o boot passa e a rota falha lá na frente.
+if [ -f "$COFRE" ]; then
+  grep -q '^HEYGEN_API_KEY=.\+' "$COFRE" || aviso "HEYGEN_API_KEY vazia no cofre — as rotas | api e | creditos falham"
+  grep -q '^GROQ_API_KEY=.\+'   "$COFRE" || aviso "GROQ_API_KEY vazia no cofre — a legenda e o corte por fala do reel falham"
+fi
+
 titulo "6. Testes e build"
 if [ "$CHECAR" = 1 ]; then aviso "(--checar) não roda a suíte"
 else
