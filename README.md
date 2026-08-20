@@ -533,6 +533,10 @@ detalhe longo dentro deste arquivo, é bug de organização — abra um issue ou
   no estúdio.
 - [`docs/arquitetura.md`](docs/arquitetura.md) — boot, desligamento, filas, tarefas
   `function`, convenções. Leitura de quem mexe no código.
+- [`docs/instalar-analisevideo.md`](docs/instalar-analisevideo.md) — plugar um repo
+  externo (o [`analisevideo`](https://github.com/inematds/analisevideo)) no bot, à mão,
+  pelas duas rotas: skill de catálogo e repo de domínio. Serve de molde para qualquer
+  outra integração.
 
 **Domínios** (público, gatilho, canal, prompt, template — nada disso é do bot):
 
