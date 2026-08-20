@@ -27,7 +27,7 @@
 # `flow.json` — registrar antes de materializar derruba o serviço.
 #
 # DETERMINÍSTICO: nenhum modelo no caminho. Quem lê o repo e desenha as fases é
-# o `gerar-manifesto.sh --fluxo`, uma vez, numa máquina que tenha um modelo.
+# o `gerar-manifesto-fluxo.sh`, uma vez, numa máquina que tenha um modelo.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -102,7 +102,7 @@ else
     morre "não há manifesto para \"$NOME\"
      Procurei em:  config/integracoes/$NOME.json
                    $CLONE/integracao.json
-     Gere um numa máquina com modelo:  ./scripts/gerar-manifesto.sh --fluxo <url-do-repo>"
+     Gere um numa máquina com modelo:  ./scripts/gerar-manifesto-fluxo.sh <url-do-repo>"
   fi
 fi
 

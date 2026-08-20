@@ -8,6 +8,28 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.6.1 — 2026-08-20
+
+### Corrigido
+
+- **O rascunho do manifesto sobrevive à falha de validação.** Os dois geradores
+  diziam "edite à mão: `$TMP/manifesto.json`" num script cujo `trap` acabara de
+  apagar o `$TMP` — instrução impossível de seguir, jogando fora as chamadas de
+  modelo já pagas. Agora o rascunho é copiado para
+  `config/integracoes/<nome>.json.rascunho` ANTES de validar, e removido no
+  sucesso. Achado rodando o gerador de fluxo pela primeira vez de verdade.
+- **Manifesto de fluxo inválido vai para a REVISÃO, não para a morte.** O
+  gerador morria e descartava o desenho inteiro por causa de um campo — na
+  primeira rodada real, o modelo escreveu a marca de confiança como
+  `flow.alvos` em vez de `definicao.flow.alvos` e as quatro chamadas foram para
+  o lixo. Agora o erro cai na tela de revisão, que já sabe editar e revalidar; e
+  `[enter]` recusa aceitar enquanto estiver inválido, porque aceitar só adiaria
+  a mesma falha para o `plugar-fluxo`, numa máquina que talvez não tenha modelo.
+- **`plugar-fluxo.sh` apontava um comando inexistente** (`gerar-manifesto.sh
+  --fluxo`) na mensagem que aparece justamente para quem não tem manifesto. O
+  script irmão chama-se `gerar-manifesto-fluxo.sh`.
+- O prompt do gerador agora exige o caminho COMPLETO na marca de confiança.
+
 ## 0.6.0 — 2026-08-20
 
 ### Adicionado

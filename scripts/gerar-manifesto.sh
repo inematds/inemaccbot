@@ -129,9 +129,15 @@ json.dump(obj, open(sys.argv[2], 'w', encoding='utf8'), ensure_ascii=False, inde
 PY
 
 [ -d "$REPO/dist/dominio" ] || (cd "$REPO" && npm run build >/dev/null)
+# Rascunho DURÁVEL antes de validar: o `trap` apaga o $TMP na saída, e mandar
+# "edite à mão: $TMP/manifesto.json" num script que acabou de apagar o $TMP é
+# instrução impossível de seguir — jogando fora a chamada de modelo já paga.
+mkdir -p "$REPO/config/integracoes"
+RASCUNHO="$REPO/config/integracoes/$NOME.json.rascunho"
+cp "$TMP/manifesto.json" "$RASCUNHO"
 VARS="$(node "$REPO/scripts/plugar-ajuda.mjs" validar "$TMP/manifesto.json")" \
   || morre "o manifesto gerado não passou no validador — rode de novo, ou edite à mão:
-     $TMP/manifesto.json"
+     $RASCUNHO"
 eval "$VARS"
 ok "manifesto válido"
 case "$M_INVOCACAO" in
@@ -238,6 +244,7 @@ for f in "$DESTINO_M" "$DESTINO_P"; do
 done
 cp "$TMP/manifesto.json" "$DESTINO_M"
 cp "$TMP/prompt.md" "$DESTINO_P"
+rm -f "$RASCUNHO"
 ok "$DESTINO_M"
 ok "$DESTINO_P"
 

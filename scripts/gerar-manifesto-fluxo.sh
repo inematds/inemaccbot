@@ -139,9 +139,12 @@ REGRAS que o validador aplica, e que você não deve violar:
   render (vídeo, pesado, concorrência 1), navegador (Chrome), cpu.
 - "requer.chaves" é o NOME da variável de ambiente, jamais o valor.
 - "confianca": marque como "chute" TODO campo deduzido sem evidência direta no
-  repo. **"definicao.flow.alvos" é SEMPRE "chute"**: canal e gatilho são
-  conhecimento de negócio, não estão em código nenhum. Se não souber, gere UM
-  alvo só, chamado "unico".
+  repo. A chave é o caminho COMPLETO a partir da raiz do manifesto, e o primeiro
+  segmento tem que ser um campo que existe no topo: use exatamente
+  "definicao.flow.alvos", NUNCA "flow.alvos".
+- **"definicao.flow.alvos" é SEMPRE "chute"**: canal e gatilho são conhecimento
+  de negócio, não estão em código nenhum. Se não souber, gere UM alvo só,
+  chamado "unico".
 FIM
 )"
 
@@ -239,11 +242,26 @@ PY
 fi
 
 titulo "4. Validação"
-VARS="$(node "$REPO/scripts/plugar-ajuda.mjs" validar-fluxo "$TMP/manifesto.json")" \
-  || morre "o manifesto gerado não passou no validador — edite à mão:
-     $TMP/manifesto.json"
-eval "$VARS"
-ok "manifesto válido"
+# Rascunho DURÁVEL antes de qualquer coisa. O `trap` apaga o $TMP na saída, e
+# mandar "edite à mão: $TMP/manifesto.json" num script que acabou de apagar o
+# $TMP é instrução impossível de seguir — com o agravante de jogar fora as
+# chamadas de modelo que acabaram de ser pagas.
+mkdir -p "$REPO/config/integracoes"
+RASCUNHO="$REPO/config/integracoes/$NOME.json.rascunho"
+cp "$TMP/manifesto.json" "$RASCUNHO"
+
+VALIDO=0
+if VARS="$(node "$REPO/scripts/plugar-ajuda.mjs" validar-fluxo "$TMP/manifesto.json" 2>"$TMP/verr")"; then
+  eval "$VARS"; VALIDO=1; ok "manifesto válido"
+else
+  # NÃO morre: cair aqui é comum e quase sempre trivial de consertar (um campo,
+  # um caminho de confiança), e morrer descartaria o desenho inteiro. A revisão
+  # abaixo já sabe editar e revalidar — é para lá que o erro vai.
+  sed -n '1,3p' "$TMP/verr" | sed 's/^/     /' >&2
+  aviso "o desenho não passou no validador — corrija com [e] (o rascunho está em $RASCUNHO)"
+  # Sem VARS não há como montar a tela; preenche o mínimo para ela abrir.
+  M_COMMAND="$NOME"; M_PASTA="$NOME"; M_BIN=""; M_CHAVES=""; M_CHUTES=""; M_TEM_DEFINICAO=1
+fi
 
 titulo "5. Revisão"
 mostrar() {
@@ -275,11 +293,16 @@ while true; do
   mostrar
   read -r -p "  > " RESPOSTA || RESPOSTA=n
   case "$RESPOSTA" in
-    ''|s|sim) break ;;
+    ''|s|sim)
+       # Aceitar um manifesto inválido só adiaria a mesma falha para o
+       # `plugar-fluxo`, numa máquina onde talvez não haja modelo para refazer.
+       [ "$VALIDO" = 1 ] && break || aviso "ainda inválido — corrija com [e] antes de aceitar" ;;
     e) "$EDITOR_" "$TMP/manifesto.json"
-       if VARS="$(node "$REPO/scripts/plugar-ajuda.mjs" validar-fluxo "$TMP/manifesto.json")"
-       then eval "$VARS"; else aviso "ainda inválido — edite de novo"; fi ;;
-    n|nao|não) morre "cancelado — nada foi escrito" ;;
+       cp "$TMP/manifesto.json" "$RASCUNHO"
+       if VARS="$(node "$REPO/scripts/plugar-ajuda.mjs" validar-fluxo "$TMP/manifesto.json" 2>"$TMP/verr")"
+       then eval "$VARS"; VALIDO=1; ok "agora é válido"
+       else VALIDO=0; sed -n '1,3p' "$TMP/verr" | sed 's/^/     /' >&2; aviso "ainda inválido"; fi ;;
+    n|nao|não) morre "cancelado — o rascunho ficou em $RASCUNHO" ;;
     *) aviso "não entendi" ;;
   esac
 done
@@ -289,6 +312,7 @@ mkdir -p "$REPO/config/integracoes"
 DESTINO="$REPO/config/integracoes/$M_COMMAND.json"
 [ -f "$DESTINO" ] && cp "$DESTINO" "$DESTINO.bak" && aviso "existia — backup em $(basename "$DESTINO").bak"
 cp "$TMP/manifesto.json" "$DESTINO"
+rm -f "$RASCUNHO"
 ok "$DESTINO"
 
 titulo "Agora"
