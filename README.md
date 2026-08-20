@@ -19,6 +19,10 @@ definição congelada, portão humano e retomada. O v1 (`inemaccvbot`, `mkivideo
 O que **não** existe de propósito: barreira entre fases, preempção de job, teto global de
 agentes, multiusuário. Ver §11 do spec — cada item com o gatilho para reconsiderar.
 
+**Vai plugar um domínio/skill novo no bot?** O caminho inteiro, à mão, está em
+[`docs/instalar-analisevideo.md`](docs/instalar-analisevideo.md) — um exemplo real,
+pelas duas rotas de integração.
+
 ## Instalação (passo a passo)
 
 Do zero até `/ping` respondendo no Telegram. Testado no Ubuntu com Node v24.
@@ -484,6 +488,13 @@ fluxo com outro rodando é seguro. E o bot só toca no que ELE publicou dentro d
 ## Como entra um domínio novo
 
 Este é o teste do desenho: **domínio novo não deve exigir linha de código no bot.**
+
+> 📘 **Exemplo completo, do clone ao primeiro job:**
+> [**`docs/instalar-analisevideo.md`**](docs/instalar-analisevideo.md) — plugar um repo
+> externo ([`analisevideo`](https://github.com/inematds/analisevideo)) pelas DUAS rotas,
+> com os campos que cada validador cobra, a chave no cofre, e a tabela de sintoma → causa
+> quando o boot recusa subir. As duas seções abaixo são o resumo; o documento é o passo a
+> passo que alguém segue na mão numa VPS.
 
 ### Uma SKILL (uma etapa, sem estado)
 
