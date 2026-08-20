@@ -514,6 +514,9 @@ para; só grava com `--sim`, e `--desfazer` restaura. **Nenhum modelo no caminho
 quem lê o repo e decide fila, timeout e prompt é o `gerar-manifesto`, uma vez por
 repo. Sem manifesto, ele recusa em vez de adivinhar.
 
+→ **Como os dois funcionam, campo a campo:**
+[`docs/plugar-por-manifesto.md`](docs/plugar-por-manifesto.md).
+
 > 📘 **Exemplo completo, do clone ao primeiro job:**
 > [**`docs/instalar-analisevideo.md`**](docs/instalar-analisevideo.md) — plugar um repo
 > externo ([`analisevideo`](https://github.com/inematds/analisevideo)) pelas DUAS rotas,
@@ -614,6 +617,10 @@ detalhe longo dentro deste arquivo, é bug de organização — abra um issue ou
   externo (o [`analisevideo`](https://github.com/inematds/analisevideo)) no bot, à mão,
   pelas duas rotas: skill de catálogo e repo de domínio. Serve de molde para qualquer
   outra integração.
+- [`docs/plugar-por-manifesto.md`](docs/plugar-por-manifesto.md) — a versão automática
+  do de cima (rota A): o par `gerar-manifesto` (uma vez, com modelo) + `plugar-repo`
+  (determinístico, em qualquer máquina), o esquema do manifesto e o que cada validação
+  evita.
 
 **Domínios** (público, gatilho, canal, prompt, template — nada disso é do bot):
 
