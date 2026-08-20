@@ -100,7 +100,8 @@ Responda APENAS com um objeto JSON, sem cerca de código e sem comentário:
   "definicao": {
     "flow": {
       "nome": "<command>",
-      "prefixo": "<UMA letra maiúscula, a referência no chat: M#4>",
+      "prefixo": "<1 a 3 letras MAIÚSCULAS, a referência no chat: M#4>",
+      "versao_def": 1,
       "alvos": { "<nome-do-alvo>": { "canal": "livesN", "gatilho": "<uma frase>" } },
       "fases": [
         {
@@ -122,6 +123,8 @@ Responda APENAS com um objeto JSON, sem cerca de código e sem comentário:
 
 REGRAS que o validador aplica, e que você não deve violar:
 
+- "versao_def" é OBRIGATÓRIO e inteiro > 0. Comece em 1. É a versão da
+  DEFINIÇÃO do fluxo, e sem ele o flow.json é recusado na carga.
 - "tarefa" é CATÁLOGO FECHADO. Só pode ser uma destas: $TAREFAS
   Não invente nome. Se o repo precisa de um passo que não está aí, a saída é
   fazer a fase ser "kind": "agent" com "tarefa": "fluxo-agente" e um prompt que

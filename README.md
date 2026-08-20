@@ -27,7 +27,8 @@ e ambas têm o passo a passo manual como leitura de fundo:
 - **Fluxo** (fases com estado e portão) → [`docs/plugar-fluxo.md`](docs/plugar-fluxo.md)
   — `gerar-manifesto-fluxo` uma vez, `plugar-fluxo` em cada máquina. O manifesto
   carrega a definição e a materializa no repo de domínio, **sem sobrescrever** o
-  que já estiver lá.
+  que já estiver lá. Traz o roteiro do teste na VPS, os limites conhecidos e o
+  estado da verificação. **Novo em 0.6.x, ainda sem uso em produção.**
 - **À mão, com um exemplo real** → [`docs/instalar-analisevideo.md`](docs/instalar-analisevideo.md)
   — as duas rotas, passo a passo. É o que explica o que os scripts automatizam.
 
@@ -643,7 +644,9 @@ detalhe longo dentro deste arquivo, é bug de organização — abra um issue ou
   `gerar-manifesto-fluxo` + `plugar-fluxo`, por que o manifesto de fluxo CARREGA a
   definição (um fluxo não cabe do lado do bot), a regra de conflito que impede
   sobrescrever o repo de domínio, e por que a ordem materializar → registrar não é
-  negociável.
+  negociável. Mais: **roteiro do teste na VPS**, tabela sintoma → conserto, o que
+  já foi verificado e o que não, e os limites do desenho automático (o modelo
+  colapsa portões; `alvos` é sempre chute).
 
 **Trocar o motor de agente** (o `claude` é o padrão, não o único):
 

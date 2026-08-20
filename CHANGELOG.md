@@ -8,6 +8,36 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.7.1 — 2026-08-20
+
+### Adicionado
+
+- **A definição do manifesto passa pelo validador REAL do `flow.json`.** O
+  `plugar-ajuda validar-fluxo` materializa a definição num diretório
+  TEMPORÁRIO e chama `carregarFlow` ali. Sem isso, um campo que o esquema do
+  manifesto não exige atravessava a geração inteira e só era recusado no
+  PRIMEIRO COMANDO do fluxo — depois de já estar escrito no repo de domínio.
+  Foi o caso do `versao_def`: obrigatório no `flow.json`, ausente do prompt do
+  gerador, invisível para o esquema do manifesto. Validar num temporário porque
+  validar não pode escrever no repo dos outros.
+- `docs/plugar-fluxo.md` ganhou **roteiro do teste na VPS**, limites conhecidos,
+  estado da verificação e tabela sintoma → conserto.
+
+### Corrigido
+
+- **`PROJETOS_DIR` era ignorado pelos scripts.** `plugar-fluxo` e `plugar-repo`
+  assumiam a pasta-pai do clone; o bot lê a variável (ambiente, senão `.env`,
+  senão a pasta-pai). Na VPS o `.env.example` traz `PROJETOS_DIR=/root/projetos`,
+  então os dois validariam contra árvores diferentes: "plugou" no script,
+  `diretório não existe` no boot. Agora os scripts seguem a MESMA ordem do bot.
+- **Rodar `--sim` duas vezes destruía o backup**, nos dois scripts: a segunda
+  rodada salvava um arquivo que já continha a entrada, e `--desfazer`
+  "restaurava" exatamente o que se queria desfazer. O backup passa a ser criado
+  só quando ainda não existe (é o estado de ANTES do primeiro plug), e o
+  `--desfazer` o consome.
+- O prompt do gerador agora pede `versao_def` e aceita prefixo de 1 a 3 letras
+  (o validador sempre aceitou; o prompt pedia uma).
+
 ## 0.6.1 — 2026-08-20
 
 ### Corrigido

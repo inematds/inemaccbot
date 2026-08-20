@@ -31,7 +31,23 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJETOS="$(dirname "$REPO")"
+# A árvore de projetos vem do MESMO lugar que o bot lê: `PROJETOS_DIR` do
+# ambiente, senão do `.env` do repo, senão a pasta-pai do clone (o
+# `PAI_DO_CLONE` de `src/config.ts`).
+#
+# Não é preciosismo: na VPS o `.env.example` traz `PROJETOS_DIR=/root/projetos`,
+# e um script que assumisse a pasta-pai validaria a entrada contra uma árvore
+# diferente da que o bot usa no boot — "plugou" aqui, "diretório não existe" no
+# restart.
+le_projetos_dir() {
+  local do_env=""
+  if [ -f "$REPO/.env" ]; then
+    do_env="$(sed -n 's/^[[:space:]]*PROJETOS_DIR[[:space:]]*=[[:space:]]*//p' "$REPO/.env" \
+      | tail -1 | sed 's/^["'"'"']//; s/["'"'"']$//')"
+  fi
+  echo "${PROJETOS_DIR:-${do_env:-$(dirname "$REPO")}}"
+}
+PROJETOS="$(le_projetos_dir)"
 COFRE="$PROJETOS/wifi/.env"
 FLUXOS="$REPO/config/fluxos.json"
 
@@ -66,6 +82,10 @@ if [ "$DESFAZER" = 1 ]; then
   titulo "Desfazer"
   [ -f "$BACKUP" ] || morre "não há backup de $NOME ($BACKUP)"
   cp "$BACKUP" "$FLUXOS"
+  # Consome o backup: sem isto, um `--sim` depois deste `--desfazer` acharia um
+  # backup velho e o preservaria, e o próximo `--desfazer` voltaria para um
+  # estado de duas operações atrás.
+  rm -f "$BACKUP"
   ok "config/fluxos.json restaurado do backup"
   # Os arquivos materializados NÃO são removidos, e isso é deliberado: eles
   # estão num repo que não é nosso, podem ter sido editados desde então, e um
@@ -221,7 +241,16 @@ if [ "$APLICAR" != 1 ]; then
   exit 0
 fi
 
-cp "$FLUXOS" "$BACKUP"
+# Backup só quando ainda NÃO existe um, e por um motivo que custou um teste:
+# rodar `--sim` duas vezes salvava, na segunda, um arquivo que JÁ continha a
+# entrada — e aí `--desfazer` "restaurava" exatamente o que se queria desfazer.
+# O backup guarda o estado ANTERIOR ao primeiro plug, e é o `--desfazer` que o
+# consome (ver abaixo).
+if [ -f "$BACKUP" ]; then
+  aviso "backup anterior preservado ($(basename "$BACKUP")) — ele é o estado de ANTES do primeiro plug"
+else
+  cp "$FLUXOS" "$BACKUP"
+fi
 cp "$NOVO" "$FLUXOS"
 ok "config/fluxos.json atualizado (backup em $(basename "$BACKUP"))"
 

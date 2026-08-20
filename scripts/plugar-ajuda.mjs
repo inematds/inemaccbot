@@ -7,7 +7,8 @@
 // novo. Aqui não há regra nenhuma: só leitura de arquivo e chamada.
 //
 // Usa `dist/` porque é o que existe na VPS — o shell garante o build antes.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import {
@@ -17,6 +18,44 @@ import {
   inserirEntradaSkill, inserirEntradaFluxo, chavesFaltando, invocacaoResolvida,
   planoMaterializacao,
 } from '../dist/dominio/plugar.js';
+import { carregarFlow } from '../dist/dominio/flow.js';
+
+/** Comandos do catálogo: uma fase pode nomear uma SKILL como tarefa, e o
+ *  validador do flow precisa da lista para não recusar as que existem. */
+function comandosDoCatalogo(raizBot) {
+  try {
+    return JSON.parse(readFileSync(join(raizBot, 'config/skills.json'), 'utf8')).map((s) => s.command);
+  } catch { return []; }
+}
+
+/**
+ * Roda o validador REAL do `flow.json` sobre a definição que o manifesto
+ * carrega, materializando-a num diretório TEMPORÁRIO.
+ *
+ * Por que o rodeio: `carregarFlow` lê do disco (é ele que confere que o prompt
+ * de cada fase existe e não está vazio), e o manifesto traz tudo em memória. Sem
+ * isto, o esquema do manifesto passaria e o `flow.json` produzido só seria
+ * recusado no PRIMEIRO COMANDO do fluxo — depois de já ter sido escrito no repo
+ * de domínio. Foi assim que um `versao_def` ausente atravessou a geração
+ * inteira: o esquema do manifesto não o exige, o do flow.json sim.
+ *
+ * Temporário e não o repo real de propósito: validar não pode escrever no repo
+ * dos outros.
+ */
+function conferirDefinicao(definicao, raizBot) {
+  const tmp = mkdtempSync(join(tmpdir(), 'flow-conferir-'));
+  try {
+    const plano = planoMaterializacao(definicao, () => undefined);
+    for (const a of plano.escrever) {
+      const destino = join(tmp, a.caminho);
+      mkdirSync(dirname(destino), { recursive: true });
+      writeFileSync(destino, a.conteudo);
+    }
+    carregarFlow(tmp, comandosDoCatalogo(raizBot));
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 const [, , comando, ...args] = process.argv;
 
@@ -82,6 +121,9 @@ try {
     // que sai é outro conjunto: fluxo não tem invocação, fila nem extensão.
     const m = validarManifesto(lerJson(args[0]));
     if (m.rota !== 'fluxo') morrer(new Error(`manifesto: rota "${m.rota}" — este é o caminho de fluxo`));
+    // O validador REAL do flow.json, num temporário. Recusar AQUI é o único
+    // momento em que ainda não se escreveu no repo de domínio.
+    if (m.definicao) conferirDefinicao(m.definicao, join(import.meta.dirname, '..'));
     process.stdout.write([
       `M_COMMAND=${sh(m.command)}`,
       `M_URL=${sh(m.repo.url ?? '')}`,

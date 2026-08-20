@@ -25,7 +25,23 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJETOS="$(dirname "$REPO")"
+# A árvore de projetos vem do MESMO lugar que o bot lê: `PROJETOS_DIR` do
+# ambiente, senão do `.env` do repo, senão a pasta-pai do clone (o
+# `PAI_DO_CLONE` de `src/config.ts`).
+#
+# Não é preciosismo: na VPS o `.env.example` traz `PROJETOS_DIR=/root/projetos`,
+# e um script que assumisse a pasta-pai validaria a entrada contra uma árvore
+# diferente da que o bot usa no boot — "plugou" aqui, "diretório não existe" no
+# restart.
+le_projetos_dir() {
+  local do_env=""
+  if [ -f "$REPO/.env" ]; then
+    do_env="$(sed -n 's/^[[:space:]]*PROJETOS_DIR[[:space:]]*=[[:space:]]*//p' "$REPO/.env" \
+      | tail -1 | sed 's/^["'"'"']//; s/["'"'"']$//')"
+  fi
+  echo "${PROJETOS_DIR:-${do_env:-$(dirname "$REPO")}}"
+}
+PROJETOS="$(le_projetos_dir)"
 COFRE="$PROJETOS/wifi/.env"
 SKILLS="$REPO/config/skills.json"
 
@@ -63,6 +79,7 @@ if [ "$DESFAZER" = 1 ]; then
   titulo "Desfazer"
   [ -f "$BACKUP" ] || morre "não há backup de $NOME ($BACKUP)"
   cp "$BACKUP" "$SKILLS"
+  rm -f "$BACKUP"
   ok "config/skills.json restaurado do backup"
   aviso "recompile (npm run build) e reinicie o serviço para valer"
   exit 0
@@ -237,7 +254,15 @@ if [ "$APLICAR" != 1 ]; then
   exit 0
 fi
 
-cp "$SKILLS" "$BACKUP"
+# Backup só quando ainda NÃO existe um: rodar `--sim` duas vezes salvava, na
+# segunda, um arquivo que JÁ continha a entrada, e `--desfazer` "restaurava" o
+# que se queria desfazer. O backup é o estado ANTERIOR ao primeiro plug, e é o
+# `--desfazer` que o consome.
+if [ -f "$BACKUP" ]; then
+  aviso "backup anterior preservado ($(basename "$BACKUP")) — ele é o estado de ANTES do primeiro plug"
+else
+  cp "$SKILLS" "$BACKUP"
+fi
 cp "$NOVO" "$SKILLS"
 ok "config/skills.json atualizado (backup em $(basename "$BACKUP"))"
 
