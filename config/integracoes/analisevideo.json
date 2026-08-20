@@ -1,0 +1,48 @@
+{
+  "manifesto": 1,
+  "rota": "skill",
+  "command": "analisevideo",
+  "repo": {
+    "url": "https://github.com/inematds/analisevideo.git",
+    "commit": "2b16f14"
+  },
+  "invocacao": "bash {{repo}}/analisevideo.sh analisa \"{{input}}\"",
+  "fila": "io",
+  "artefato_exts": [
+    "md",
+    "json"
+  ],
+  "timeout_segundos": 1800,
+  "max_tentativas": 2,
+  "aceita_destino": false,
+  "requer": {
+    "bin": [
+      "yt-dlp",
+      "ffmpeg",
+      "ffprobe",
+      "jq",
+      "python3"
+    ],
+    "chaves": [
+      "GOOGLE_API_KEY"
+    ],
+    "fontes": []
+  },
+  "prompt": "prompts/analisevideo.md",
+  "descricao": "Análise visual/cinematográfica de vídeo (câmera, luz, montagem, trilha) com Gemini, arquivada num banco pesquisável.",
+  "exemplo": "analisevideo: https://youtube.com/watch?v=exemplo",
+  "gerado": {
+    "em": "2026-08-20",
+    "por": "claude",
+    "confianca": {
+      "invocacao": "lido",
+      "fila": "chute",
+      "timeout_segundos": "chute",
+      "max_tentativas": "chute",
+      "aceita_destino": "chute",
+      "requer.bin": "lido",
+      "requer.chaves": "lido",
+      "artefato_exts": "lido"
+    }
+  }
+}
