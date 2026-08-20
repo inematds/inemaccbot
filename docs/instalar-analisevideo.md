@@ -10,6 +10,20 @@ O `analisevideo` faz análise **visual/cinematográfica** de um vídeo com o Gem
 (fotografia, câmera bloco a bloco, montagem, trilha, como refazer) e arquiva num
 banco local pesquisável. Não transcreve fala — isso é o `transcrever`.
 
+## Convenção de caminhos deste documento
+
+Tudo aqui é escrito **como VPS**: clone em `/root/projetos/…`, serviço rodando
+como `root`. Se você está na máquina local, trate-a como uma VPS e troque
+`/root` pelo seu `$HOME` — a estrutura é idêntica (`~/projetos/inemaccbot`,
+`~/projetos/analisevideo`, `~/projetos/wifi/.env`). Escrever os dois casos em
+cada comando só faria o documento mentir em algum ponto; um caminho canônico e
+uma regra de tradução, não.
+
+E uma decisão que vale para todo o ecossistema, não só para esta instalação:
+**segredo de terceiro mora em `~/projetos/wifi/.env`** (na VPS,
+`/root/projetos/wifi/.env`). Ver §0.3 para o porquê e para o que isso NÃO
+inclui.
+
 Duas rotas, e elas não são "manual vs. automático", são **formatos de
 integração**:
 
@@ -59,35 +73,70 @@ convenção e vira exigência.
 
 ### 0.3 A `GOOGLE_API_KEY` — o passo que mais falha
 
-O bot **não** repassa essa chave para o agente. Quem a procura é o próprio
-`analisevideo.sh`, na função `load_key`, nesta ordem:
+Antes do como, o **onde**, porque são dois arquivos diferentes e confundi-los
+custa uma hora:
+
+| Arquivo | O que guarda | Quem lê |
+|---|---|---|
+| `<clone>/.env` — na VPS, `/root/projetos/inemaccbot/.env` | **config do bot**: `BOT_TOKEN`, `ALLOWED_CHAT_IDS`, caminhos, perfis | o próprio bot, de `process.cwd()`; é também o `EnvironmentFile=` da unidade systemd |
+| `~/projetos/wifi/.env` | **cofre de segredos de terceiros**: `GOOGLE_API_KEY`, `GROQ_API_KEY`, `HEYGEN_API_KEY`, `AGNES_API_KEY` | os scripts que as fases disparam, em runtime |
+
+O `.env` do bot **não pode** mudar de lugar: `main()` o lê de
+`resolve(process.cwd(), '.env')`, e o `WorkingDirectory` da unidade aponta para
+o clone. Segredo de terceiro é que não tem por que morar lá — e a convenção
+deste ecossistema é o **`wifi/.env` como cofre único**.
+
+Para o `analisevideo` isso sai de graça: o `load_key` do script procura a chave
+nesta ordem, e o `wifi/.env` já é o segundo lugar.
 
 1. a variável `GOOGLE_API_KEY` já exportada no ambiente;
 2. `$ROOT/.env`, onde `ROOT` é **dois níveis acima do script**;
-3. `~/projetos/wifi/.env`.
+3. `~/projetos/wifi/.env`  ← **o padrão que adotamos**.
 
-A pegadinha está no `ROOT`: o script foi escrito para viver dentro do
-openpcbotv2, em `skills/analisevideo/`, e ali dois níveis acima é a raiz do
-openpcbotv2. Com o clone solto em `/root/projetos/analisevideo`, dois níveis
-acima é `/root` — ou seja, ele vai procurar `/root/.env`, não o `.env` de
-projeto nenhum. Três saídas, escolha uma:
+Então, na VPS:
 
-- **Arquivo onde o script já procura** (o mais simples numa VPS):
+```bash
+mkdir -p /root/projetos/wifi
+printf 'GOOGLE_API_KEY=%s\n' 'SUA_CHAVE' >> /root/projetos/wifi/.env
+chmod 600 /root/projetos/wifi/.env
+```
 
-  ```bash
-  printf 'GOOGLE_API_KEY=%s\n' 'SUA_CHAVE' > /root/.env
-  chmod 600 /root/.env
-  ```
+Nunca versione a chave: o `origin` deste repo é público. O `wifi/.env` é um
+arquivo de máquina, criado à mão em cada uma — não se copia entre elas por git.
 
-- **Variável no ambiente do serviço** — no `systemd`, um `EnvironmentFile=` com
-  a chave. Tem precedência sobre os arquivos e não deixa a chave num `.env`
-  ambíguo.
+Sobre o item 2 da lista, que é a pegadinha do script: o `ROOT` é calculado como
+dois níveis acima do arquivo, porque o script nasceu vivendo dentro de outro
+projeto, numa pasta `skills/analisevideo/`. Com o clone solto em
+`/root/projetos/analisevideo`, dois níveis acima é `/root` — ele procuraria
+`/root/.env`, que não é o `.env` de projeto nenhum. Usando o `wifi/.env` você
+simplesmente não passa por esse caminho; é mais um motivo para o cofre único.
 
-- **Reproduzir o layout de origem**, clonando em
-  `/root/projetos/openpcbotv2/skills/analisevideo`, se essa máquina tiver o
-  openpcbotv2 com o `.env` dele.
+Alternativa, se você preferir que o segredo venha do serviço e não de arquivo:
+declarar `GOOGLE_API_KEY` no ambiente do systemd (item 1, que tem precedência
+sobre os dois arquivos).
 
-Nunca versione a chave: o `origin` deste repo é público.
+### 0.3.1 Aplicando o mesmo cofre ao resto do bot
+
+O bot já tem as variáveis para apontar cada segredo ao cofre — nenhuma delas
+guarda a chave, todas guardam o CAMINHO do arquivo que a contém. No
+`/root/projetos/inemaccbot/.env`:
+
+```
+HEYGEN_ENV_PATH=/root/projetos/wifi/.env
+GROQ_ENV_PATH=/root/projetos/wifi/.env
+IMG_ENV_PATH=/root/projetos/wifi/.env
+```
+
+O default de `HEYGEN_ENV_PATH` já é o `wifi/.env`; as outras duas são lidas
+pelos scripts dos repos de domínio, então declará-las aqui é o que torna a
+convenção real em vez de intenção. Um
+arquivo com várias chaves (`HEYGEN_API_KEY=`, `GROQ_API_KEY=`,
+`AGNES_API_KEY=`, `GOOGLE_API_KEY=`) atende às três — o código procura a linha
+que lhe interessa e ignora o resto.
+
+O que **não** migra para o cofre: `BOT_TOKEN` e `ALLOWED_CHAT_IDS`. Eles são
+config do bot, o boot os exige, e o modo pareamento reescreve a linha do
+`ALLOWED_CHAT_IDS` no `.env` do clone.
 
 ### 0.4 Testar o script SOZINHO antes de tocar no bot
 
@@ -96,7 +145,7 @@ roda na mão, não adianta registrar nada.
 
 ```bash
 bash /root/projetos/analisevideo/analisevideo.sh analisa "https://youtube.com/watch?v=XXXX" teste-01
-ls ~/projetos/output/analisevideo/teste-01/
+ls /root/projetos/output/analisevideo/teste-01/
 # esperado: meta.json  analise.json  analise.md
 ```
 
@@ -119,7 +168,7 @@ Se você quiser também a skill disponível no Claude Code para uso interativo,
 ligue por symlink — opcional, não é o mecanismo desta receita:
 
 ```bash
-ln -s /root/projetos/analisevideo ~/.claude/skills/analisevideo
+ln -s /root/projetos/analisevideo /root/.claude/skills/analisevideo
 ```
 
 (Symlink em vez de cópia porque assim `git pull` no clone atualiza a skill.)
@@ -363,7 +412,7 @@ reiniciar → `/ajuda` → teste real.
 | Boot: `registry de skills: … prompt: arquivo ausente ou vazio` | entrada no `config/skills.json` sem o `prompts/analisevideo.md` |
 | Boot: `flow.json: fases[i].tarefa "..." não existe` | tarefa de função inventada — só a lista fechada vale |
 | Fase termina com `ERRO: falta yt-dlp` (ou ffmpeg/jq) | dependência não instalada; o agente é proibido de instalar |
-| Fase termina com `ERRO: GOOGLE_API_KEY nao encontrada` | a §0.3 — o `ROOT` do script não é o que você imagina quando ele está solto |
+| Fase termina com `ERRO: GOOGLE_API_KEY nao encontrada` | o cofre `wifi/.env` não existe nessa máquina, ou está no HOME de outro usuário que não o do serviço (§0.3) |
 | Job "done" e nenhum arquivo chega no chat | o agente gravou fora do `{{saida}}`, ou a primeira extensão de `artefato_exts` não bate com o que ele escreveu |
 | A análise que chegou é de outro vídeo | slug repetido: o script desambiguou para `<slug>-2` e o prompt copiou a pasta antiga — ver o passo 2 do prompt |
 | Comando não aparece no `/ajuda` | esqueceu o `npm run build` ou o restart |

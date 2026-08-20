@@ -53,6 +53,12 @@ describe('carregarConfig', () => {
     expect(carregarConfig({ ...base, PROJETOS_DIR: '/srv/p' }).projetosDir).toBe('/srv/p');
   });
 
+  // Segredo de terceiro mora no COFRE único (`~/projetos/wifi/.env`), e não no
+  // .env de outro projeto: o default antigo só valia na máquina de origem.
+  it('HEYGEN_ENV_PATH default é o cofre wifi/.env', () => {
+    expect(carregarConfig({ ...base, HOME: '/casa' }).heygenEnvPath).toBe('/casa/projetos/wifi/.env');
+  });
+
   it('CLAUDE_BIN do ambiente manda', () => {
     expect(carregarConfig({ ...base, CLAUDE_BIN: '/opt/claude' }).claudeBin).toBe('/opt/claude');
   });

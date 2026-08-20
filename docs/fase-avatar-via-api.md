@@ -183,7 +183,7 @@ Confirmado contra a conta real em 2026-08-02:
 
 - `/v3/users/me`, `/v3/videos`, `/v2/avatars` (1330 avatares + 7600 talking
   photos) e `/v2/voices` (2558 vozes) respondem com a chave que o bot já usa
-  (a de `~/projetos/openpcbotv2/.env`, apontada por `HEYGEN_ENV_PATH`).
+  (a do cofre `~/projetos/wifi/.env`, apontada por `HEYGEN_ENV_PATH`).
 - Os ids que este domínio usa existem: avatar `Nei Maldaner`, voz `INEMA TIME`.
 - A legenda continua sendo decisão do estúdio/da chamada — ver a seção
   `heygen.baixar` no README: o download prefere `video_url_caption` quando ele

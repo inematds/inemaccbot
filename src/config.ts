@@ -78,8 +78,12 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     heygenPerfilChrome: env.HEYGEN_PERFIL_CHROME?.trim()
       || join(env.HOME ?? homedir(), '.cache', 'inemaccbot', 'perfil-heygen'),
     chatsPermitidos,
+    // COFRE: qualquer arquivo com uma linha `HEYGEN_API_KEY=`. O default é o
+    // `wifi/.env`, o cofre único do ecossistema — antes apontava para o `.env`
+    // de outro projeto, que numa VPS quase nunca existe, e aí a rota `| api`
+    // falhava por um default que só valia na máquina de origem.
     heygenEnvPath: env.HEYGEN_ENV_PATH?.trim()
-      || join(env.HOME ?? homedir(), 'projetos', 'openpcbotv2', '.env'),
+      || join(env.HOME ?? homedir(), 'projetos', 'wifi', '.env'),
     heygenCli: env.HEYGEN_CLI?.trim() || 'heygen',
     // O binário do motor `claude`, por CAMINHO e não pelo PATH.
     //
