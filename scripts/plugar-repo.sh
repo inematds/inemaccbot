@@ -113,9 +113,13 @@ else
   fi
 fi
 
-# O `dist/` é o que o helper importa; na VPS ele já existe, mas um clone novo não.
-if [ ! -d "$REPO/dist/dominio" ]; then
-  aviso "dist/ ausente — compilando antes de validar"
+# O `dist/` é o que o helper importa. Compilar quando FALTA não basta: um
+# `git pull` na VPS traz `src/` novo e deixa o `dist/` velho no disco, e o
+# sintoma é um SyntaxError de export inexistente vindo do meio do helper —
+# ilegível para quem só queria plugar. Mesma regra do `start.sh`: velho conta
+# como ausente.
+if [ ! -f "$REPO/dist/index.js" ] || [ -n "$(find "$REPO/src" -name '*.ts' -newer "$REPO/dist/index.js" -print -quit 2>/dev/null)" ]; then
+  aviso "dist/ ausente ou desatualizado — compilando antes de validar"
   (cd "$REPO" && npm run build >/dev/null)
 fi
 

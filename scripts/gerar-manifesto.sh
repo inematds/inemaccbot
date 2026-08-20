@@ -133,7 +133,11 @@ if obj is None:
 json.dump(obj, open(sys.argv[2], 'w', encoding='utf8'), ensure_ascii=False, indent=2)
 PY
 
-[ -d "$REPO/dist/dominio" ] || (cd "$REPO" && npm run build >/dev/null)
+# Velho conta como ausente: `git pull` deixa o `dist/` para trás e o helper
+# quebra com um SyntaxError de export inexistente. Mesma regra do `start.sh`.
+if [ ! -f "$REPO/dist/index.js" ] || [ -n "$(find "$REPO/src" -name '*.ts' -newer "$REPO/dist/index.js" -print -quit 2>/dev/null)" ]; then
+  (cd "$REPO" && npm run build >/dev/null)
+fi
 # Rascunho DURÁVEL antes de validar: o `trap` apaga o $TMP na saída, e mandar
 # "edite à mão: $TMP/manifesto.json" num script que acabou de apagar o $TMP é
 # instrução impossível de seguir — jogando fora a chamada de modelo já paga.

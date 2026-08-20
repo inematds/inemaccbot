@@ -126,8 +126,8 @@ else
   fi
 fi
 
-if [ ! -d "$REPO/dist/dominio" ]; then
-  aviso "dist/ ausente — compilando antes de validar"
+if [ ! -f "$REPO/dist/index.js" ] || [ -n "$(find "$REPO/src" -name '*.ts' -newer "$REPO/dist/index.js" -print -quit 2>/dev/null)" ]; then
+  aviso "dist/ ausente ou desatualizado — compilando antes de validar"
   (cd "$REPO" && npm run build >/dev/null)
 fi
 

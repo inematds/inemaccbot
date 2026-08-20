@@ -62,7 +62,11 @@ else
   JA_E_DOMINIO=0
 fi
 
-[ -d "$REPO/dist/dominio" ] || (cd "$REPO" && npm run build >/dev/null)
+# Velho conta como ausente: `git pull` deixa o `dist/` para trás e o helper
+# quebra com um SyntaxError de export inexistente. Mesma regra do `start.sh`.
+if [ ! -f "$REPO/dist/index.js" ] || [ -n "$(find "$REPO/src" -name '*.ts' -newer "$REPO/dist/index.js" -print -quit 2>/dev/null)" ]; then
+  (cd "$REPO" && npm run build >/dev/null)
+fi
 
 # O catálogo FECHADO, extraído do código e não digitado à mão: uma lista aqui
 # que envelhecesse faria o modelo inventar tarefa, e o erro só apareceria no

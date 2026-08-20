@@ -8,6 +8,19 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.8.2 — 2026-08-20
+
+### Corrigido
+
+- **`dist/` VELHO contava como presente nos scripts de plugar/gerar.** Eles
+  compilavam só quando o `dist/` faltava; um `git pull` na VPS traz `src/` novo
+  e deixa o `dist/` para trás, e o helper morria com
+  `SyntaxError: ... does not provide an export named 'inserirEntradaFluxo'` no
+  meio do passo 1 — ilegível para quem só queria plugar um repo. Agora vale a
+  mesma regra do `start.sh`: qualquer `.ts` mais novo que `dist/index.js`
+  dispara o build. Vale nos quatro (`plugar-repo`, `plugar-fluxo`,
+  `gerar-manifesto`, `gerar-manifesto-fluxo`).
+
 ## 0.8.1 — 2026-08-20
 
 ### Adicionado
