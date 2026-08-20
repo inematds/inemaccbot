@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { carregarConfig } from './config.js';
 
@@ -36,6 +38,19 @@ describe('carregarConfig', () => {
   it('CLAUDE_BIN default aponta para a instalação do HOME, não para o PATH', () => {
     const c = carregarConfig({ ...base, HOME: '/casa' });
     expect(c.claudeBin).toBe('/casa/.local/bin/claude');
+  });
+
+  // Os repos de domínio são clonados como irmãos do inemaccbot, então o pai do
+  // clone acerta onde `$HOME/projetos` errava: VPS com o clone em /root, /opt
+  // ou /srv, ou serviço rodando com outro usuário.
+  it('PROJETOS_DIR default é a pasta que contém este clone, não o HOME', () => {
+    const c = carregarConfig({ ...base, HOME: '/casa' });
+    expect(c.projetosDir).toBe(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
+    expect(c.projetosDir).not.toBe('/casa/projetos');
+  });
+
+  it('PROJETOS_DIR do ambiente manda', () => {
+    expect(carregarConfig({ ...base, PROJETOS_DIR: '/srv/p' }).projetosDir).toBe('/srv/p');
   });
 
   it('CLAUDE_BIN do ambiente manda', () => {

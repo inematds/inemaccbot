@@ -70,11 +70,13 @@ transitivas: **não** rode `audit fix --force`, ele desfaz o pin do Playwright.
 ### 2. Repos de domínio (irmãos, não submódulos)
 
 `config/fluxos.json` declara os repos que os fluxos carregam de `PROJETOS_DIR`
-(default `$HOME/projetos`). Eles NÃO vêm no clone e não são submódulos — clone os dois
-como irmãos deste diretório:
+(default: **a pasta que contém este clone** — os repos de domínio são irmãos do
+inemaccbot, então quem clonou tudo lado a lado não precisa declarar a variável,
+esteja isso em `~/projetos`, `/root/projetos` ou `/opt`). Eles NÃO vêm no clone
+e não são submódulos — clone os dois como irmãos deste diretório:
 
 ```bash
-cd ~/projetos
+cd ..   # a pasta que contém o inemaccbot
 git clone https://github.com/inematds/promoavatar.git
 git clone https://github.com/inematds/promoavatar3.git
 ```

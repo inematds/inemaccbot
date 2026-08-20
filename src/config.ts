@@ -2,7 +2,16 @@
 // index.ts. Assim o teste não precisa de .env no disco, e o boot falha alto e
 // cedo — variável faltando derruba o serviço na largada, não no primeiro job.
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** Pasta que contém ESTE clone. Os repos de domínio (`promoavatar`,
+ * `promoavatar3`) são clonados como IRMÃOS do inemaccbot — sempre foram, em
+ * toda máquina —, então o pai do clone é um default melhor que `$HOME/projetos`:
+ * acerta quando o clone não está no HOME (uma VPS com `/root/projetos`, `/opt`,
+ * `/srv`) e quando o serviço roda com outro usuário. Vale de `src/` e de
+ * `dist/`, que estão ambos um nível abaixo da raiz do repo. */
+const PAI_DO_CLONE = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 export interface Config {
   botToken: string;
@@ -62,9 +71,10 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     queueDb: exigir(env, 'QUEUE_DB'),
     stateDir: exigir(env, 'STATE_DIR'),
     logFile: exigir(env, 'LOG_FILE'),
-    // Default derivado do HOME: quem instala não precisa declarar o óbvio, e
-    // um destino que não existe já é recusado com a lista dos que existem.
-    projetosDir: env.PROJETOS_DIR?.trim() || join(env.HOME ?? homedir(), 'projetos'),
+    // Default derivado do CLONE, não do HOME: quem instala não precisa declarar
+    // o óbvio, e um destino que não existe já é recusado com a lista dos que
+    // existem. Ver PAI_DO_CLONE.
+    projetosDir: env.PROJETOS_DIR?.trim() || PAI_DO_CLONE,
     heygenPerfilChrome: env.HEYGEN_PERFIL_CHROME?.trim()
       || join(env.HOME ?? homedir(), '.cache', 'inemaccbot', 'perfil-heygen'),
     chatsPermitidos,
