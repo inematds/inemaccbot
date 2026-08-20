@@ -29,6 +29,8 @@ import { FilaSqlite } from './fila/store.js';
 import { RUNNERS } from './fila/runner.js';
 import { ClaudeRunner } from './fila/runner-claude.js'; // o import também registra RUNNERS.claude (sobrescrito no boot com CLAUDE_BIN)
 import './fila/runner-chrome.js'; // idem: RUNNERS.chrome (fase de navegador)
+import { CodexRunner } from './fila/runner-codex.js'; // motor alternativo — docs/motor-codex.md
+import { OpencodeRunner } from './fila/runner-opencode.js'; // motor alternativo — docs/motor-opencode.md
 import { criarTarefas as criarTarefasPadrao } from './fila/tarefas/index.js';
 import type { Agora, Job } from './fila/types.js';
 import { Worker, type Tarefa } from './fila/worker.js';
@@ -146,6 +148,29 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     throw new Error(`CLAUDE_BIN não existe: ${cfg.claudeBin}`);
   }
   RUNNERS.claude = new ClaudeRunner(cfg.claudeBin);
+
+  // Motores ALTERNATIVOS (`| motor=codex`, `| motor=opencode`).
+  //
+  // Registrados sempre, mas a ausência do binário NÃO derruba o boot como a do
+  // `claude`: eles são opcionais por desenho, e uma máquina que só usa o motor
+  // padrão não pode parar de subir porque não instalou um agente que ninguém
+  // pediu. Quem pedir por um motor sem binário recebe o erro do `spawn` no job,
+  // com o caminho na mensagem.
+  //
+  // A exceção é o motor PADRÃO: se `MOTOR_PADRAO` aponta para um binário que não
+  // existe, TODO job de agente falharia — isso é erro de boot, igual ao do
+  // `CLAUDE_BIN`, e cai aqui com o caminho na mensagem.
+  RUNNERS.codex = new CodexRunner(cfg.codexBin);
+  RUNNERS.opencode = new OpencodeRunner(cfg.opencodeBin);
+  for (const [motor, bin] of [['codex', cfg.codexBin], ['opencode', cfg.opencodeBin]] as const) {
+    if (existsSync(bin)) continue;
+    if (cfg.motorPadrao === motor) {
+      throw new Error(`MOTOR_PADRAO=${motor}, mas o binário não existe: ${bin}`);
+    }
+    process.stderr.write(
+      `motor ${motor}: binário ausente (${bin}) — só falha se alguém pedir | motor=${motor}\n`,
+    );
+  }
 
   /** Identidade DESTA instância — é contra isto que as guardas de posse
    * (`concluir`/`falhar`/`renovar`) comparam. Calculado uma vez. */

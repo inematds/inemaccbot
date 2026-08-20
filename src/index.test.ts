@@ -42,6 +42,8 @@ function criarCfg(): Config {
     esforcoPadrao: 'low', publicoDir: '/tmp/publico', publicoUrls: [],
     // Qualquer binário QUE EXISTA serve: o boot só confere a existência.
     claudeBin: process.execPath,
+    codexBin: process.execPath,
+    opencodeBin: process.execPath,
     projetosDir: '/tmp/projetos-inexistente',
     heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
   };
@@ -161,6 +163,42 @@ describe('binário do motor', () => {
       timeoutDrenoMs: 2_000,
       carregarFluxos: () => [],
     })).toThrow(/CLAUDE_BIN não existe: \/nao\/existe\/claude/);
+  });
+
+  // Motor alternativo é OPCIONAL por desenho: uma máquina que só usa o padrão
+  // não pode parar de subir porque não instalou um agente que ninguém pediu.
+  it('sobe sem o binário dos motores alternativos', () => {
+    const { criar } = fakeTransporte(0);
+    expect(() => criarServico(
+      { ...criarCfg(), codexBin: '/nao/existe/codex', opencodeBin: '/nao/existe/opencode' },
+      {
+        agora,
+        criarTransporte: criar,
+        log: () => {},
+        intervaloOciosoMs: 2,
+        heartbeatMs: 5,
+        timeoutDrenoMs: 2_000,
+        carregarFluxos: () => [],
+      },
+    )).not.toThrow();
+  });
+
+  // …mas se ele é o PADRÃO, todo job de agente falharia. Isso é erro de boot,
+  // com o caminho na mensagem — igual ao do CLAUDE_BIN.
+  it('recusa subir quando MOTOR_PADRAO aponta para binário inexistente', () => {
+    const { criar } = fakeTransporte(0);
+    expect(() => criarServico(
+      { ...criarCfg(), motorPadrao: 'codex', codexBin: '/nao/existe/codex' },
+      {
+        agora,
+        criarTransporte: criar,
+        log: () => {},
+        intervaloOciosoMs: 2,
+        heartbeatMs: 5,
+        timeoutDrenoMs: 2_000,
+        carregarFluxos: () => [],
+      },
+    )).toThrow(/MOTOR_PADRAO=codex.*\/nao\/existe\/codex/);
   });
 });
 

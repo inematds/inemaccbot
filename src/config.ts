@@ -31,6 +31,11 @@ export interface Config {
   heygenPerfilChrome: string;
   /** Binário do motor `claude`, por caminho — ver o porquê no `carregarConfig`. */
   claudeBin: string;
+  /** Binário do motor `codex` (opcional) — mesmo motivo do `claudeBin`: caminho,
+   *  não PATH. Ausente na máquina só quebra quem pedir `| motor=codex`. */
+  codexBin: string;
+  /** Binário do motor `opencode` (opcional). Idem. */
+  opencodeBin: string;
   motorPadrao: string;
   modeloPadrao: string;
   esforcoPadrao: string;
@@ -100,6 +105,14 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     // confiar aqui.
     claudeBin: env.CLAUDE_BIN?.trim()
       || join(env.HOME ?? homedir(), '.local', 'bin', 'claude'),
+    // Motores ALTERNATIVOS. Default derivado do HOME pelo mesmo motivo do
+    // `claudeBin` (PATH do systemd é mínimo): o `codex` instalado por npm global
+    // mora em `~/.npm-global/bin`, o `opencode` em `~/.opencode/bin`. Não
+    // existir não é erro de boot — ver `criarServico` em `index.ts`.
+    codexBin: env.CODEX_BIN?.trim()
+      || join(env.HOME ?? homedir(), '.npm-global', 'bin', 'codex'),
+    opencodeBin: env.OPENCODE_BIN?.trim()
+      || join(env.HOME ?? homedir(), '.opencode', 'bin', 'opencode'),
     motorPadrao: env.MOTOR_PADRAO?.trim() || 'claude',
     modeloPadrao: env.MODELO_PADRAO?.trim() || 'sonnet',
     esforcoPadrao: env.ESFORCO_PADRAO?.trim() || 'low',

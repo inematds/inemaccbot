@@ -48,6 +48,12 @@ se quiser entender ou fazer na mão.
 
 O banco em si é o `better-sqlite3` (compila no `npm install`), não a CLI.
 
+O `claude` é o motor **padrão**, não o único: `codex` e `opencode` já vêm
+registrados como alternativas e se ligam por job (`| motor=codex`), por skill ou
+pelo `.env` — ver [`docs/motor-codex.md`](docs/motor-codex.md) e
+[`docs/motor-opencode.md`](docs/motor-opencode.md). Binário de motor alternativo
+ausente **não** derruba o boot; só falha quem pedir por ele.
+
 **Playwright em SO recém-lançado (ex.: Ubuntu 26.04):** não use `--with-deps`. A lista
 de pacotes dele é por versão de SO, e num SO novo demais ele falha na largada — foi o
 que travou a instalação numa VPS 26.04. Baixe só o browser (`npx playwright install
@@ -627,6 +633,18 @@ detalhe longo dentro deste arquivo, é bug de organização — abra um issue ou
   do de cima (rota A): o par `gerar-manifesto` (uma vez, com modelo) + `plugar-repo`
   (determinístico, em qualquer máquina), o esquema do manifesto e o que cada validação
   evita.
+
+**Trocar o motor de agente** (o `claude` é o padrão, não o único):
+
+- [`docs/motor-codex.md`](docs/motor-codex.md) — rodar os jobs pela CLI da OpenAI
+  (`codex exec`). Ligar não mexe em nada do que já roda: `| motor=codex` num job,
+  depois na skill, e só então no `.env`. Traz o que funciona e o que **não**
+  funciona (as skills que dizem "Use a skill X" são de Claude Code e falham em
+  silêncio em qualquer outro motor).
+- [`docs/motor-opencode.md`](docs/motor-opencode.md) — o mesmo pela CLI aberta
+  `opencode`, que fala com Anthropic, OpenAI, Groq, DeepSeek ou modelo local.
+  **Runner ainda não verificado contra a CLI real** — o documento traz o roteiro
+  de verificação e a tabela de sintoma → conserto.
 
 **Domínios** (público, gatilho, canal, prompt, template — nada disso é do bot):
 
