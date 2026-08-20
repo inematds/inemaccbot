@@ -19,11 +19,17 @@ definição congelada, portão humano e retomada. O v1 (`inemaccvbot`, `mkivideo
 O que **não** existe de propósito: barreira entre fases, preempção de job, teto global de
 agentes, multiusuário. Ver §11 do spec — cada item com o gatilho para reconsiderar.
 
-**Vai plugar um domínio/skill novo no bot?** Dois caminhos:
-[`docs/plugar-por-manifesto.md`](docs/plugar-por-manifesto.md) — pelos scripts
-(`gerar-manifesto` uma vez, `plugar-repo` em cada máquina), que é o atalho; e
-[`docs/instalar-analisevideo.md`](docs/instalar-analisevideo.md) — à mão, com um
-exemplo real, pelas duas rotas de integração (é o único que cobre a rota de fluxo).
+**Vai plugar um domínio/skill novo no bot?** Cada rota tem o seu par de scripts,
+e ambas têm o passo a passo manual como leitura de fundo:
+
+- **Skill** (um comando, um artefato) → [`docs/plugar-por-manifesto.md`](docs/plugar-por-manifesto.md)
+  — `gerar-manifesto` uma vez, `plugar-repo` em cada máquina.
+- **Fluxo** (fases com estado e portão) → [`docs/plugar-fluxo.md`](docs/plugar-fluxo.md)
+  — `gerar-manifesto-fluxo` uma vez, `plugar-fluxo` em cada máquina. O manifesto
+  carrega a definição e a materializa no repo de domínio, **sem sobrescrever** o
+  que já estiver lá.
+- **À mão, com um exemplo real** → [`docs/instalar-analisevideo.md`](docs/instalar-analisevideo.md)
+  — as duas rotas, passo a passo. É o que explica o que os scripts automatizam.
 
 ## Instalação (passo a passo)
 
@@ -633,6 +639,11 @@ detalhe longo dentro deste arquivo, é bug de organização — abra um issue ou
   do de cima (rota A): o par `gerar-manifesto` (uma vez, com modelo) + `plugar-repo`
   (determinístico, em qualquer máquina), o esquema do manifesto e o que cada validação
   evita.
+- [`docs/plugar-fluxo.md`](docs/plugar-fluxo.md) — o mesmo para a rota B (fluxo): o par
+  `gerar-manifesto-fluxo` + `plugar-fluxo`, por que o manifesto de fluxo CARREGA a
+  definição (um fluxo não cabe do lado do bot), a regra de conflito que impede
+  sobrescrever o repo de domínio, e por que a ordem materializar → registrar não é
+  negociável.
 
 **Trocar o motor de agente** (o `claude` é o padrão, não o único):
 

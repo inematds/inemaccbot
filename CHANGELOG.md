@@ -8,6 +8,51 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.6.0 — 2026-08-20
+
+### Adicionado
+
+- **Rota de FLUXO no manifesto**, com o par próprio: `gerar-manifesto-fluxo.sh`
+  (uma vez, com modelo) + `plugar-fluxo.sh` (determinístico, em qualquer
+  máquina). Antes o validador recusava `"rota": "fluxo"` apontando o caminho
+  manual. Doc: [`docs/plugar-fluxo.md`](docs/plugar-fluxo.md).
+- **O manifesto de fluxo CARREGA a definição** (`definicao.flow`,
+  `definicao.prompts`, `definicao.help`) e o `plugar-fluxo` a materializa no repo
+  de domínio. Sem isso o manifesto só serviria para repos que JÁ são domínio — e
+  o caso que importa é o contrário. Repo que já tem `flow.json`: o manifesto sai
+  só como registro.
+- **`planoMaterializacao`** (`dominio/plugar.ts`) — decide o que escrever no repo
+  alheio. **O repo é o dono da definição**: arquivo divergente é CONFLITO e para
+  a instalação, nunca sobrescrita; conteúdo idêntico (mesmo com `\n` a mais) não
+  é conflito, para que re-plugar seja operação que não faz nada.
+- **`inserirEntradaFluxo`** — insere em `config/fluxos.json` validando com o
+  validador do BOOT. Ele vai ao disco, e é por isso que a ordem
+  materializar → registrar não é negociável: entrada apontando para repo sem
+  `flow.json` derruba o serviço.
+- **`plugar-ajuda.mjs`**: `validar-fluxo`, `materializar`, `entrada-fluxo`.
+
+### Mudado
+
+- **`Manifesto` virou união** (`ManifestoSkill | ManifestoFluxo`), com `repo`,
+  `requer` e `gerado` extraídos em validadores compartilhados — duplicá-los seria
+  garantir que divergissem no primeiro campo novo, e o campo novo aqui costuma
+  ser uma regra de segurança.
+
+### Notas
+
+- **`HELP.md` curto é pior que nenhum**, e o validador agora recusa
+  `definicao.help` com menos de 60 caracteres. Quando o arquivo existe,
+  `ajudaDoFluxo` o usa NO LUGAR da ajuda derivada do `flow.json` (que lista
+  fases, escopo e portões): um esqueleto troca a boa pela ruim e reprova a regra
+  "todo domínio do catálogo é documentado". Descoberto rodando o par de ponta a
+  ponta — o passo 7 do `plugar-fluxo` pegou.
+- O `--desfazer` restaura `config/fluxos.json` e **não** remove o que foi
+  materializado no repo de domínio: seria a única operação irreversível do
+  script, num repo que não é nosso.
+- O gerador extrai o catálogo de tarefas DO CÓDIGO (`TAREFAS_DE_FASE` +
+  `config/skills.json`). `alvos` (canal e gatilho) sai sempre marcado como chute:
+  é conhecimento de negócio e não está em código-fonte nenhum.
+
 ## 0.5.0 — 2026-08-20
 
 ### Adicionado

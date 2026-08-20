@@ -6,6 +6,8 @@
 // que decide se o bot sobe depois — e `sed` em JSON não tem teste. O shell fica
 // com o que é IO: clonar, `command -v`, escrever arquivo, rodar a suíte.
 import { validarSkills } from './registry.js';
+import type { DefinicaoFluxo } from './manifesto.js';
+import { validarFluxos } from './registry-fluxos.js';
 
 export interface Insercao {
   /** O `config/skills.json` inteiro, já com a entrada dentro. */
@@ -50,6 +52,100 @@ export function inserirEntradaSkill(
   validarSkills(nova, raizRepo);
 
   return { texto: `${JSON.stringify(nova, null, 2)}\n`, acao };
+}
+
+/**
+ * Insere (ou substitui) a entrada de um FLUXO no texto do `config/fluxos.json`.
+ *
+ * Gêmeo de `inserirEntradaSkill`, com uma diferença que decide a ORDEM do
+ * `plugar-fluxo`: o validador do registry de fluxos vai ao DISCO — ele exige
+ * que a pasta exista e que haja um `flow.json` dentro (`registry-fluxos.ts`).
+ *
+ * Ou seja: esta função só passa depois de a definição já estar materializada no
+ * repo. Isso não é limitação, é a ordem correta — uma entrada apontando para um
+ * repo sem `flow.json` **derruba o boot**, e o modo de falha "o bot não sobe" é
+ * pior que "a instalação parou".
+ */
+export function inserirEntradaFluxo(
+  jsonAtual: string,
+  entrada: Record<string, unknown>,
+  raizPadrao: string,
+): Insercao {
+  let lista: unknown;
+  try {
+    lista = JSON.parse(jsonAtual);
+  } catch (e) {
+    throw new Error(`config/fluxos.json não é JSON válido: ${(e as Error).message}`);
+  }
+  if (!Array.isArray(lista)) throw new Error('config/fluxos.json precisa ser um array');
+
+  const command = entrada.command;
+  if (typeof command !== 'string') throw new Error('entrada sem command');
+
+  const i = (lista as Record<string, unknown>[]).findIndex((f) => f?.command === command);
+  const acao: Insercao['acao'] = i >= 0 ? 'substituida' : 'inserida';
+  const nova = [...(lista as Record<string, unknown>[])];
+  if (i >= 0) nova[i] = entrada; else nova.push(entrada);
+
+  // O MESMO validador do boot, pelo mesmo motivo da rota de skill: "plugou" e
+  // "o serviço sobe" têm que ser a mesma coisa.
+  validarFluxos(nova, raizPadrao);
+
+  return { texto: `${JSON.stringify(nova, null, 2)}\n`, acao };
+}
+
+/** Um arquivo que a definição quer pôr no repo de domínio. */
+export interface ArquivoPlanejado {
+  /** Caminho relativo à raiz do repo de domínio. */
+  caminho: string;
+  conteudo: string;
+}
+
+export interface PlanoMaterializacao {
+  /** Não existe no repo: pode escrever. */
+  escrever: ArquivoPlanejado[];
+  /** Já existe com o MESMO conteúdo: nada a fazer, e não é conflito. */
+  iguais: string[];
+  /** Já existe DIFERENTE: o repo é o dono, e nós paramos. */
+  conflitos: string[];
+}
+
+/**
+ * O que escrever no repo de domínio, e o que NÃO tocar.
+ *
+ * A regra que governa tudo: **o repo é o dono da definição.** O manifesto
+ * carrega uma cópia para poder plugar um repo que ainda não é domínio; ele não
+ * é uma segunda fonte de verdade. Por isso arquivo divergente é CONFLITO e para
+ * a instalação, em vez de virar sobrescrita — sobrescrever `flow.json` alheio
+ * apagaria a máquina de estados de um fluxo que talvez esteja em produção, e o
+ * `--desfazer` de um repo que não é nosso é promessa que não se cumpre.
+ *
+ * Idêntico não é conflito: re-plugar na mesma máquina, ou plugar depois de o
+ * repo já ter adotado a definição, tem que ser operação que não faz nada.
+ *
+ * Função pura: quem lê e escreve arquivo é o helper. Aqui só se decide.
+ */
+export function planoMaterializacao(
+  definicao: DefinicaoFluxo,
+  lerAtual: (caminho: string) => string | undefined,
+): PlanoMaterializacao {
+  const plano: PlanoMaterializacao = { escrever: [], iguais: [], conflitos: [] };
+
+  const considerar = (caminho: string, conteudo: string): void => {
+    const atual = lerAtual(caminho);
+    if (atual === undefined) plano.escrever.push({ caminho, conteudo });
+    // Comparação por conteúdo APARADO: um `\n` final a mais (que todo editor
+    // põe e todo `JSON.stringify` não) não é divergência de definição, e tratá-lo
+    // como conflito faria a operação idempotente falhar na segunda vez.
+    else if (atual.trim() === conteudo.trim()) plano.iguais.push(caminho);
+    else plano.conflitos.push(caminho);
+  };
+
+  considerar('flow.json', `${JSON.stringify(definicao.flow, null, 2)}\n`);
+  for (const [caminho, corpo] of Object.entries(definicao.prompts)) considerar(caminho, corpo);
+  if (definicao.help !== undefined) considerar('HELP.md', definicao.help);
+
+  return plano;
 }
 
 /**

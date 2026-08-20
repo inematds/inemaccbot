@@ -4,7 +4,9 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { chavesFaltando, inserirEntradaSkill, invocacaoResolvida } from './plugar.js';
+import {
+  chavesFaltando, inserirEntradaFluxo, inserirEntradaSkill, invocacaoResolvida, planoMaterializacao,
+} from './plugar.js';
 
 function repoComPrompts(...nomes: string[]): string {
   const raiz = mkdtempSync(join(tmpdir(), 'plugar-'));
@@ -120,5 +122,85 @@ describe('invocacaoResolvida', () => {
   it('resolve todas as ocorrências de {{repo}}', () => {
     expect(invocacaoResolvida('cd {{repo}} && bash {{repo}}/a.sh "{{input}}"', '/r'))
       .toBe('cd /r && bash /r/a.sh "{{input}}"');
+  });
+});
+
+// ── rota de fluxo ────────────────────────────────────────────────────────────
+
+describe('planoMaterializacao', () => {
+  const DEF = {
+    flow: { nome: 'x', fases: [{ id: 'a' }] },
+    prompts: { 'prompts/fase-a.md': 'texto do prompt' },
+    help: '# ajuda',
+  };
+  const vazio = (): undefined => undefined;
+
+  it('repo sem nada: escreve os três', () => {
+    const p = planoMaterializacao(DEF, vazio);
+    expect(p.escrever.map((a) => a.caminho)).toEqual(['flow.json', 'prompts/fase-a.md', 'HELP.md']);
+    expect(p.conflitos).toEqual([]);
+  });
+
+  it('sem help no manifesto, não planeja HELP.md (a ajuda derivada não é pior)', () => {
+    const { help: _, ...sem } = DEF;
+    expect(planoMaterializacao(sem, vazio).escrever.map((a) => a.caminho))
+      .toEqual(['flow.json', 'prompts/fase-a.md']);
+  });
+
+  // Re-plugar na mesma máquina tem que ser operação que não faz nada. O `\n`
+  // final que todo editor põe não pode virar divergência.
+  it('conteúdo idêntico (mesmo com \\n a mais) é "igual", não conflito', () => {
+    const atual = (c: string): string | undefined => {
+      if (c === 'flow.json') return `${JSON.stringify(DEF.flow, null, 2)}\n\n`;
+      if (c === 'prompts/fase-a.md') return 'texto do prompt\n';
+      if (c === 'HELP.md') return '# ajuda';
+      return undefined;
+    };
+    const p = planoMaterializacao(DEF, atual);
+    expect(p.iguais).toEqual(['flow.json', 'prompts/fase-a.md', 'HELP.md']);
+    expect(p.escrever).toEqual([]);
+    expect(p.conflitos).toEqual([]);
+  });
+
+  // O REPO é o dono da definição. Sobrescrever um flow.json divergente apagaria
+  // a máquina de estados de um fluxo que pode estar em produção.
+  it('conteúdo divergente é CONFLITO, nunca sobrescrita', () => {
+    const atual = (c: string): string | undefined => (c === 'flow.json' ? '{"nome":"outro"}' : undefined);
+    const p = planoMaterializacao(DEF, atual);
+    expect(p.conflitos).toEqual(['flow.json']);
+    expect(p.escrever.map((a) => a.caminho)).toEqual(['prompts/fase-a.md', 'HELP.md']);
+  });
+});
+
+describe('inserirEntradaFluxo', () => {
+  const criarRepo = (): string => {
+    const raiz = mkdtempSync(join(tmpdir(), 'fluxos-'));
+    mkdirSync(join(raiz, 'musicaclone'), { recursive: true });
+    writeFileSync(join(raiz, 'musicaclone', 'flow.json'), '{}');
+    return raiz;
+  };
+  const ENTRADA = { command: 'musicaclone', repo: 'musicaclone', descricao: 'd', exemplo: '/musicaclone x' };
+
+  it('insere e valida com o validador do BOOT', () => {
+    const { texto, acao } = inserirEntradaFluxo('[]', ENTRADA, criarRepo());
+    expect(acao).toBe('inserida');
+    expect(JSON.parse(texto)).toEqual([ENTRADA]);
+  });
+
+  it('substituir é anunciado, não silencioso (re-plugar)', () => {
+    const raiz = criarRepo();
+    const antes = JSON.stringify([{ ...ENTRADA, descricao: 'velha' }]);
+    const { texto, acao } = inserirEntradaFluxo(antes, ENTRADA, raiz);
+    expect(acao).toBe('substituida');
+    expect(JSON.parse(texto)).toHaveLength(1);
+    expect(JSON.parse(texto)[0].descricao).toBe('d');
+  });
+
+  // Entrada apontando para repo sem flow.json DERRUBA O BOOT. Falhar aqui é o
+  // ponto: a instalação para, o serviço continua subindo.
+  it('recusa entrada cujo repo não tem flow.json', () => {
+    const raiz = mkdtempSync(join(tmpdir(), 'fluxos-'));
+    mkdirSync(join(raiz, 'musicaclone'), { recursive: true });
+    expect(() => inserirEntradaFluxo('[]', ENTRADA, raiz)).toThrow(/flow\.json/);
   });
 });

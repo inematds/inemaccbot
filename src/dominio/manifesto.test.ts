@@ -3,7 +3,10 @@
 // tem que RECUSAR: cada recusa aqui é um boot que não cai lá.
 import { describe, expect, it } from 'vitest';
 
-import { camposChutados, paraEntradaSkill, validarManifesto } from './manifesto.js';
+import {
+  camposChutados, paraEntradaSkill, validarManifesto,
+  type Manifesto, type ManifestoSkill,
+} from './manifesto.js';
 import { validarSkills } from './registry.js';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -27,9 +30,16 @@ const BASE = {
   gerado: { em: '2026-08-20', por: 'claude', confianca: { fila: 'chute', timeout_segundos: 'chute' } },
 };
 
+/** Estreita a união para o ramo de skill. O teste sabe qual rota está exercendo;
+ *  o `throw` existe para o dia em que alguém trocar a BASE sem perceber. */
+function comoSkill(m: Manifesto): ManifestoSkill {
+  if (m.rota !== 'skill') throw new Error(`esperava rota skill, veio ${m.rota}`);
+  return m;
+}
+
 describe('esquema (a versão é do MANIFESTO, não do bot)', () => {
   it('aceita o esquema 1 e devolve o manifesto normalizado', () => {
-    const m = validarManifesto(BASE);
+    const m = comoSkill(validarManifesto(BASE));
     expect(m.command).toBe('analisevideo');
     expect(m.artefato_exts).toEqual(['md']);
   });
@@ -46,9 +56,119 @@ describe('esquema (a versão é do MANIFESTO, não do bot)', () => {
     expect(() => validarManifesto(sem)).toThrow(/versão do ESQUEMA/);
   });
 
-  it('rota fluxo ainda não é suportada, e aponta o doc', () => {
-    expect(() => validarManifesto({ ...BASE, rota: 'fluxo' }))
-      .toThrow(/instalar-analisevideo\.md/);
+  it('recusa rota que não é skill nem fluxo, dizendo a diferença entre as duas', () => {
+    expect(() => validarManifesto({ ...BASE, rota: 'coisa' })).toThrow(/skill.*fluxo|fluxo.*skill/s);
+  });
+});
+
+// A rota de fluxo carrega a DEFINIÇÃO porque um fluxo não cabe do lado do bot:
+// `carregarFlow` lê `<repo>/flow.json` do disco. O manifesto é o que permite
+// plugar um repo que ainda NÃO é domínio.
+describe('rota fluxo', () => {
+  const FLUXO = {
+    manifesto: 1,
+    rota: 'fluxo',
+    command: 'musicaclone',
+    repo: { url: 'https://github.com/inematds/musicaclone', commit: 'abc1234', pasta: 'musicaclone' },
+    descricao: 'faixa, capa e clipes a partir de um tema',
+    exemplo: '/musicaclone saudade de domingo',
+    definicao: {
+      flow: {
+        nome: 'musicaclone',
+        prefixo: 'M',
+        alvos: { unico: { canal: 'lives3', gatilho: 'x' } },
+        fases: [
+          { id: 'letra', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/fase-letra.md' },
+          { id: 'clipe', escopo: 'alvo', fila: 'render', kind: 'function', tarefa: 'reel.montar' },
+        ],
+      },
+      prompts: { 'prompts/fase-letra.md': 'escreva a letra de {{input}}' },
+      help: '# musicaclone\n\nEscreve a letra, gera a faixa e monta os clipes. Ref: M#N.\n',
+    },
+  };
+
+  it('aceita o pacote completo e normaliza', () => {
+    const m = validarManifesto(FLUXO);
+    expect(m.rota).toBe('fluxo');
+    expect(m.command).toBe('musicaclone');
+    if (m.rota !== 'fluxo') throw new Error('rota errada');
+    expect(Object.keys(m.definicao?.prompts ?? {})).toEqual(['prompts/fase-letra.md']);
+    expect(m.definicao?.help).toContain('Ref: M#N');
+  });
+
+  // Sem `definicao` o manifesto é só REGISTRO — é o caso do repo que já é
+  // domínio (promoavatar), onde materializar seria sobrescrever o dono.
+  it('aceita manifesto sem definicao: o repo já traz o flow.json', () => {
+    const { definicao: _, ...sem } = FLUXO;
+    const m = validarManifesto(sem);
+    if (m.rota !== 'fluxo') throw new Error('rota errada');
+    expect(m.definicao).toBeUndefined();
+  });
+
+  // ESTA é a checagem que justifica validar `flow` aqui: `carregarFlow` só
+  // acusaria isso DEPOIS de escrever no repo alheio, que é o que não dá para
+  // desfazer com elegância.
+  it('recusa fase kind=agent cujo prompt não vem no pacote, nomeando a fase', () => {
+    const quebrado = {
+      ...FLUXO,
+      definicao: { ...FLUXO.definicao, prompts: {} },
+    };
+    expect(() => validarManifesto(quebrado)).toThrow(/fase "letra".*prompts\/fase-letra\.md/s);
+  });
+
+  it('recusa fluxo sem fase', () => {
+    expect(() => validarManifesto({
+      ...FLUXO,
+      definicao: { ...FLUXO.definicao, flow: { ...FLUXO.definicao.flow, fases: [] } },
+    })).toThrow(/fases.*não faz nada/s);
+  });
+
+  // O caminho do prompt vira ARQUIVO NO REPO ALHEIO. Um manifesto de terceiro
+  // com ".." escreveria fora dele.
+  it('recusa caminho de prompt absoluto ou com ".."', () => {
+    for (const mau of ['/etc/x.md', '../fora.md']) {
+      expect(() => validarManifesto({
+        ...FLUXO,
+        definicao: { ...FLUXO.definicao, prompts: { [mau]: 'x' } },
+      })).toThrow(/relativo ao repo|não vem no manifesto/);
+    }
+  });
+
+  // HELP.md presente SUBSTITUI a ajuda derivada do flow.json, que lista fases,
+  // escopo e portões. Um esqueleto troca a boa pela ruim — e a regra
+  // "todo domínio do catálogo é documentado" reprova a suíte inteira.
+  it('recusa HELP.md curto, que é pior que nenhum', () => {
+    expect(() => validarManifesto({
+      ...FLUXO,
+      definicao: { ...FLUXO.definicao, help: '# musicaclone' },
+    })).toThrow(/SUBSTITUI a ajuda|Escreva um de verdade ou omita/);
+  });
+
+  it('aceita omitir o help: a ajuda derivada do flow.json não mente', () => {
+    const { help: _, ...semHelp } = FLUXO.definicao;
+    const m = validarManifesto({ ...FLUXO, definicao: semHelp });
+    if (m.rota !== 'fluxo') throw new Error('rota errada');
+    expect(m.definicao?.help).toBeUndefined();
+  });
+
+  it('recusa fase sem id válido', () => {
+    expect(() => validarManifesto({
+      ...FLUXO,
+      definicao: {
+        ...FLUXO.definicao,
+        flow: { ...FLUXO.definicao.flow, fases: [{ id: 'Fase Um', kind: 'function', tarefa: 'x' }] },
+      },
+    })).toThrow(/fases\[0\]\.id/);
+  });
+
+  // Segredo NUNCA entra no manifesto: ele é versionado e o `origin` é público.
+  // A regra vale nas DUAS rotas — é o que a extração de `validarRequer` garante.
+  // (Quem barra `CHAVE=valor` é o formato do NOME, antes da guarda do `=`.)
+  it('recusa valor de chave também na rota fluxo', () => {
+    expect(() => validarManifesto({
+      ...FLUXO,
+      requer: { chaves: ['SUNO_KEY=abc123'] },
+    })).toThrow(/requer\.chaves\[0\]/);
   });
 });
 
@@ -159,7 +279,7 @@ describe('ajuda (o que o usuário lê no chat)', () => {
 
 describe('campos declarados', () => {
   it('aceita bandeira com padrão sim/não', () => {
-    const m = validarManifesto({ ...BASE, campos: { vertical: { tipo: 'bandeira', padrao: 'não' } } });
+    const m = comoSkill(validarManifesto({ ...BASE, campos: { vertical: { tipo: 'bandeira', padrao: 'não' } } }));
     expect(m.campos.vertical).toEqual({ tipo: 'bandeira', padrao: 'não', usa: 'prompt' });
   });
 
@@ -183,7 +303,7 @@ describe('paraEntradaSkill → validarSkills (o validador do boot)', () => {
     mkdirSync(join(raiz, 'prompts'), { recursive: true });
     writeFileSync(join(raiz, 'prompts/analisevideo.md'), 'prompt com {{input}} e {{saida}}');
 
-    const m = validarManifesto(BASE);
+    const m = comoSkill(validarManifesto(BASE));
     const entrada = paraEntradaSkill(m);
     const defs = validarSkills([entrada], raiz);
 

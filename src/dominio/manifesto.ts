@@ -47,7 +47,7 @@ export interface CampoManifesto {
   usa: 'prompt' | 'entrega';
 }
 
-export interface Manifesto {
+export interface ManifestoSkill {
   manifesto: number;
   rota: 'skill';
   command: string;
@@ -83,6 +83,51 @@ export interface Manifesto {
   exemplo: string;
   gerado?: { em?: string; por?: string; confianca: Record<string, 'lido' | 'chute'> };
 }
+
+/**
+ * A DEFINIÇÃO que o manifesto de fluxo carrega para dentro do repo de domínio.
+ *
+ * Existe porque um fluxo não cabe do lado do bot: `carregarFlow` lê
+ * `<repo>/flow.json` do DISCO, e as fases de agente leem os prompts de lá
+ * também. Um manifesto que só registrasse o comando serviria apenas para repos
+ * que JÁ são domínio — e o caso que importa é o contrário: um repo que ainda
+ * não é.
+ *
+ * Ausente = o repo já traz a definição, e o manifesto é só registro.
+ *
+ * O que este bloco NÃO é: uma segunda fonte de verdade. Quem manda no fluxo é
+ * sempre o `flow.json` NO REPO — o `plugar-fluxo` materializa isto uma vez, sem
+ * nunca sobrescrever arquivo divergente, e daí em diante o repo é o dono.
+ */
+export interface DefinicaoFluxo {
+  /** O conteúdo do `flow.json`. Não validado aqui em profundidade — quem valida
+   *  de verdade é `carregarFlow`, depois de materializar, porque só no disco dá
+   *  para conferir que os prompts das fases existem e não estão vazios. */
+  flow: Record<string, unknown>;
+  /** Prompt de cada fase `kind=agent`, por caminho relativo ao repo. As chaves
+   *  são conferidas contra as fases: prompt declarado e ausente é o erro que o
+   *  `carregarFlow` só acusaria depois de escrever no repo alheio. */
+  prompts: Record<string, string>;
+  /** `HELP.md` do domínio. Opcional de verdade: sem ele o `/<fluxo> help` cai
+   *  na ajuda derivada do próprio `flow.json`, que não é um texto pior por ser
+   *  automático. */
+  help?: string;
+}
+
+export interface ManifestoFluxo {
+  manifesto: number;
+  rota: 'fluxo';
+  command: string;
+  repo: { url?: string; commit?: string; pasta?: string };
+  requer: { bin: string[]; chaves: string[]; fontes: string[] };
+  descricao: string;
+  exemplo: string;
+  /** Ausente = o repo já traz `flow.json` e os prompts. */
+  definicao?: DefinicaoFluxo;
+  gerado?: { em?: string; por?: string; confianca: Record<string, 'lido' | 'chute'> };
+}
+
+export type Manifesto = ManifestoSkill | ManifestoFluxo;
 
 function erro(campo: string, detalhe: string): never {
   throw new Error(`manifesto: ${campo}: ${detalhe}`);
@@ -133,6 +178,229 @@ function validarCampos(v: unknown): Record<string, CampoManifesto> {
   return saida;
 }
 
+/**
+ * `repo`, `requer` e `gerado` são comuns às duas rotas. Extraídos em função
+ * quando a rota de fluxo entrou: duplicá-los seria garantir que divergissem no
+ * primeiro campo novo — e o campo novo aqui costuma ser uma regra de segurança
+ * (o `=` na chave, o caminho absoluto), não um enfeite.
+ */
+function validarRepo(d: Record<string, unknown>): { url?: string; commit?: string; pasta?: string } {
+  if (typeof d.repo !== 'object' || d.repo === null || Array.isArray(d.repo)) {
+    erro('repo', 'precisa ser objeto { url?, commit? }');
+  }
+  const r = d.repo as Record<string, unknown>;
+  const url = r.url === undefined || r.url === '' ? undefined : texto(r.url, 'repo.url');
+  if (url !== undefined && (!/^(https:\/\/|git@)/.test(url) || /\s/.test(url))) {
+    erro('repo.url', `"${url}" — https:// ou git@, sem espaço`);
+  }
+  const pasta = r.pasta === undefined ? undefined : texto(r.pasta, 'repo.pasta');
+  if (pasta !== undefined && !/^[a-z0-9][a-z0-9._-]*$/i.test(pasta)) {
+    erro('repo.pasta', `"${pasta}" — nome de pasta, não caminho`);
+  }
+  // O commit é PROVENIÊNCIA: diz para qual versão do repo este manifesto foi
+  // escrito, e é o que permite avisar "o repo mudou desde então" em vez de
+  // aplicar às cegas.
+  const commit = r.commit === undefined ? undefined : texto(r.commit, 'repo.commit');
+  if (commit !== undefined && !/^[0-9a-f]{7,40}$/.test(commit)) {
+    erro('repo.commit', `"${commit}" — hash git (7 a 40 hex)`);
+  }
+  return { ...(url ? { url } : {}), ...(commit ? { commit } : {}), ...(pasta ? { pasta } : {}) };
+}
+
+function validarRequer(d: Record<string, unknown>): { bin: string[]; chaves: string[]; fontes: string[] } {
+  if (d.requer === undefined) return { bin: [], chaves: [], fontes: [] };
+  if (typeof d.requer !== 'object' || d.requer === null || Array.isArray(d.requer)) {
+    erro('requer', 'precisa ser objeto { bin?, chaves?, fontes? }');
+  }
+  const q = d.requer as Record<string, unknown>;
+  const requer = {
+    bin: listaDe(q.bin, 'requer.bin', NOME_BIN, 'nome de binário (o que se digita no shell)'),
+    chaves: listaDe(q.chaves, 'requer.chaves', NOME_CHAVE, 'NOME da variável (ex.: GOOGLE_API_KEY)'),
+    fontes: listaDe(q.fontes, 'requer.fontes', NOME_FONTE, 'nome de fonte registrada'),
+  };
+  // Segredo NUNCA entra no manifesto: ele é versionado, e `origin` é público.
+  // O `=` é o sinal de que alguém colou `CHAVE=valor` em vez do nome.
+  for (const c of requer.chaves) {
+    if (c.includes('=')) erro('requer.chaves', 'declare o NOME da chave, nunca o valor');
+  }
+  return requer;
+}
+
+function validarGerado(d: Record<string, unknown>): Manifesto['gerado'] {
+  if (d.gerado === undefined) return undefined;
+  if (typeof d.gerado !== 'object' || d.gerado === null || Array.isArray(d.gerado)) {
+    erro('gerado', 'precisa ser objeto');
+  }
+  const g = d.gerado as Record<string, unknown>;
+  const conf: Record<string, 'lido' | 'chute'> = {};
+  if (g.confianca !== undefined) {
+    if (typeof g.confianca !== 'object' || g.confianca === null || Array.isArray(g.confianca)) {
+      erro('gerado.confianca', 'precisa ser objeto { campo: "lido" | "chute" }');
+    }
+    for (const [campo, v] of Object.entries(g.confianca as Record<string, unknown>)) {
+      const marca = texto(v, `gerado.confianca.${campo}`);
+      if (!CONFIANCAS.has(marca)) {
+        erro(`gerado.confianca.${campo}`, `"${marca}" — use lido ou chute`);
+      }
+      // Marcar a confiança de um campo que não existe é rastro de manifesto
+      // editado à mão pela metade: some o campo, fica a marca. Caminho
+      // pontuado (`requer.bin`) é legítimo e comum — a marca costuma ser mais
+      // útil no sub-campo que no bloco inteiro —, então confere-se o TOPO.
+      const topo = campo.split('.')[0];
+      if (!(topo in d)) erro(`gerado.confianca.${campo}`, 'campo não existe no manifesto');
+      conf[campo] = marca as 'lido' | 'chute';
+    }
+  }
+  return {
+    ...(g.em === undefined ? {} : { em: texto(g.em, 'gerado.em') }),
+    ...(g.por === undefined ? {} : { por: texto(g.por, 'gerado.por') }),
+    confianca: conf,
+  };
+}
+
+/**
+ * Piso de tamanho do `HELP.md`. O número vem da regra que a suíte já aplica
+ * (`ajuda.length > 60` em `gateway/ajuda-dominio.test.ts`) — repetido aqui de
+ * propósito, para que a recusa aconteça ANTES de escrever no repo de domínio.
+ */
+const AJUDA_MINIMA = 60;
+
+/** Nome de fase: vira parte da referência no chat (`M#3/faixa`) e nome de
+ *  arquivo de estado. Mesma forma conservadora do resto do sistema. */
+const ID_FASE = /^[a-z][a-z0-9-]{0,30}$/;
+
+/**
+ * Valida o manifesto de FLUXO.
+ *
+ * A diferença de fundo para a rota de skill: uma skill cabe inteira do lado do
+ * bot (uma entrada em `config/skills.json` e um prompt), e um fluxo NÃO — o
+ * `carregarFlow` lê `<repo>/flow.json` do disco, e as fases de agente leem os
+ * prompts de lá. Por isso este manifesto pode CARREGAR a definição
+ * (`definicao`), que o `plugar-fluxo` materializa no repo de domínio.
+ *
+ * O que NÃO se valida aqui, e é de propósito: a semântica do `flow.json`
+ * (fases, alvos, tarefas do catálogo, prompts não vazios). Quem faz isso é
+ * `carregarFlow`, o validador REAL, depois de materializar — pelo mesmo motivo
+ * que `plugar-repo` valida a entrada com o validador real do registry: uma
+ * segunda implementação aqui divergiria da primeira no primeiro campo novo.
+ *
+ * O que se valida é a COERÊNCIA INTERNA do pacote, que é o que `carregarFlow`
+ * não pode ver: toda fase de agente tem que ter o prompt dela DENTRO do
+ * manifesto. Sem isto, o erro só apareceria depois de escrever no repo alheio —
+ * exatamente o que não se pode desfazer com elegância.
+ */
+function validarManifestoFluxo(d: Record<string, unknown>, versao: number): ManifestoFluxo {
+  const command = texto(d.command, 'command');
+  if (!COMANDO_VALIDO.test(command)) {
+    erro('command', `"${command}" — minúsculas, dígitos e hífen (sem espaço, ":" ou "|")`);
+  }
+
+  const repo = validarRepo(d);
+  const requer = validarRequer(d);
+  const descricao = texto(d.descricao, 'descricao');
+  const exemplo = texto(d.exemplo, 'exemplo');
+
+  let definicao: DefinicaoFluxo | undefined;
+  if (d.definicao !== undefined) {
+    if (typeof d.definicao !== 'object' || d.definicao === null || Array.isArray(d.definicao)) {
+      erro('definicao', 'precisa ser objeto { flow, prompts, help? }');
+    }
+    const def = d.definicao as Record<string, unknown>;
+
+    if (typeof def.flow !== 'object' || def.flow === null || Array.isArray(def.flow)) {
+      erro('definicao.flow', 'precisa ser o objeto do flow.json');
+    }
+    const flow = def.flow as Record<string, unknown>;
+
+    const prompts: Record<string, string> = {};
+    if (def.prompts !== undefined) {
+      if (typeof def.prompts !== 'object' || def.prompts === null || Array.isArray(def.prompts)) {
+        erro('definicao.prompts', 'precisa ser objeto { "prompts/x.md": "conteúdo" }');
+      }
+      for (const [caminho, conteudo] of Object.entries(def.prompts as Record<string, unknown>)) {
+        // O caminho vira arquivo NO REPO ALHEIO. Absoluto ou com ".." é como um
+        // manifesto de terceiro escreveria fora do repo — recusado aqui, e não
+        // no momento de escrever, porque lá já seria tarde.
+        if (isAbsolute(caminho) || caminho.split('/').includes('..')) {
+          erro(`definicao.prompts["${caminho}"]`, 'caminho relativo ao repo, sem ".."');
+        }
+        const corpo = texto(conteudo, `definicao.prompts["${caminho}"]`);
+        // Prompt vazio é recusado pelo `carregarFlow` DEPOIS de materializado.
+        // Pegar aqui evita escrever no repo dos outros para só então falhar.
+        prompts[caminho] = corpo;
+      }
+    }
+
+    // Coerência: toda fase `kind=agent` declara `prompt`, e ele tem que vir no
+    // pacote. É a única checagem de `flow` que este arquivo faz, e existe porque
+    // é a que `carregarFlow` não consegue fazer antes da escrita.
+    if (!Array.isArray(flow.fases) || flow.fases.length === 0) {
+      erro('definicao.flow.fases', 'array não vazio — um fluxo sem fase não faz nada');
+    }
+    (flow.fases as unknown[]).forEach((f, i) => {
+      if (typeof f !== 'object' || f === null || Array.isArray(f)) {
+        erro(`definicao.flow.fases[${i}]`, 'precisa ser objeto');
+      }
+      const fase = f as Record<string, unknown>;
+      const id = texto(fase.id, `definicao.flow.fases[${i}].id`);
+      if (!ID_FASE.test(id)) {
+        erro(`definicao.flow.fases[${i}].id`, `"${id}" — minúsculas, dígitos e hífen`);
+      }
+      if (fase.kind !== 'agent') return;
+      const p = texto(fase.prompt, `definicao.flow.fases[${i}].prompt`);
+      if (!(p in prompts)) {
+        erro(
+          `definicao.prompts`,
+          `a fase "${id}" é kind=agent e aponta "${p}", que não vem no manifesto`
+          + ' — sem o texto, o fluxo seria materializado quebrado',
+        );
+      }
+    });
+
+    let help: string | undefined;
+    if (def.help !== undefined) {
+      help = texto(def.help, 'definicao.help');
+      // HELP.md CURTO é pior que nenhum, e isso é mecânico, não gosto: quando o
+      // arquivo existe, `ajudaDoFluxo` o usa NO LUGAR da ajuda derivada do
+      // `flow.json` — que lista fases, escopo e onde estão os portões. Um
+      // esqueleto de três linhas troca uma ajuda boa e automática por uma ruim
+      // e manual, e a regra `todo domínio do catálogo é documentado`
+      // (`gateway/ajuda-dominio.test.ts`) reprova o repo inteiro por causa dela.
+      // Pegar aqui é o único momento em que ainda não escrevemos no repo alheio.
+      if (help.trim().length < AJUDA_MINIMA) {
+        erro(
+          'definicao.help',
+          `só ${help.trim().length} caracteres — um HELP.md curto SUBSTITUI a ajuda`
+          + ' derivada do flow.json, que é melhor. Escreva um de verdade ou omita o campo',
+        );
+      }
+    }
+
+    definicao = {
+      flow,
+      prompts,
+      ...(help === undefined ? {} : { help }),
+    };
+  }
+
+  return {
+    manifesto: versao,
+    rota: 'fluxo',
+    command,
+    repo,
+    requer,
+    descricao,
+    exemplo,
+    ...(definicao ? { definicao } : {}),
+    ...(validarGerado(d) ? { gerado: validarGerado(d) } : {}),
+  };
+}
+
+/**
+ * Porta de entrada das DUAS rotas. Despacha por `rota` depois de conferir o
+ * esquema — a versão primeiro, porque sem ela nenhuma outra checagem significa
+ * coisa alguma.
+ */
 export function validarManifesto(dados: unknown): Manifesto {
   if (typeof dados !== 'object' || dados === null || Array.isArray(dados)) {
     throw new Error('manifesto: precisa ser um objeto');
@@ -154,10 +422,9 @@ export function validarManifesto(dados: unknown): Manifesto {
   }
 
   const rota = texto(d.rota, 'rota');
+  if (rota === 'fluxo') return validarManifestoFluxo(d, versao);
   if (rota !== 'skill') {
-    // Fluxo (rota B) exige commitar `flow.json` e `HELP.md` DENTRO do repo
-    // plugado — outra ordem de invasividade, e por isso continua manual.
-    erro('rota', `"${rota}" — só "skill" por enquanto; para fluxo, ver docs/instalar-analisevideo.md`);
+    erro('rota', `"${rota}" — use "skill" (um comando, um artefato) ou "fluxo" (fases com estado e portão)`);
   }
 
   const command = texto(d.command, 'command');
@@ -165,25 +432,7 @@ export function validarManifesto(dados: unknown): Manifesto {
     erro('command', `"${command}" — minúsculas, dígitos e hífen (sem espaço, ":" ou "|")`);
   }
 
-  if (typeof d.repo !== 'object' || d.repo === null || Array.isArray(d.repo)) {
-    erro('repo', 'precisa ser objeto { url?, commit? }');
-  }
-  const r = d.repo as Record<string, unknown>;
-  const url = r.url === undefined || r.url === '' ? undefined : texto(r.url, 'repo.url');
-  if (url !== undefined && (!/^(https:\/\/|git@)/.test(url) || /\s/.test(url))) {
-    erro('repo.url', `"${url}" — https:// ou git@, sem espaço`);
-  }
-  // O commit é PROVENIÊNCIA: diz para qual versão do repo este manifesto foi
-  // escrito, e é o que permite avisar "o repo mudou desde então" em vez de
-  // aplicar às cegas.
-  const pasta = r.pasta === undefined ? undefined : texto(r.pasta, 'repo.pasta');
-  if (pasta !== undefined && !/^[a-z0-9][a-z0-9._-]*$/i.test(pasta)) {
-    erro('repo.pasta', `"${pasta}" — nome de pasta, não caminho`);
-  }
-  const commit = r.commit === undefined ? undefined : texto(r.commit, 'repo.commit');
-  if (commit !== undefined && !/^[0-9a-f]{7,40}$/.test(commit)) {
-    erro('repo.commit', `"${commit}" — hash git (7 a 40 hex)`);
-  }
+  const repo = validarRepo(d);
 
   const invocacao = texto(d.invocacao, 'invocacao');
   // `{{repo}}` obrigatório: sem ele a linha traz caminho da máquina de quem
@@ -220,65 +469,15 @@ export function validarManifesto(dados: unknown): Manifesto {
     erro('prompt', 'caminho relativo à raiz do bot, sem ".."');
   }
 
-  let requer = { bin: [] as string[], chaves: [] as string[], fontes: [] as string[] };
-  if (d.requer !== undefined) {
-    if (typeof d.requer !== 'object' || d.requer === null || Array.isArray(d.requer)) {
-      erro('requer', 'precisa ser objeto { bin?, chaves?, fontes? }');
-    }
-    const q = d.requer as Record<string, unknown>;
-    requer = {
-      bin: listaDe(q.bin, 'requer.bin', NOME_BIN, 'nome de binário (o que se digita no shell)'),
-      chaves: listaDe(q.chaves, 'requer.chaves', NOME_CHAVE, 'NOME da variável (ex.: GOOGLE_API_KEY)'),
-      fontes: listaDe(q.fontes, 'requer.fontes', NOME_FONTE, 'nome de fonte registrada'),
-    };
-    // Segredo NUNCA entra no manifesto: ele é versionado, e `origin` é público.
-    // O `=` é o sinal de que alguém colou `CHAVE=valor` em vez do nome.
-    for (const c of requer.chaves) {
-      if (c.includes('=')) erro('requer.chaves', 'declare o NOME da chave, nunca o valor');
-    }
-  }
+  const requer = validarRequer(d);
 
-  let gerado: Manifesto['gerado'];
-  if (d.gerado !== undefined) {
-    if (typeof d.gerado !== 'object' || d.gerado === null || Array.isArray(d.gerado)) {
-      erro('gerado', 'precisa ser objeto');
-    }
-    const g = d.gerado as Record<string, unknown>;
-    const conf: Record<string, 'lido' | 'chute'> = {};
-    if (g.confianca !== undefined) {
-      if (typeof g.confianca !== 'object' || g.confianca === null || Array.isArray(g.confianca)) {
-        erro('gerado.confianca', 'precisa ser objeto { campo: "lido" | "chute" }');
-      }
-      for (const [campo, v] of Object.entries(g.confianca as Record<string, unknown>)) {
-        const marca = texto(v, `gerado.confianca.${campo}`);
-        if (!CONFIANCAS.has(marca)) {
-          erro(`gerado.confianca.${campo}`, `"${marca}" — use lido ou chute`);
-        }
-        // Marcar a confiança de um campo que não existe é rastro de manifesto
-        // editado à mão pela metade: some o campo, fica a marca. Caminho
-        // pontuado (`requer.bin`) é legítimo e comum — a marca costuma ser mais
-        // útil no sub-campo que no bloco inteiro —, então confere-se o TOPO.
-        const topo = campo.split('.')[0];
-        if (!(topo in d)) erro(`gerado.confianca.${campo}`, 'campo não existe no manifesto');
-        conf[campo] = marca as 'lido' | 'chute';
-      }
-    }
-    gerado = {
-      ...(g.em === undefined ? {} : { em: texto(g.em, 'gerado.em') }),
-      ...(g.por === undefined ? {} : { por: texto(g.por, 'gerado.por') }),
-      confianca: conf,
-    };
-  }
+  const gerado = validarGerado(d);
 
   return {
     manifesto: versao,
     rota: 'skill',
     command,
-    repo: {
-      ...(url ? { url } : {}),
-      ...(commit ? { commit } : {}),
-      ...(pasta ? { pasta } : {}),
-    },
+    repo,
     invocacao,
     fila,
     artefato_exts,
@@ -301,7 +500,7 @@ export function validarManifesto(dados: unknown): Manifesto {
  * valida com o validador REAL do registry antes de tocar no arquivo — a única
  * defesa contra um manifesto que passa aqui e derruba o boot lá.
  */
-export function paraEntradaSkill(m: Manifesto): Record<string, unknown> {
+export function paraEntradaSkill(m: ManifestoSkill): Record<string, unknown> {
   return {
     command: m.command,
     fila: m.fila,
@@ -312,6 +511,26 @@ export function paraEntradaSkill(m: Manifesto): Record<string, unknown> {
     timeout_segundos: m.timeout_segundos,
     aceita_destino: m.aceita_destino,
     ...(Object.keys(m.campos).length ? { campos: m.campos } : {}),
+    descricao: m.descricao,
+    exemplo: m.exemplo,
+  };
+}
+
+/**
+ * A entrada de `config/fluxos.json` que um manifesto de fluxo produz.
+ *
+ * Repare no que NÃO está aqui: fase, alvo, prompt. O bot só registra o COMANDO
+ * e onde o repo está; a máquina de estados mora no `flow.json`, dentro do repo
+ * de domínio. É essa divisão que faz um fluxo ser do domínio e não do bot.
+ *
+ * `repo` sai como NOME DE PASTA, nunca caminho absoluto: quem resolve contra o
+ * `PROJETOS_DIR` é o registry, e um caminho absoluto aqui não sobreviveria a
+ * outra máquina — que é o ponto inteiro de o manifesto ser versionado.
+ */
+export function paraEntradaFluxo(m: ManifestoFluxo): Record<string, unknown> {
+  return {
+    command: m.command,
+    repo: m.repo.pasta ?? m.command,
     descricao: m.descricao,
     exemplo: m.exemplo,
   };

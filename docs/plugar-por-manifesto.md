@@ -2,7 +2,7 @@
 
 Automação da rota A (skill de catálogo) do
 [`instalar-analisevideo.md`](instalar-analisevideo.md), que continua sendo a
-referência do caminho manual e da rota B.
+referência do caminho manual das duas rotas.
 
 Você roda **dois comandos, uma vez cada**:
 
@@ -193,9 +193,12 @@ sobe" é o pior modo de falha deste sistema.
 
 ## Limites
 
-- **Só rota A.** Fluxo (rota B) exige commitar `flow.json` e `HELP.md` **dentro
-  do repo plugado**, e um script que escreve em repo de terceiro é outra ordem de
-  invasividade. Continua manual, pelo `instalar-analisevideo.md`.
+- **Só rota A.** Este par é o da SKILL. A rota B (fluxo) tem o par próprio —
+  [`plugar-fluxo.md`](plugar-fluxo.md) —, e ele existe separado porque um fluxo
+  não cabe do lado do bot: a definição tem que ir para DENTRO do repo de domínio.
+  A invasividade que este documento apontava como impeditivo virou uma regra
+  explícita lá: arquivo divergente é conflito e para a instalação, nunca
+  sobrescrita, e o script não commita no repo alheio.
 - **Manifesto no repo alvo já é lido**, como segunda fonte. Ver "Duas fontes"
   abaixo.
 - **Manifesto é dado, nunca comando.** O `plugar-ajuda.mjs` emite tudo com aspas
