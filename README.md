@@ -19,9 +19,11 @@ definição congelada, portão humano e retomada. O v1 (`inemaccvbot`, `mkivideo
 O que **não** existe de propósito: barreira entre fases, preempção de job, teto global de
 agentes, multiusuário. Ver §11 do spec — cada item com o gatilho para reconsiderar.
 
-**Vai plugar um domínio/skill novo no bot?** O caminho inteiro, à mão, está em
-[`docs/instalar-analisevideo.md`](docs/instalar-analisevideo.md) — um exemplo real,
-pelas duas rotas de integração.
+**Vai plugar um domínio/skill novo no bot?** Dois caminhos:
+[`docs/plugar-por-manifesto.md`](docs/plugar-por-manifesto.md) — pelos scripts
+(`gerar-manifesto` uma vez, `plugar-repo` em cada máquina), que é o atalho; e
+[`docs/instalar-analisevideo.md`](docs/instalar-analisevideo.md) — à mão, com um
+exemplo real, pelas duas rotas de integração (é o único que cobre a rota de fluxo).
 
 ## Instalação (passo a passo)
 
