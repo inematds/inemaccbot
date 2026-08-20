@@ -8,6 +8,19 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.8.3 — 2026-08-20
+
+### Corrigido
+
+- **Comentário no fim da linha do `.env` entrava no `PROJETOS_DIR` dos
+  scripts.** O boot já sabia disso (`lerEnv` corta ` # ...` fora de aspas), mas
+  o `sed` do `plugar-repo`/`plugar-fluxo` não — e com
+  `PROJETOS_DIR=/root/projetos   # default: ...` no `.env` da VPS o script
+  procurava o clone e o cofre em `/root/projetos          # default: $HOME/...`.
+  O erro que aparecia era "faltando (ou vazia) no cofre …: GOOGLE_API_KEY",
+  culpando a chave em vez do caminho. Agora as duas leituras fazem a mesma
+  limpeza (aspas, comentário só depois de espaço, espaço à direita).
+
 ## 0.8.2 — 2026-08-20
 
 ### Corrigido

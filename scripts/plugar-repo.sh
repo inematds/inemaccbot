@@ -36,8 +36,15 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 le_projetos_dir() {
   local do_env=""
   if [ -f "$REPO/.env" ]; then
+    # As três limpezas fazem o MESMO que o `lerEnv` do boot, e por isso existem:
+    # aspas, comentário no fim da linha (só depois de espaço, para não comer um
+    # `#` que seja DADO) e espaço à direita. Sem a do meio,
+    # `PROJETOS_DIR=/root/projetos   # default: ...` virava um caminho com o
+    # comentário dentro, e o script ia procurar cofre e clone num diretório que
+    # não existe — dizendo isso numa mensagem de erro ilegível.
     do_env="$(sed -n 's/^[[:space:]]*PROJETOS_DIR[[:space:]]*=[[:space:]]*//p' "$REPO/.env" \
-      | tail -1 | sed 's/^["'"'"']//; s/["'"'"']$//')"
+      | tail -1 \
+      | sed 's/^["'"'"']\(.*\)["'"'"']$/\1/; s/[[:space:]]#.*$//; s/[[:space:]]*$//')"
   fi
   echo "${PROJETOS_DIR:-${do_env:-$(dirname "$REPO")}}"
 }
