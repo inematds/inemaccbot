@@ -62,12 +62,12 @@ try {
     const m = validarManifesto(lerJson(args[0]));
     process.stdout.write(`${invocacaoResolvida(m.invocacao, args[1])}\n`);
   } else if (comando === 'entrada') {
-    // `<manifesto.json> <skills.json> <raiz-do-bot> <descricao> <exemplo>`
+    // `<manifesto.json> <skills.json> <raiz-do-bot>`
     // → o skills.json JÁ com a entrada, na saída padrão; a AÇÃO, na de erro.
     // Não grava: quem grava é o shell, depois de te mostrar o diff.
-    const [caminhoManifesto, caminhoSkills, raiz, descricao, exemplo] = args;
+    const [caminhoManifesto, caminhoSkills, raiz] = args;
     const m = validarManifesto(lerJson(caminhoManifesto));
-    const entrada = paraEntradaSkill(m, descricao, exemplo);
+    const entrada = paraEntradaSkill(m);
     const { texto, acao } = inserirEntradaSkill(readFileSync(caminhoSkills, 'utf8'), entrada, raiz);
     process.stderr.write(`${acao}\n`);
     process.stdout.write(texto);

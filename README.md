@@ -501,7 +501,13 @@ fluxo com outro rodando é seguro. E o bot só toca no que ELE publicou dentro d
 
 Este é o teste do desenho: **domínio novo não deve exigir linha de código no bot.**
 
-**Com script (rota A):** `./scripts/plugar-repo.sh <nome>` aplica um manifesto já
+**Com script (rota A), em dois tempos.** `./scripts/gerar-manifesto.sh <url>` roda
+onde há um modelo: ele lê o repo (inclusive o código do script, que é onde estão as
+armadilhas), propõe os parâmetros marcando o que foi **chute**, deixa você editar, e
+grava `config/integracoes/<nome>.json` + `prompts/<nome>.md` — versionados, para a
+instalação ser igual em toda máquina. Roda **uma vez por repo**.
+
+`./scripts/plugar-repo.sh <nome>` aplica um manifesto já
 revisado de `config/integracoes/` — clona o repo irmão, confere binários e chaves do
 cofre, valida a entrada com o validador do BOOT antes de escrever, mostra o diff e
 para; só grava com `--sim`, e `--desfazer` restaura. **Nenhum modelo no caminho**:

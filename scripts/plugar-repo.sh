@@ -64,8 +64,15 @@ if [ ! -d "$REPO/dist/dominio" ]; then
   (cd "$REPO" && npm run build >/dev/null)
 fi
 
-eval "$(node "$REPO/scripts/plugar-ajuda.mjs" validar "$MANIFESTO")" || morre "manifesto inválido"
+# `eval "$(cmd)"` engole a falha do cmd (o eval de string vazia devolve 0), e o
+# sintoma vira "unbound variable" trinta linhas depois. Captura, confere, avalia.
+VARS="$(node "$REPO/scripts/plugar-ajuda.mjs" validar "$MANIFESTO")" || morre "manifesto inválido"
+eval "$VARS"
 ok "manifesto válido: $M_COMMAND (fila $M_FILA, artefato .$M_EXT, timeout ${M_TIMEOUT}s)"
+case "$M_INVOCACAO" in
+  *'"{{input}}"'*) : ;;
+  *) aviso 'a invocação usa {{input}} SEM aspas — entrada com espaço ou "&" quebra o comando' ;;
+esac
 [ -n "$M_CHUTES" ] && aviso "campos que o gerador CHUTOU (confira se ainda valem): $M_CHUTES"
 
 titulo "2. Repo"
@@ -120,12 +127,10 @@ printf '     invocação: %s\n' "$(node "$REPO/scripts/plugar-ajuda.mjs" invocac
 
 titulo "6. Entrada no config/skills.json"
 NOVO="$(mktemp)"; trap 'rm -f "$NOVO"' EXIT
-DESCRICAO="${PLUGAR_DESCRICAO:-$M_COMMAND (plugado por manifesto)}"
-EXEMPLO="${PLUGAR_EXEMPLO:-$M_COMMAND: <entrada>}"
 # Valida com o validador REAL do registry (o do boot) ANTES de escrever: é o que
 # faz "plugou" e "o serviço sobe" serem a mesma coisa.
 ACAO="$(node "$REPO/scripts/plugar-ajuda.mjs" entrada \
-  "$MANIFESTO" "$SKILLS" "$REPO" "$DESCRICAO" "$EXEMPLO" 2>&1 >"$NOVO")" \
+  "$MANIFESTO" "$SKILLS" "$REPO" 2>&1 >"$NOVO")" \
   || { cat "$NOVO" >&2; morre "a entrada NÃO passou no validador do boot — nada foi escrito"; }
 ok "entrada $ACAO, e válida para o boot"
 

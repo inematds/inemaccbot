@@ -65,6 +65,11 @@ export interface Manifesto {
   /** Caminho do prompt, relativo à raiz do BOT (o prompt é do bot, não do repo
    * plugado: é ele que carrega o contrato `RESULT:`/`ERRO:`). */
   prompt: string;
+  /** O que o `/ajuda` mostra. Está no manifesto e não num default do script
+   * porque é texto que alguém lê no chat: "analisevideo (plugado por manifesto)"
+   * seria pior que não ter ajuda. */
+  descricao: string;
+  exemplo: string;
   gerado?: { em?: string; por?: string; confianca: Record<string, 'lido' | 'chute'> };
 }
 
@@ -192,6 +197,9 @@ export function validarManifesto(dados: unknown): Manifesto {
     return ext;
   });
 
+  const descricao = texto(d.descricao, 'descricao');
+  const exemplo = texto(d.exemplo, 'exemplo');
+
   const prompt = texto(d.prompt, 'prompt');
   if (isAbsolute(prompt) || prompt.split('/').includes('..')) {
     erro('prompt', 'caminho relativo à raiz do bot, sem ".."');
@@ -232,8 +240,11 @@ export function validarManifesto(dados: unknown): Manifesto {
           erro(`gerado.confianca.${campo}`, `"${marca}" — use lido ou chute`);
         }
         // Marcar a confiança de um campo que não existe é rastro de manifesto
-        // editado à mão pela metade: some o campo, fica a marca.
-        if (!(campo in d)) erro(`gerado.confianca.${campo}`, 'campo não existe no manifesto');
+        // editado à mão pela metade: some o campo, fica a marca. Caminho
+        // pontuado (`requer.bin`) é legítimo e comum — a marca costuma ser mais
+        // útil no sub-campo que no bloco inteiro —, então confere-se o TOPO.
+        const topo = campo.split('.')[0];
+        if (!(topo in d)) erro(`gerado.confianca.${campo}`, 'campo não existe no manifesto');
         conf[campo] = marca as 'lido' | 'chute';
       }
     }
@@ -258,6 +269,8 @@ export function validarManifesto(dados: unknown): Manifesto {
     campos: validarCampos(d.campos),
     requer,
     prompt,
+    descricao,
+    exemplo,
     ...(gerado ? { gerado } : {}),
   };
 }
@@ -269,7 +282,7 @@ export function validarManifesto(dados: unknown): Manifesto {
  * valida com o validador REAL do registry antes de tocar no arquivo — a única
  * defesa contra um manifesto que passa aqui e derruba o boot lá.
  */
-export function paraEntradaSkill(m: Manifesto, descricao: string, exemplo: string): Record<string, unknown> {
+export function paraEntradaSkill(m: Manifesto): Record<string, unknown> {
   return {
     command: m.command,
     fila: m.fila,
@@ -280,8 +293,8 @@ export function paraEntradaSkill(m: Manifesto, descricao: string, exemplo: strin
     timeout_segundos: m.timeout_segundos,
     aceita_destino: m.aceita_destino,
     ...(Object.keys(m.campos).length ? { campos: m.campos } : {}),
-    descricao,
-    exemplo,
+    descricao: m.descricao,
+    exemplo: m.exemplo,
   };
 }
 

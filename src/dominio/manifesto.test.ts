@@ -22,6 +22,8 @@ const BASE = {
   aceita_destino: false,
   requer: { bin: ['yt-dlp', 'jq'], chaves: ['GOOGLE_API_KEY'], fontes: [] },
   prompt: 'prompts/analisevideo.md',
+  descricao: 'análise visual do vídeo do link (câmera, luz, montagem)',
+  exemplo: 'analisevideo: https://youtube.com/watch?v=XXXX',
   gerado: { em: '2026-08-20', por: 'claude', confianca: { fila: 'chute', timeout_segundos: 'chute' } },
 };
 
@@ -97,6 +99,18 @@ describe('proveniência e confiança', () => {
     expect(() => validarManifesto(m)).toThrow(/inventado.*não existe/);
   });
 
+  // O gerador marca `requer.bin` com frequência — a confiança costuma diferir
+  // entre os sub-campos, e obrigar a marcar o bloco inteiro perderia isso.
+  it('aceita caminho pontuado quando o campo do topo existe', () => {
+    const m = { ...BASE, gerado: { confianca: { 'requer.bin': 'lido', 'requer.chaves': 'chute' } } };
+    expect(camposChutados(validarManifesto(m))).toEqual(['requer.chaves']);
+  });
+
+  it('recusa caminho pontuado cujo topo não existe', () => {
+    const m = { ...BASE, gerado: { confianca: { 'inventado.x': 'chute' } } };
+    expect(() => validarManifesto(m)).toThrow(/não existe/);
+  });
+
   it('recusa marca fora de lido|chute', () => {
     const m = { ...BASE, gerado: { confianca: { fila: 'talvez' } } };
     expect(() => validarManifesto(m)).toThrow(/lido ou chute/);
@@ -105,6 +119,15 @@ describe('proveniência e confiança', () => {
   it('commit tem que ser hash git — é a proveniência que permite avisar "o repo mudou"', () => {
     expect(() => validarManifesto({ ...BASE, repo: { url: BASE.repo.url, commit: 'HEAD' } }))
       .toThrow(/hash git/);
+  });
+});
+
+describe('ajuda (o que o usuário lê no chat)', () => {
+  it('descricao e exemplo são obrigatórios — default genérico é pior que nada', () => {
+    const { descricao: _d, ...semDescricao } = BASE;
+    expect(() => validarManifesto(semDescricao)).toThrow(/descricao/);
+    const { exemplo: _e, ...semExemplo } = BASE;
+    expect(() => validarManifesto(semExemplo)).toThrow(/exemplo/);
   });
 });
 
@@ -135,7 +158,7 @@ describe('paraEntradaSkill → validarSkills (o validador do boot)', () => {
     writeFileSync(join(raiz, 'prompts/analisevideo.md'), 'prompt com {{input}} e {{saida}}');
 
     const m = validarManifesto(BASE);
-    const entrada = paraEntradaSkill(m, 'análise visual do vídeo do link', 'analisevideo: https://x/y');
+    const entrada = paraEntradaSkill(m);
     const defs = validarSkills([entrada], raiz);
 
     expect(defs).toHaveLength(1);
