@@ -250,6 +250,18 @@ Numa VPS rodando como `root`:
 Os repos de domínio (`promoavatar`, `promoavatar3`) **não têm `.env` nenhum**: eles
 leem tudo do ambiente que o bot repassa aos scripts filhos.
 
+**Fontes de material (`config/fontes.json`) — registrado, ainda não ligado.** O
+espelho do registry de destinos: destino responde "para onde vai o artefato",
+fonte responde "de onde vem o material" (explicativo, trilha, b-roll). O domínio
+pede por NOME (`trilhas`), e quem sabe o caminho é o bot — hoje o CTA do reel é
+um caminho dentro do domínio, que é o tipo de coisa que envelhece ao trocar de
+máquina. Duas regras: **fonte é PASTA** e **a escolha do arquivo é EXPLÍCITA**
+(`lofi` → `trilhas/lofi.mp3`); nome ambíguo é recusado, nunca sorteado — sorteio
+quebraria "mesmo pedido, mesmo resultado". O arquivo é **opcional**: ausente, o
+registry fica vazio. `src/dominio/fontes.ts` está pronto e testado, mas **nada o
+consome ainda** — ligar ao chat e ao `flow.json` é passo seguinte, e esse sim
+muda comportamento.
+
 **Dois arquivos, dois papéis** — confundi-los custa tempo: o `.env` do clone é
 CONFIG do bot (`BOT_TOKEN`, `ALLOWED_CHAT_IDS`, caminhos) e não pode sair de lá;
 o `wifi/.env` é o COFRE de segredo de terceiro (`HEYGEN_API_KEY`,
