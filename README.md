@@ -501,6 +501,13 @@ fluxo com outro rodando é seguro. E o bot só toca no que ELE publicou dentro d
 
 Este é o teste do desenho: **domínio novo não deve exigir linha de código no bot.**
 
+**Com script (rota A):** `./scripts/plugar-repo.sh <nome>` aplica um manifesto já
+revisado de `config/integracoes/` — clona o repo irmão, confere binários e chaves do
+cofre, valida a entrada com o validador do BOOT antes de escrever, mostra o diff e
+para; só grava com `--sim`, e `--desfazer` restaura. **Nenhum modelo no caminho**:
+quem lê o repo e decide fila, timeout e prompt é o `gerar-manifesto`, uma vez por
+repo. Sem manifesto, ele recusa em vez de adivinhar.
+
 > 📘 **Exemplo completo, do clone ao primeiro job:**
 > [**`docs/instalar-analisevideo.md`**](docs/instalar-analisevideo.md) — plugar um repo
 > externo ([`analisevideo`](https://github.com/inematds/analisevideo)) pelas DUAS rotas,
