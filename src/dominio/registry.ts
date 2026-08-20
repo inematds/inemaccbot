@@ -95,11 +95,13 @@ export interface CampoDef {
 const USOS_CAMPO = new Set(['prompt', 'entrega']);
 
 const TIPOS_CAMPO = new Set(['bandeira', 'texto']);
-const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
+// Exportada porque o validador de MANIFESTO (`manifesto.ts`) confere a mesma
+// lista: duas cópias divergiriam no dia em que uma fila nova entrar.
+export const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
 const KINDS_VALIDOS = new Set<Kind>(['agent', 'function']);
 /** Um comando é digitado no chat e casado por igualdade: sem espaço, sem `|`,
  * sem `:` — os três separadores da gramática de comando. */
-const COMANDO_VALIDO = /^[a-z][a-z0-9-]{1,30}$/;
+export const COMANDO_VALIDO = /^[a-z][a-z0-9-]{1,30}$/;
 
 function erro(indice: number, campo: string, detalhe: string): never {
   throw new Error(`registry de skills: entrada ${indice} (${campo}): ${detalhe}`);
