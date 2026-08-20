@@ -93,6 +93,33 @@ Os campos que carregam decisão de projeto:
 - **`artefato_exts`**: a **primeira** nomeia o arquivo que o bot espera
   (`<artefatos>/<command>/<id>.<ext>`).
 
+## Duas fontes de manifesto
+
+O `plugar-repo` procura nesta ordem:
+
+1. `config/integracoes/<nome>.json` — o **adaptador local**, que você revisou;
+2. `<clone>/integracao.json` — o que o **próprio repo** declara.
+
+**Local vence.** É a saída para quando o manifesto do repo estiver errado, velho
+ou não servir à sua máquina, sem depender de PR no projeto dos outros. E o
+adaptador local é o que permite plugar repo de terceiro sem pedir commit a
+ninguém.
+
+Quando o manifesto vem do repo, com `--sim` o bot **adota**: copia o
+`integracao.json` para `config/integracoes/<command>.json` e o prompt para
+`prompts/<command>.md`. A partir daí vale a cópia — versionada no seu git, e
+imune ao próximo `git pull` do repo alheio. Sem isso, o que governa a config do
+seu bot mudaria sozinho, e a invocação é uma linha de comando que roda na sua
+máquina.
+
+Em modo seco nada é copiado: a validação roda contra uma raiz temporária que
+espelha `prompts/` por symlink e sobrepõe o arquivo vindo do repo — o validador
+confere o array inteiro do `skills.json`, então as outras skills precisam estar
+lá.
+
+O repo ainda não clonado pode ser passado por URL:
+`./scripts/plugar-repo.sh https://github.com/dono/repo --sim`.
+
 ## O prompt conta mais que o manifesto
 
 O gerador escreve os dois, mas eles falham de formas diferentes: manifesto
@@ -134,10 +161,8 @@ sobe" é o pior modo de falha deste sistema.
 - **Só rota A.** Fluxo (rota B) exige commitar `flow.json` e `HELP.md` **dentro
   do repo plugado**, e um script que escreve em repo de terceiro é outra ordem de
   invasividade. Continua manual, pelo `instalar-analisevideo.md`.
-- **Manifesto no repo alvo** ainda não é lido: hoje o adaptador mora no bot, o
-  que tem a vantagem de plugar repo de terceiro sem pedir commit a ninguém. Se
-  passar a ser lido, a precedência prevista é **local vence repo** — para você ter
-  saída quando o manifesto do repo estiver errado.
+- **Manifesto no repo alvo já é lido**, como segunda fonte. Ver "Duas fontes"
+  abaixo.
 - **Manifesto é dado, nunca comando.** O `plugar-ajuda.mjs` emite tudo com aspas
   de shell porque o `plugar-repo.sh` consome com `eval`; sem isso, um valor com
   espaço vira comando executado. Aconteceu no primeiro teste: o `jq` de

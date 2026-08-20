@@ -3,7 +3,17 @@
 #
 #   ./scripts/plugar-repo.sh <nome>            # mostra o que faria e PARA
 #   ./scripts/plugar-repo.sh <nome> --sim      # aplica
+#   ./scripts/plugar-repo.sh <url>  --sim      # repo ainda não clonado, manifesto vem dele
 #   ./scripts/plugar-repo.sh <nome> --desfazer # restaura o backup da última vez
+#
+# O manifesto é procurado em DUAS fontes, nesta ordem:
+#   1. config/integracoes/<nome>.json   — o adaptador LOCAL, que você revisou
+#   2. <clone>/integracao.json          — o que o próprio repo declara
+# Local vence: é a saída para quando o manifesto do repo estiver errado ou velho,
+# sem depender de PR no projeto dos outros. Ao aplicar um manifesto vindo do
+# repo, o bot o ADOTA (copia manifesto e prompt para dentro de si): o que vale
+# passa a ser auditável, versionado, e não muda sozinho no próximo git pull do
+# repo alheio.
 #
 # DETERMINÍSTICO: nenhum modelo no caminho. Quem lê o repo e decide fila,
 # timeout e prompt é o `gerar-manifesto`, uma vez por repo, numa máquina que
@@ -37,9 +47,15 @@ aviso() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 morre() { printf '  \033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
 titulo(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
 
+# Nome ou URL: com URL, o nome sai do último segmento (sem .git).
+case "$NOME" in
+  https://*|git@*) URL_ARG="$NOME"; NOME="$(basename "$NOME" .git)" ;;
+  *) URL_ARG="" ;;
+esac
 MANIFESTO="$REPO/config/integracoes/$NOME.json"
 CLONE="$PROJETOS/$NOME"
 BACKUP="$SKILLS.bak-$NOME"
+ORIGEM=local
 
 if [ "$DESFAZER" = 1 ]; then
   titulo "Desfazer"
@@ -51,12 +67,32 @@ if [ "$DESFAZER" = 1 ]; then
 fi
 
 titulo "1. Manifesto"
-# Sem manifesto o script PARA. A alternativa seria adivinhar fila, timeout e
-# prompt — e o resultado disso é job que termina sem entregar arquivo, que é o
-# defeito mais caro de diagnosticar neste sistema.
-[ -f "$MANIFESTO" ] || morre "não há manifesto para \"$NOME\" ($MANIFESTO)
+if [ -f "$MANIFESTO" ]; then
+  ok "manifesto local: config/integracoes/$NOME.json"
+else
+  # Não achou o adaptador local: talvez o próprio repo declare como ser plugado.
+  # Para ler isso, o clone precisa existir — e se veio URL, clonamos agora.
+  if [ ! -d "$CLONE/.git" ] && [ -n "$URL_ARG" ]; then
+    if [ "$APLICAR" = 1 ] || true; then
+      git clone "$URL_ARG" "$CLONE" >/dev/null 2>&1 || morre "clone falhou: $URL_ARG"
+      ok "clonado em $CLONE (para ler o manifesto dele)"
+    fi
+  fi
+  if [ -f "$CLONE/integracao.json" ]; then
+    MANIFESTO="$CLONE/integracao.json"
+    ORIGEM=repo
+    aviso "sem adaptador local — usando o manifesto DO REPO ($CLONE/integracao.json)"
+    aviso "ele é escrito por quem mantém aquele repo: leia a invocação abaixo antes do --sim"
+  else
+    # Sem manifesto nenhum o script PARA. Adivinhar fila, timeout e prompt produz
+    # job que termina sem entregar arquivo — o defeito mais caro daqui.
+    morre "não há manifesto para \"$NOME\"
+     Procurei em:  config/integracoes/$NOME.json
+                   $CLONE/integracao.json
      Gere um numa máquina com modelo:  ./scripts/gerar-manifesto.sh <url-do-repo>
      e comite o resultado em config/integracoes/."
+  fi
+fi
 
 # O `dist/` é o que o helper importa; na VPS ele já existe, mas um clone novo não.
 if [ ! -d "$REPO/dist/dominio" ]; then
@@ -140,11 +176,38 @@ fi
 titulo "5. Prompt"
 # O manifesto aponta um prompt DO BOT — é ele que carrega o contrato
 # `RESULT:`/`ERRO:`. Sem o arquivo, o registry recusa no boot.
-[ -s "$REPO/$M_PROMPT" ] || morre "prompt ausente ou vazio: $M_PROMPT
+#
+# Manifesto vindo do REPO aponta prompt do repo. Adotar = copiar para dentro do
+# bot, que é onde o registry procura, e onde ele fica sob o SEU git — imune ao
+# próximo pull do repo alheio. Em modo seco nada é copiado: a validação do passo
+# 6 roda contra uma raiz temporária, para não escrever no repo sem --sim.
+RAIZ_VALIDACAO="$REPO"
+PROMPT_DO_REPO=""
+if [ "$ORIGEM" = repo ] && [ ! -s "$REPO/$M_PROMPT" ]; then
+  PROMPT_DO_REPO="$CLONE/$M_PROMPT"
+  [ -s "$PROMPT_DO_REPO" ] || morre "o manifesto do repo aponta um prompt que não existe lá: $M_PROMPT"
+  if [ "$APLICAR" = 1 ]; then
+    mkdir -p "$REPO/$(dirname "$M_PROMPT")"
+    cp "$PROMPT_DO_REPO" "$REPO/$M_PROMPT"
+    ok "prompt adotado do repo → $M_PROMPT"
+    PROMPT_DO_REPO=""
+  else
+    aviso "adotaria o prompt do repo: $M_PROMPT (nada é copiado sem --sim)"
+    # A raiz temporária precisa conter TODOS os prompts, não só o novo: o
+    # validador confere o array inteiro do skills.json, e as outras skills
+    # sumiriam. Espelha por symlink e sobrepõe o que vem do repo.
+    RAIZ_VALIDACAO="$(mktemp -d)"
+    cp -rs "$REPO/prompts" "$RAIZ_VALIDACAO/prompts"
+    mkdir -p "$RAIZ_VALIDACAO/$(dirname "$M_PROMPT")"
+    cp -f "$PROMPT_DO_REPO" "$RAIZ_VALIDACAO/$M_PROMPT"
+  fi
+fi
+ALVO_PROMPT="$RAIZ_VALIDACAO/$M_PROMPT"
+[ -s "$ALVO_PROMPT" ] || morre "prompt ausente ou vazio: $M_PROMPT
      Ele é gerado junto com o manifesto e deveria estar versionado."
-grep -q '{{input}}' "$REPO/$M_PROMPT" || aviso "o prompt não cita {{input}} — a skill ignoraria o pedido"
-grep -q '{{saida}}' "$REPO/$M_PROMPT" || aviso "o prompt não cita {{saida}} — o bot não acharia o artefato"
-grep -q 'RESULT:'   "$REPO/$M_PROMPT" || aviso "o prompt não fecha com RESULT: — a fase não teria como declarar sucesso"
+grep -q '{{input}}' "$ALVO_PROMPT" || aviso "o prompt não cita {{input}} — a skill ignoraria o pedido"
+grep -q '{{saida}}' "$ALVO_PROMPT" || aviso "o prompt não cita {{saida}} — o bot não acharia o artefato"
+grep -q 'RESULT:'   "$ALVO_PROMPT" || aviso "o prompt não fecha com RESULT: — a fase não teria como declarar sucesso"
 ok "prompt: $M_PROMPT"
 printf '     invocação: %s\n' "$(node "$REPO/scripts/plugar-ajuda.mjs" invocacao "$MANIFESTO" "$CLONE")"
 
@@ -153,7 +216,7 @@ NOVO="$(mktemp)"; trap 'rm -f "$NOVO"' EXIT
 # Valida com o validador REAL do registry (o do boot) ANTES de escrever: é o que
 # faz "plugou" e "o serviço sobe" serem a mesma coisa.
 ACAO="$(node "$REPO/scripts/plugar-ajuda.mjs" entrada \
-  "$MANIFESTO" "$SKILLS" "$REPO" 2>&1 >"$NOVO")" \
+  "$MANIFESTO" "$SKILLS" "$RAIZ_VALIDACAO" 2>&1 >"$NOVO")" \
   || { cat "$NOVO" >&2; morre "a entrada NÃO passou no validador do boot — nada foi escrito"; }
 ok "entrada $ACAO, e válida para o boot"
 
@@ -170,6 +233,14 @@ fi
 cp "$SKILLS" "$BACKUP"
 cp "$NOVO" "$SKILLS"
 ok "config/skills.json atualizado (backup em $(basename "$BACKUP"))"
+
+if [ "$ORIGEM" = repo ]; then
+  # Adota o manifesto: a partir daqui vale a CÓPIA, versionada no bot. Sem isto,
+  # o que governa a config do seu bot mudaria sozinho no próximo pull do repo.
+  mkdir -p "$REPO/config/integracoes"
+  cp "$MANIFESTO" "$REPO/config/integracoes/$M_COMMAND.json"
+  ok "manifesto adotado → config/integracoes/$M_COMMAND.json (comite-o)"
+fi
 
 titulo "7. Suíte e build"
 (cd "$REPO" && npm test >/dev/null 2>&1) && ok "suíte" || morre "suíte falhou — desfaça com --desfazer"
