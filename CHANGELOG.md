@@ -8,6 +8,45 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.5.0 — 2026-08-20
+
+### Adicionado
+
+- **Motores `codex` e `opencode` como alternativa ao `claude`.** O worker já
+  escolhia o motor pelo NOME (`RUNNERS[perfil.motor]`) e `RUNNERS` já era
+  dicionário aberto — faltava quem atendesse por outro nome. Ligar não muda nada
+  no caminho de quem pede `claude`: liga-se por job (`| motor=codex`), por skill
+  (`config/skills.json`) ou pelo `.env` (`MOTOR_PADRAO`).
+  Os dois runners herdam do `ClaudeRunner` toda a maquinaria de processo (process
+  group próprio, timeout de parede, teto de 4 MB, matar a ÁRVORE no
+  cancelamento); o que cada um define é a função PURA que traduz o perfil em
+  flags. Docs: [`docs/motor-codex.md`](docs/motor-codex.md) e
+  [`docs/motor-opencode.md`](docs/motor-opencode.md).
+- **`CODEX_BIN` / `OPENCODE_BIN`** — binário por CAMINHO, não pelo PATH, pelo
+  mesmo motivo do `CLAUDE_BIN` (PATH do systemd é mínimo; C#77/C#78).
+  Ausente **não** derruba o boot: motor alternativo é opcional por desenho, o
+  serviço avisa no log e só falha quem pedir por ele. A exceção é `MOTOR_PADRAO`
+  apontando para binário inexistente — aí é erro de boot, com o caminho na
+  mensagem.
+- **`CODEX_MODELOS` / `OPENCODE_MODELOS`** — tradução alias → id do motor, no
+  runner. Vazio por padrão: chutar um id para cada alias faria todo job quebrar
+  no dia em que o fornecedor renomeasse um modelo. Sem mapa, vale o modelo
+  configurado na própria CLI. `MODELOS_RANK` do domínio não muda — o alias
+  continua sendo o vocabulário do bot.
+
+### Notas
+
+- O `codex` foi verificado com `codex exec` real: o contrato `RESULT:` é extraído
+  mesmo com o ruído do CLI — num run real ele **não** foi a última linha do
+  stdout, e `ultimaLinhaCasando` fica com a última linha que CASA.
+- O `opencode` **não** foi verificado contra a CLI real (não instalada na
+  máquina). O doc traz o roteiro de verificação e a tabela sintoma → conserto.
+- As skills que começam com "Use a skill X" (`explicativo`, `curso`, `demo`,
+  `reel`, `reelinematds`, `reelpromo`) são conceito de Claude Code e **falham em
+  silêncio** em qualquer outro motor: elas improvisam em vez de dizer que não
+  acharam a skill. Mantenha `"perfil": { "motor": "claude" }` nelas antes de
+  mexer no `MOTOR_PADRAO`.
+
 ## 0.4.0 — 2026-08-14
 
 ### Mudado
