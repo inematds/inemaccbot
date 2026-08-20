@@ -24,6 +24,32 @@ set -euo pipefail
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 aviso() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 morre() { printf '  \033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
+
+# Por que o modelo falhou, dito por inteiro.
+#
+# A CLI do claude nem sempre escreve o motivo no stderr — "não autenticado",
+# "sem crédito" e rate limit costumam sair no STDOUT, que aqui está desviado
+# para o arquivo de resposta. Mostrar só o stderr produzia a pior mensagem
+# possível: "✗ o modelo falhou", sem uma linha sequer de motivo, num script que
+# tinha o motivo no disco. Mostra os dois, com o código de saída, e lembra que
+# esta metade do par PRECISA de modelo (na VPS, rode só o plugar-*).
+motivo_do_modelo() {
+  local codigo="$1" err="$2" saida="$3"
+  printf '     código de saída: %s\n' "$codigo" >&2
+  if [ -s "$err" ]; then
+    printf '     stderr:\n' >&2; sed -n '1,10p' "$err" | sed 's/^/       /' >&2
+  fi
+  if [ -s "$saida" ]; then
+    printf '     stdout:\n' >&2; sed -n '1,10p' "$saida" | sed 's/^/       /' >&2
+  fi
+  if [ ! -s "$err" ] && [ ! -s "$saida" ]; then
+    printf '     (a CLI não disse nada — nem stdout, nem stderr)\n' >&2
+  fi
+  printf '     Confira a CLI sozinha:  %s --model sonnet -p "responda apenas: ok" </dev/null\n' "${MOTOR:-claude}" >&2
+  printf '     Login, crédito e rede são as causas de sempre. Esta metade do par\n' >&2
+  printf '     precisa de modelo: na VPS rode só o plugar-*, que não chama nenhum.\n' >&2
+}
+
 titulo(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -171,7 +197,7 @@ RESP="$TMP/flow.raw"
 # `</dev/null`: a CLI lê stdin, e sem isto ela engole a linha da revisão logo
 # abaixo — o sintoma é o script "cancelar sozinho" sem você digitar.
 "$MOTOR" --model sonnet -p "$PROMPT_FLOW" </dev/null > "$RESP" 2>"$TMP/err" || {
-  sed -n '1,10p' "$TMP/err" >&2; morre "o modelo falhou"; }
+  CODIGO=$?; motivo_do_modelo "$CODIGO" "$TMP/err" "$RESP"; morre "o modelo falhou ao desenhar o fluxo"; }
 
 python3 - "$RESP" "$TMP/manifesto.json" <<'PY'
 import json, sys
@@ -229,7 +255,8 @@ reaproveitada entre execuções).
 FIM
 )"
     "$MOTOR" --model sonnet -p "$P" </dev/null > "$TMP/fase-$FASE_ID.md" 2>"$TMP/err2" || {
-      sed -n '1,5p' "$TMP/err2" >&2; morre "o modelo falhou na fase $FASE_ID"; }
+      CODIGO=$?; motivo_do_modelo "$CODIGO" "$TMP/err2" "$TMP/fase-$FASE_ID.md"
+      morre "o modelo falhou na fase $FASE_ID"; }
     python3 - "$TMP/fase-$FASE_ID.md" <<'PY'
 import re, sys
 p = sys.argv[1]

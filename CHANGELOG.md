@@ -8,6 +8,19 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.9.4 — 2026-08-20
+
+### Adicionado
+
+- **"o modelo falhou" agora diz POR QUÊ.** A CLI do claude escreve
+  "não autenticado", "sem crédito" e rate limit no **stdout**, que os
+  geradores desviam para o arquivo de resposta — mostrar só o stderr produzia
+  um `✗ o modelo falhou` sem uma linha de motivo, tendo o motivo no disco.
+  Os quatro pontos de chamada (`gerar-manifesto` e `gerar-manifesto-fluxo`,
+  manifesto e prompt/fases) passam a imprimir código de saída, stderr E
+  stdout, o comando para conferir a CLI sozinha, e o lembrete de que esta
+  metade do par precisa de modelo — na VPS roda-se só o `plugar-*`.
+
 ## 0.8.4 — 2026-08-20
 
 ### Corrigido

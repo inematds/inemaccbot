@@ -26,6 +26,32 @@ PARA_REPO="${PARA_REPO:-0}"
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 aviso() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 morre() { printf '  \033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
+
+# Por que o modelo falhou, dito por inteiro.
+#
+# A CLI do claude nem sempre escreve o motivo no stderr — "não autenticado",
+# "sem crédito" e rate limit costumam sair no STDOUT, que aqui está desviado
+# para o arquivo de resposta. Mostrar só o stderr produzia a pior mensagem
+# possível: "✗ o modelo falhou", sem uma linha sequer de motivo, num script que
+# tinha o motivo no disco. Mostra os dois, com o código de saída, e lembra que
+# esta metade do par PRECISA de modelo (na VPS, rode só o plugar-*).
+motivo_do_modelo() {
+  local codigo="$1" err="$2" saida="$3"
+  printf '     código de saída: %s\n' "$codigo" >&2
+  if [ -s "$err" ]; then
+    printf '     stderr:\n' >&2; sed -n '1,10p' "$err" | sed 's/^/       /' >&2
+  fi
+  if [ -s "$saida" ]; then
+    printf '     stdout:\n' >&2; sed -n '1,10p' "$saida" | sed 's/^/       /' >&2
+  fi
+  if [ ! -s "$err" ] && [ ! -s "$saida" ]; then
+    printf '     (a CLI não disse nada — nem stdout, nem stderr)\n' >&2
+  fi
+  printf '     Confira a CLI sozinha:  %s --model sonnet -p "responda apenas: ok" </dev/null\n' "${MOTOR:-claude}" >&2
+  printf '     Login, crédito e rede são as causas de sempre. Esta metade do par\n' >&2
+  printf '     precisa de modelo: na VPS rode só o plugar-*, que não chama nenhum.\n' >&2
+}
+
 titulo(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 # O motor vem por CAMINHO, como no bot: sob systemd o PATH é mínimo, e aqui a
@@ -117,7 +143,7 @@ RESP="$TMP/manifesto.raw"
 # `</dev/null`: a CLI lê stdin, e sem isto ela engole a linha que a revisão vai
 # pedir logo abaixo — o sintoma é o script "cancelar sozinho" sem você digitar.
 "$MOTOR" --model sonnet -p "$PROMPT_MANIFESTO" </dev/null > "$RESP" 2>"$TMP/err" || {
-  sed -n '1,10p' "$TMP/err" >&2; morre "o modelo falhou"; }
+  CODIGO=$?; motivo_do_modelo "$CODIGO" "$TMP/err" "$RESP"; morre "o modelo falhou ao ler o repo"; }
 
 # Cinto de segurança: o modelo às vezes embrulha em ```json ou emenda um
 # parágrafo depois do objeto. Recorta o PRIMEIRO objeto JSON e ignora o resto.
@@ -184,7 +210,7 @@ genérico.
 FIM
 )"
 "$MOTOR" --model sonnet -p "$PROMPT_PROMPT" </dev/null > "$TMP/prompt.md" 2>"$TMP/err2" || {
-  sed -n '1,10p' "$TMP/err2" >&2; morre "o modelo falhou ao escrever o prompt"; }
+  CODIGO=$?; motivo_do_modelo "$CODIGO" "$TMP/err2" "$TMP/prompt.md"; morre "o modelo falhou ao escrever o prompt"; }
 # Cerca de código em volta do markdown inteiro é ruído do modelo, não conteúdo.
 python3 - "$TMP/prompt.md" <<'PY'
 import re, sys
