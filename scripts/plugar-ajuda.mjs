@@ -39,8 +39,9 @@ try {
     const chutes = camposChutados(m);
     process.stdout.write([
       `M_COMMAND=${sh(m.command)}`,
-      `M_URL=${sh(m.repo.url)}`,
+      `M_URL=${sh(m.repo.url ?? '')}`,
       `M_COMMIT=${sh(m.repo.commit ?? '')}`,
+      `M_PASTA=${sh(m.repo.pasta ?? m.command)}`,
       `M_PROMPT=${sh(m.prompt)}`,
       `M_FILA=${sh(m.fila)}`,
       `M_TIMEOUT=${sh(m.timeout_segundos)}`,

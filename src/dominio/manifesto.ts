@@ -51,7 +51,18 @@ export interface Manifesto {
   manifesto: number;
   rota: 'skill';
   command: string;
-  repo: { url: string; commit?: string };
+  /** `url` é OPCIONAL: quando o manifesto viaja DENTRO do repo
+   * (`<repo>/integracao.json`), quem o lê já tem o clone na mão, e exigir a URL
+   * obrigaria um repo ainda sem `remote` a inventar uma. Sem ela, o
+   * `plugar-repo` recusa apenas o caso em que precisaria clonar. */
+  repo: {
+    url?: string;
+    commit?: string;
+    /** Nome da PASTA do clone, quando difere do `command` (o comando do chat não
+     * precisa ter o nome do repositório: `roda` num repo `repoprep`). Sem isto o
+     * `plugar-repo` procuraria o clone pelo comando e não acharia. */
+    pasta?: string;
+  };
   /** Linha de comando que o PROMPT vai mandar o agente rodar. Usa `{{repo}}` e
    * `{{input}}`; caminho absoluto é recusado (não sobrevive a outra máquina). */
   invocacao: string;
@@ -155,16 +166,20 @@ export function validarManifesto(dados: unknown): Manifesto {
   }
 
   if (typeof d.repo !== 'object' || d.repo === null || Array.isArray(d.repo)) {
-    erro('repo', 'precisa ser objeto { url, commit? }');
+    erro('repo', 'precisa ser objeto { url?, commit? }');
   }
   const r = d.repo as Record<string, unknown>;
-  const url = texto(r.url, 'repo.url');
-  if (!/^(https:\/\/|git@)/.test(url) || /\s/.test(url)) {
+  const url = r.url === undefined || r.url === '' ? undefined : texto(r.url, 'repo.url');
+  if (url !== undefined && (!/^(https:\/\/|git@)/.test(url) || /\s/.test(url))) {
     erro('repo.url', `"${url}" — https:// ou git@, sem espaço`);
   }
   // O commit é PROVENIÊNCIA: diz para qual versão do repo este manifesto foi
   // escrito, e é o que permite avisar "o repo mudou desde então" em vez de
   // aplicar às cegas.
+  const pasta = r.pasta === undefined ? undefined : texto(r.pasta, 'repo.pasta');
+  if (pasta !== undefined && !/^[a-z0-9][a-z0-9._-]*$/i.test(pasta)) {
+    erro('repo.pasta', `"${pasta}" — nome de pasta, não caminho`);
+  }
   const commit = r.commit === undefined ? undefined : texto(r.commit, 'repo.commit');
   if (commit !== undefined && !/^[0-9a-f]{7,40}$/.test(commit)) {
     erro('repo.commit', `"${commit}" — hash git (7 a 40 hex)`);
@@ -259,7 +274,11 @@ export function validarManifesto(dados: unknown): Manifesto {
     manifesto: versao,
     rota: 'skill',
     command,
-    repo: { url, ...(commit ? { commit } : {}) },
+    repo: {
+      ...(url ? { url } : {}),
+      ...(commit ? { commit } : {}),
+      ...(pasta ? { pasta } : {}),
+    },
     invocacao,
     fila,
     artefato_exts,

@@ -516,7 +516,11 @@ para; só grava com `--sim`, e `--desfazer` restaura. **Nenhum modelo no caminho
 quem lê o repo e decide fila, timeout e prompt é o `gerar-manifesto`, uma vez por
 repo. Sem manifesto, ele recusa em vez de adivinhar.
 
-→ **Como os dois funcionam, campo a campo:**
+E `./scripts/preparar-repo.sh ~/projetos/<repo>` faz o mesmo para um repo **seu**,
+gravando o manifesto **dentro dele** (`integracao.json`): aí qualquer instalação do
+bot o pluga só com o nome, sem adaptador local.
+
+→ **Como os três funcionam, campo a campo:**
 [`docs/plugar-por-manifesto.md`](docs/plugar-por-manifesto.md).
 
 > 📘 **Exemplo completo, do clone ao primeiro job:**

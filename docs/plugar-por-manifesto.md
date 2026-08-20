@@ -93,6 +93,41 @@ Os campos que carregam decisão de projeto:
 - **`artefato_exts`**: a **primeira** nomeia o arquivo que o bot espera
   (`<artefatos>/<command>/<id>.<ext>`).
 
+## Preparar um repo SEU: `preparar-repo.sh`
+
+```bash
+./scripts/preparar-repo.sh ~/projetos/<repo>
+```
+
+Mesmo motor do `gerar-manifesto`, outro destino: grava **dentro do repo**
+(`integracao.json` na raiz + `prompts/<nome>.md`) em vez de dentro do bot. O
+repo passa a declarar como ser plugado, e qualquer instalação do inemaccbot o
+pluga só com o nome — sem adaptador do lado do bot.
+
+Quando usar cada um:
+
+| | grava em | serve para |
+|---|---|---|
+| `gerar-manifesto` | bot (`config/integracoes/`) | repo de **terceiro**, ou quando o manifesto do repo não serve à sua máquina |
+| `preparar-repo` | repo (`integracao.json`) | repo **seu**, preparado uma vez e plugável em qualquer bot |
+
+Ele **não comita nem faz push** no seu repo — deixa os arquivos e imprime o
+comando. Mexer no git de outro projeto é decisão sua.
+
+Duas checagens a mais nesse modo, porque o que fica no repo viaja para máquinas
+que você não controla:
+
+- **caminho absoluto no prompt** (`/home/...`, `/root/...`) é apontado linha a
+  linha: num repo isso não viaja, e o certo é `{{repo}}`;
+- **`repo.pasta`** é preenchido com o nome da pasta do clone. O `command` do chat
+  não precisa ter o nome do repositório (`roda` num repo `repoprep`), e sem esse
+  campo o `plugar-repo` procuraria o clone pelo comando e não acharia.
+
+`repo.url` é **opcional** aqui: quem lê um manifesto que está dentro do repo já
+tem o clone na mão. Um repo ainda sem `remote` não precisa inventar uma URL. Do
+lado do bot ela só faz falta quando o clone ainda não existe — e aí o script diz
+isso.
+
 ## Duas fontes de manifesto
 
 O `plugar-repo` procura nesta ordem:

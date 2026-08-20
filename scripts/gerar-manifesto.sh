@@ -4,6 +4,10 @@
 #   ./scripts/gerar-manifesto.sh https://github.com/inematds/analisevideo
 #   ./scripts/gerar-manifesto.sh ~/projetos/analisevideo        # repo já no disco
 #
+# Com PARA_REPO=1 (é o que o `preparar-repo.sh` faz), grava DENTRO do repo alvo
+# em vez de dentro do bot: o repo passa a declarar como ser plugado, e qualquer
+# instalação do inemaccbot o pluga só com o nome.
+#
 # É a metade CARA do par, e roda UMA vez por repo: ler o script de um projeto e
 # decidir fila, timeout, extensão de saída e — principalmente — o prompt com as
 # armadilhas dele exige julgamento. A metade barata é o `plugar-repo.sh`, que
@@ -16,6 +20,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ALVO="${1:-}"
+PARA_REPO="${PARA_REPO:-0}"
 [ -n "$ALVO" ] || { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$1"; }
@@ -33,6 +38,10 @@ MOTOR="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 
 titulo "1. Repo"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+if [ "$PARA_REPO" = 1 ] && [ ! -d "$ALVO/.git" ]; then
+  morre "para PREPARAR um repo, passe a PASTA local dele (é nela que vou gravar),
+     não uma URL: ./scripts/preparar-repo.sh ~/projetos/<repo>"
+fi
 if [ -d "$ALVO/.git" ]; then
   FONTE="$(cd "$ALVO" && pwd)"
   URL="$(cd "$FONTE" && git remote get-url origin 2>/dev/null || echo '')"
@@ -43,7 +52,15 @@ else
   git clone --depth 1 "$URL" "$FONTE" >/dev/null 2>&1 || morre "clone falhou: $URL"
   ok "clonado (temporário, some no fim): $URL"
 fi
-[ -n "$URL" ] || morre "não descobri a URL do repo — passe a URL em vez do caminho"
+if [ -z "$URL" ]; then
+  # Repo ainda sem `remote` é normal em preparação; o manifesto que fica DENTRO
+  # dele não precisa da URL. Para o adaptador do bot, precisa: ele pode ter de
+  # clonar.
+  [ "$PARA_REPO" = 1 ] || morre "este repo não tem remote, e o manifesto do BOT
+     precisa da URL para poder clonar. Passe a URL, ou prepare o repo com:
+       ./scripts/preparar-repo.sh $ALVO"
+  aviso "sem remote — o manifesto vai sem repo.url (não faz falta dentro do repo)"
+fi
 COMMIT="$(cd "$FONTE" && git rev-parse HEAD | cut -c1-7)"
 NOME="$(basename "$FONTE" .git)"
 ok "nome: $NOME · commit: $COMMIT"
@@ -63,7 +80,7 @@ Responda APENAS com um objeto JSON, sem cerca de código e sem comentário, no f
   "manifesto": 1,
   "rota": "skill",
   "command": "<nome do comando no chat: minúsculas, dígitos e hífen>",
-  "repo": { "url": "$URL", "commit": "$COMMIT" },
+  "repo": { ${URL:+\"url\": \"$URL\", }"commit": "$COMMIT", "pasta": "$NOME" },
   "invocacao": "<linha de shell; use {{repo}} para a pasta do clone e {{input}} para o que o usuário digitou; NUNCA caminho absoluto>",
   "fila": "<texto|io|render|navegador|cpu>",
   "artefato_exts": ["<extensão do arquivo que sai, a principal primeiro>"],
@@ -79,6 +96,8 @@ Responda APENAS com um objeto JSON, sem cerca de código e sem comentário, no f
 
 Regras que o validador aplica, e que você não deve violar:
 - "requer.chaves" é o NOME da variável de ambiente, jamais o valor.
+- "repo.pasta" já vem preenchido com "$NOME" (a pasta do clone). NÃO mude: o
+  "command" pode ser outro, e é assim que o bot acha o repo no disco.
 - em "invocacao", o {{input}} vai SEMPRE entre aspas duplas — a entrada é texto
   do usuário e pode ter espaço ou "&", que sem aspas quebram a linha de comando.
 - "fila" é raia de concorrência: texto (agente lendo/escrevendo), io (download,
@@ -196,18 +215,46 @@ while true; do
 done
 
 titulo "5. Gravando"
-mkdir -p "$REPO/config/integracoes" "$REPO/prompts"
-DESTINO_M="$REPO/config/integracoes/$M_COMMAND.json"
-DESTINO_P="$REPO/$M_PROMPT"
+if [ "$PARA_REPO" = 1 ]; then
+  # Dentro do REPO: o manifesto vira `integracao.json` na raiz (é onde o
+  # plugar-repo procura) e o prompt fica na árvore do próprio repo.
+  mkdir -p "$FONTE/$(dirname "$M_PROMPT")"
+  DESTINO_M="$FONTE/integracao.json"
+  DESTINO_P="$FONTE/$M_PROMPT"
+  # Um prompt que viaja com o repo NÃO pode citar caminho de máquina: ele vai
+  # rodar em VPS de outra pessoa. O {{repo}} é o que torna isso portátil.
+  if grep -nE '(^|[^{])/(home|root|Users)/' "$TMP/prompt.md" >/dev/null; then
+    aviso "o prompt cita caminho absoluto de máquina — num repo isso não viaja:"
+    grep -nE '(^|[^{])/(home|root|Users)/' "$TMP/prompt.md" | sed 's/^/      /'
+    aviso "corrija com [p] e troque por {{repo}}, ou siga sabendo que só funciona aqui"
+  fi
+else
+  mkdir -p "$REPO/config/integracoes" "$REPO/prompts"
+  DESTINO_M="$REPO/config/integracoes/$M_COMMAND.json"
+  DESTINO_P="$REPO/$M_PROMPT"
+fi
 for f in "$DESTINO_M" "$DESTINO_P"; do
   [ -f "$f" ] && cp "$f" "$f.bak" && aviso "existia — backup em $(basename "$f").bak"
 done
 cp "$TMP/manifesto.json" "$DESTINO_M"
 cp "$TMP/prompt.md" "$DESTINO_P"
-ok "config/integracoes/$M_COMMAND.json"
-ok "$M_PROMPT"
+ok "$DESTINO_M"
+ok "$DESTINO_P"
 
 titulo "Agora"
+if [ "$PARA_REPO" = 1 ]; then
+cat <<FIM
+  1. Leia o prompt uma vez — é ele que decide se a skill entrega arquivo:
+       $DESTINO_P
+  2. Comite os dois NO REPO $M_COMMAND (é o que o torna plugável em qualquer
+     instalação do bot, sem adaptador do lado de lá):
+       cd $FONTE && git add integracao.json $M_PROMPT && git commit && git push
+  3. Em qualquer máquina com o bot:
+       ./scripts/plugar-repo.sh $NOME --sim
+     (sem manifesto local, ele lê o do repo e o ADOTA — copia para dentro do bot,
+     para que a config do bot não mude sozinha no próximo pull daqui.)
+FIM
+else
 cat <<FIM
   1. Leia o prompt uma vez — é ele que decide se a skill entrega arquivo:
        $DESTINO_P
@@ -217,3 +264,4 @@ cat <<FIM
        git pull && ./scripts/plugar-repo.sh $M_COMMAND        # mostra o diff
        ./scripts/plugar-repo.sh $M_COMMAND --sim              # aplica
 FIM
+fi

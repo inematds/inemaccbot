@@ -53,6 +53,8 @@ case "$NOME" in
   *) URL_ARG="" ;;
 esac
 MANIFESTO="$REPO/config/integracoes/$NOME.json"
+# Provisório: o definitivo sai do manifesto (`repo.pasta`), porque o comando do
+# chat não precisa ter o nome do repositório.
 CLONE="$PROJETOS/$NOME"
 BACKUP="$SKILLS.bak-$NOME"
 ORIGEM=local
@@ -104,6 +106,9 @@ fi
 # sintoma vira "unbound variable" trinta linhas depois. Captura, confere, avalia.
 VARS="$(node "$REPO/scripts/plugar-ajuda.mjs" validar "$MANIFESTO")" || morre "manifesto inválido"
 eval "$VARS"
+# Agora sim: a pasta do clone é a que o manifesto declara.
+CLONE="$PROJETOS/$M_PASTA"
+[ "$M_PASTA" = "$NOME" ] || ok "clone esperado em $M_PASTA (o comando é $M_COMMAND)"
 ok "manifesto válido: $M_COMMAND (fila $M_FILA, artefato .$M_EXT, timeout ${M_TIMEOUT}s)"
 case "$M_INVOCACAO" in
   *'"{{input}}"'*) : ;;
@@ -116,6 +121,8 @@ if [ -d "$CLONE/.git" ]; then
   ok "clone existe: $CLONE"
   if [ "$APLICAR" = 1 ]; then (cd "$CLONE" && git pull --ff-only >/dev/null 2>&1) && ok "atualizado" || aviso "git pull falhou — seguindo com o que está no disco"; fi
 else
+  [ -n "$M_URL" ] || morre "o repo não está em $CLONE e o manifesto não traz repo.url
+     Clone-o você, ou rode com a URL: ./scripts/plugar-repo.sh <url> --sim"
   if [ "$APLICAR" = 1 ]; then
     git clone "$M_URL" "$CLONE" >/dev/null 2>&1 || morre "clone falhou: $M_URL"
     ok "clonado em $CLONE"

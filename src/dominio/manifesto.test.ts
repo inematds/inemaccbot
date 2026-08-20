@@ -52,6 +52,32 @@ describe('esquema (a versão é do MANIFESTO, não do bot)', () => {
   });
 });
 
+describe('repo.url', () => {
+  // Manifesto que viaja DENTRO do repo não precisa da URL: quem o lê já tem o
+  // clone. Exigi-la obrigaria um repo ainda sem `remote` a inventar uma.
+  it('é opcional', () => {
+    const m = validarManifesto({ ...BASE, repo: { commit: 'abc1234' } });
+    expect(m.repo.url).toBeUndefined();
+  });
+
+  // O comando do chat não precisa ter o nome do repositório: sem `pasta`, o
+  // plugar procuraria o clone por "roda" quando ele está em "repoprep".
+  it('repo.pasta guarda o nome do clone quando difere do command', () => {
+    const m = validarManifesto({ ...BASE, repo: { pasta: 'repoprep' } });
+    expect(m.repo.pasta).toBe('repoprep');
+  });
+
+  it('repo.pasta é nome, não caminho', () => {
+    expect(() => validarManifesto({ ...BASE, repo: { pasta: '/opt/x' } }))
+      .toThrow(/nome de pasta/);
+  });
+
+  it('mas quando presente tem que ser https:// ou git@', () => {
+    expect(() => validarManifesto({ ...BASE, repo: { url: 'ftp://x/y' } }))
+      .toThrow(/https:\/\/ ou git@/);
+  });
+});
+
 describe('invocação (é ela que vira comando na máquina)', () => {
   // O defeito real do SKILL.md do analisevideo: caminho absoluto da máquina de
   // quem escreveu, que não existe na VPS.
