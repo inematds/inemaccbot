@@ -578,17 +578,47 @@ há teste para os dois lados.
 Vale quando há trabalho parcial que seria absurdo jogar fora. Ganha `/status`, `/refazer`
 seletivo, retomada e definição congelada.
 
-1. Crie o repo de domínio (`~/projetos/<nome>`) com `flow.json` e `prompts/`.
+1. Crie o repo de domínio (`~/projetos/<nome>`) com `flow.json` (e `prompts/`, se alguma fase for de agente).
 2. `flow.json`: `nome`, `prefixo` (o `P` de `P#16` — único por fluxo), `versao_def`,
    `alvos` (cada um com o que o domínio precisar: `canal`, `gatilho`…) e `fases`.
    Cada fase: `id`, `escopo` (`fluxo` = um job para todos, `alvo` = um por alvo), `fila`,
-   `kind`, `tarefa`, `max_tentativas`, e opcionalmente `prompt`, `espera`
-   (poll: `{intervalo, timeout}`), `entrega` e `pausa_apos` (portão humano → `/aprovar`).
-3. `tarefa` só pode ser: `fluxo-agente`, `fluxo-navegador`, `heygen.baixar`, ou o
-   `command` de uma skill do catálogo. Nome fora disso é recusado na carga.
-4. Acrescente em `config/fluxos.json`: `{ "command", "repo", "descricao", "exemplo" }`.
-5. **Ajuda (opcional):** `HELP.md` na raiz do repo de domínio.
-6. Confira em SOMBRA antes de gastar qualquer coisa:
+   `kind`, `tarefa`, `max_tentativas`, e opcionalmente `prompt`, `comando`, `espera`
+   (poll: `{intervalo, timeout}`), `entrega`, `portao` e `pausa_apos` (portão humano
+   → `/aprovar`).
+3. `tarefa` só pode ser: `cli.rodar`, `fluxo-agente`, `fluxo-navegador`,
+   `heygen.baixar`, `heygen.gerar`, `heygen.gerar-creditos`, `heygen.estudio`,
+   `reel.montar`, ou o `command` de uma skill do catálogo. Nome fora disso é
+   recusado na carga.
+
+   **A régua: agente onde ele PENSA, função onde ele só digita.** Fase que existe
+   para montar uma linha de comando é `cli.rodar` (`kind: function`), com o
+   comando declarado em `comando` — e aí o plug confere na instalação que o
+   script existe. Fase que escreve texto, decide ou navega continua sendo agente.
+   O musicavideo nasceu com quatro fases de agente para rodar o próprio CLI, e as
+   quatro falharam na primeira execução real: binário inventado no prompt,
+   contrato de saída redefinido, render destacado morto pelo job.
+
+   ```json
+   { "id": "plano", "kind": "function", "tarefa": "cli.rodar",
+     "comando": "bash {{repo}}/musicavideo.sh plano {{input}} --bruto",
+     "pausa_apos": true, "portao": { "mostrar": ["{{artefato:plano}}"] } }
+   ```
+
+   Marcadores do `comando`: `{{repo}}` (obrigatório), `{{input}}`, `{{alvo}}`,
+   `{{ref}}`, `{{saida}}` e `{{anterior:<campo>}}` — este último lê `campo: valor`
+   do recibo da fase anterior, que é como um dado que só o domínio sabe montar (um
+   slug, por exemplo) viaja entre fases. Marcador fora dessa lista é recusado na
+   carga; texto do usuário entra sempre ASPADO.
+
+4. **O portão é do DOMÍNIO** (opcional). `portao: { mostrar: [...] }` na fase com
+   `pausa_apos` diz o que vai para o chat quando ela termina: texto vai inline,
+   áudio e imagem vão como arquivo, vídeo vai como link publicado (mp4 de minutos
+   passa dos 50 MB que o Telegram aceita). Sem declarar, vale o comportamento
+   antigo — os roteiros em `textos/<REF>/<alvo>.md`, e o artefato da fase como
+   rede quando não há roteiro nenhum.
+5. Acrescente em `config/fluxos.json`: `{ "command", "repo", "descricao", "exemplo" }`.
+6. **Ajuda (opcional):** `HELP.md` na raiz do repo de domínio.
+7. Confira em SOMBRA antes de gastar qualquer coisa:
    `/<fluxo> <assunto> | sombra` imprime fase × alvo × fila × tarefa e **não enfileira nada**.
 
 O domínio diz para QUEM (canal por nome, `lives21`); o bot sabe ONDE (o caminho no disco).
