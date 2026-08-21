@@ -6,7 +6,7 @@
 // `config/fluxos.json` e não escreve ajuda nenhuma? A suíte fica vermelha aqui,
 // com o nome do domínio mudo — e o conserto é escrever o arquivo de ajuda OU
 // preencher `descricao`/`exemplo` no registro.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -48,6 +48,26 @@ describe('REGRA: todo domínio do catálogo é documentado', () => {
       expect(ajuda.length).toBeGreaterThan(60);
       // A referência certa (`A#N` vs `P#N`) é o que mais confunde na prática.
       expect(ajuda).toMatch(/#N|#\d/);
+    });
+
+    // O cartão derivado anunciava `| legenda=nao` para TODO domínio, mesmo onde
+    // o campo não faz nada: ele só age substituindo `{legenda}` no `entrega` de
+    // alguma fase. O musicavideo, plugado em 2026-08-20, não tem `entrega`
+    // nenhum — e a linha aparecia igual, mandando desligar uma legenda que não
+    // existe. Ajuda que mente custa mais que ajuda ausente.
+    it(`fluxo "${reg.command}" só oferece | legenda onde ela age`, () => {
+      // O CARTÃO DERIVADO, forçado com `ler` mudo: domínio com `HELP.md` escreve
+      // a própria ajuda e responde por ela — quem tem que parar de mentir é o
+      // texto que o bot gera sozinho.
+      const ajuda = ajudaDoFluxo(reg, comandosSkill, undefined, () => undefined);
+      if (!ajuda.includes('| legenda')) return;
+      const flow = JSON.parse(readFileSync(join(reg.repo, 'flow.json'), 'utf8')) as {
+        fases: { entrega?: string }[];
+      };
+      expect(
+        flow.fases.some((f) => f.entrega?.includes('{legenda}')),
+        `${reg.command} anuncia | legenda mas nenhuma fase usa {legenda}`,
+      ).toBe(true);
     });
   }
 });

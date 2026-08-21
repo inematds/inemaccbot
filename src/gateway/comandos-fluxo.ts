@@ -132,7 +132,12 @@ export function ajudaDoFluxo(
     'Campos (com "|" no fim, ou "--" em qualquer lugar):',
     '  | alvos=a,b   só esses públicos (ou --alvo=a --alvo=b)',
     '  | de=<fase>   começa nessa fase (as anteriores ficam puladas)',
-    '  | legenda=nao desliga a legenda do reel (padrão: COM, palavra a palavra)',
+    // Condicional pelo mesmo critério das linhas abaixo: só aparece onde faz
+    // algo. `legenda` só tem efeito substituindo `{legenda}` no `entrega` de
+    // alguma fase (`resolverOpcoes`) — num domínio sem esse marcador o campo é
+    // aceito pelo parser e não muda nada, e anunciá-lo é ajuda que mente.
+    ...(def.fases.some((f) => f.entrega?.includes('{legenda}'))
+      ? ['  | legenda=nao desliga a legenda do reel (padrão: COM, palavra a palavra)'] : []),
     '  | versao=N    versão do assunto',
     '  | sombra      mostra o plano sem enfileirar nada',
     // Derivada do `variantes` das fases: um domínio sem variante não vê a linha,

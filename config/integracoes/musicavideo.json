@@ -4,7 +4,7 @@
   "command": "musicavideo",
   "repo": {
     "url": "https://github.com/inematds/musicavideo",
-    "commit": "49bbc08",
+    "commit": "24e46d8",
     "pasta": "musicavideo"
   },
   "requer": {
@@ -27,7 +27,7 @@
       "versao_def": 1,
       "alvos": {
         "unico": {
-          "canal": "livesN",
+          "canal": "lives10",
           "gatilho": "usuário pede uma música com capa e clipe a partir de uma frase"
         }
       },
