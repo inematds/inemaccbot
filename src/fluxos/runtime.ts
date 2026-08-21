@@ -438,7 +438,21 @@ export class Fluxos {
         }
         // MÍDIA VAI COMO ARQUIVO. Um `.mp3` lido como UTF-8 vira lixo no chat, e
         // era isso que impedia o material de chegar: o portão só sabia texto.
+        //
+        // ...menos VÍDEO, que vai como LINK — o mesmo caminho do promoavatar
+        // (`entregarVideos`). Não é preferência de estilo: o clipe de uma música
+        // de 3 minutos passa de 200 MB, e o Telegram recusa documento acima de
+        // 50 MB. Anexar seria prometer entrega e falhar no arquivo que mais
+        // importa. Sem `publicar` configurado (ou se a publicação falhar), cai
+        // para anexo, e o texto do portão já carrega o caminho de qualquer jeito.
         if (ehMidia(caminho)) {
+          const link = ehVideo(caminho)
+            ? this.publicar?.(caminho, tituloPublicado(fluxo, faseDef.id, alvo), fluxo.tipo)
+            : undefined;
+          if (link) {
+            this.avisar(fluxo, `🎬 ${basename(caminho)}\n${link.links[0]}`);
+            continue;
+          }
           this.avisar(fluxo, `📎 ${basename(caminho)}`, caminho);
           continue;
         }
@@ -917,6 +931,20 @@ const EXT_MIDIA = new Set([
   'png', 'jpg', 'jpeg', 'webp', 'gif',
   'pdf', 'zip',
 ]);
+
+/** `MVD89-capa-clipe` — o nome do arquivo publicado. Carrega a REF e a fase
+ *  porque é o que permite achar o vídeo depois sem abrir o banco. */
+function tituloPublicado(fluxo: Fluxo, fase: string, alvo: string): string {
+  return `${fluxo.prefixo}${fluxo.id}-${fase}${alvo ? `-${alvo}` : ''}`;
+}
+
+const EXT_VIDEO = new Set(['mp4', 'mov', 'webm', 'mkv']);
+
+/** Vídeo vai por LINK: o Telegram recusa documento acima de 50 MB, e clipe de
+ *  música passa disso com folga. Mesma escolha do `entregarVideos`. */
+export function ehVideo(caminho: string): boolean {
+  return EXT_VIDEO.has(caminho.split('.').pop()?.toLowerCase() ?? '');
+}
 
 export function ehMidia(caminho: string): boolean {
   const ext = caminho.split('.').pop()?.toLowerCase() ?? '';

@@ -304,6 +304,44 @@ describe('portão entrega os roteiros no chat', () => {
     expect(evento?.texto).not.toContain('nao-e-texto');
   });
 
+  // VÍDEO VAI POR LINK, não anexado — o clipe de uma música de 3 minutos passa
+  // de 200 MB e o Telegram recusa documento acima de 50. É o mesmo caminho que
+  // o promoavatar já usa para os reels (`entregarVideos`).
+  it('portão que aponta VÍDEO manda o link publicado, não o arquivo', () => {
+    const recibo = join(dir, 'recibo-video.txt');
+    const clipe = join(dir, 'clipe.mp4');
+    writeFileSync(clipe, 'video');
+    writeFileSync(recibo, `clipe: ${clipe}\n`);
+    const publicados: string[] = [];
+    const comLink = new Fluxos({
+      fila, estado, agora: () => t,
+      raizArtefatos: join(dir, 'artefatos'), projetosDir: join(dir, 'projetos'),
+      aoEvento: (e) => eventos.push(e),
+      repoDe: () => REPO_DOMINIO,
+      publicar: (origem, titulo) => {
+        publicados.push(`${titulo}:${origem}`);
+        return { arquivo: origem, links: [`http://casa:8080/v/${titulo}.mp4`] };
+      },
+    });
+    const comPortao = {
+      ...def,
+      fases: def.fases.map((f) => (f.id === 'texto'
+        ? { ...f, portao: { mostrar: ['{{artefato:clipe}}'] } } : f)),
+    };
+    const id = comLink.criar({
+      tipo: 'promoavatar', definicao: comPortao, hash: hashDefinicao(comPortao, REPO_DOMINIO),
+      assunto: 'assunto', alvos: ['jovens'], chatId: 55,
+    }).id;
+    const job = fila.listar().find((j) => j.flow_ref === `A#${id}//texto`)!;
+    if (job.status !== 'running') fila.pegar(job.fila, 600, 'W');
+    fila.concluir(job.id, recibo, 'W', (j) => comLink.avancar(j));
+
+    const evento = eventos.find((e) => e.texto.includes('http://casa:8080'));
+    expect(evento).toBeDefined();
+    expect(evento?.anexo).toBeUndefined();          // link, não anexo
+    expect(publicados[0]).toContain(`A${id}-texto`); // nome carrega REF e fase
+  });
+
   it('arquivo de texto continua indo INLINE, sem virar anexo', () => {
     const recibo = join(dir, 'recibo-texto.txt');
     const plano = join(dir, 'PLANO-inline.md');
