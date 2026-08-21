@@ -237,6 +237,23 @@ else
   ok "o repo já traz o flow.json — o manifesto é só registro"
 fi
 
+# O `flow.json` DO REPO é semanticamente válido? Não basta existir.
+#
+# O passo 1 conferiu a cópia do MANIFESTO num temporário, e o registry do boot
+# só confere existência. Quando o repo é a FONTE (divergência que vira IMPORTAR,
+# ou manifesto sem definição), nada tinha rodado o validador real contra ele —
+# e um flow.json inválido atravessava a instalação para morrer no primeiro
+# comando. A tese deste script é o contrário: "a instalação parou" é melhor que
+# "o bot não sobe".
+if [ -f "$CLONE/flow.json" ]; then
+  if SAIDA_VAL="$(node "$REPO/scripts/plugar-ajuda.mjs" validar-repo "$CLONE" 2>&1)"; then
+    ok "flow.json do repo é válido — $SAIDA_VAL"
+  else
+    printf '%s\n' "$SAIDA_VAL" | sed 's/^/     /'
+    morre "o flow.json do repo de domínio é inválido — conserte lá e rode de novo"
+  fi
+fi
+
 # O comando declarado aponta para um script que EXISTE? É o `command -v` do
 # passo 3 aplicado ao que o domínio declarou — só possível desde que a invocação
 # deixou de ser prosa dentro de um prompt.

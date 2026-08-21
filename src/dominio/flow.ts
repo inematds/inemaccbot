@@ -210,7 +210,7 @@ export interface FlowDef {
 const FILAS_VALIDAS = new Set<Fila>(['render', 'navegador', 'texto', 'io', 'cpu']);
 // Começa com letra OU dígito: os públicos reais incluem `40mais` e `60mais`, e
 // quem define o vocabulário do domínio é o domínio — não o validador do bot.
-const NOME_SIMPLES = /^[a-z0-9][a-z0-9_-]{0,40}$/;
+export const NOME_SIMPLES = /^[a-z0-9][a-z0-9_-]{0,40}$/;
 
 function erro(campo: string, detalhe: string): never {
   throw new Error(`flow.json (${campo}): ${detalhe}`);
@@ -233,6 +233,16 @@ function texto(v: unknown, campo: string): string {
  * repo de domínio — e um `flow.json` que referencie skill inexistente tem que
  * ser recusado na CARGA, não no primeiro job.
  */
+/**
+ * Os marcadores que `entrada-fase.ts` sabe resolver num `comando`.
+ *
+ * Fechado de propósito, como `TAREFAS_DE_FASE`: marcador desconhecido vira
+ * string vazia na hora de montar a linha (nunca marcador cru — isso o shell
+ * interpretaria), e "argumento vazio" é o pior sintoma possível — o comando
+ * roda, faz outra coisa, e ninguém liga o efeito ao typo.
+ */
+export const MARCADORES_DE_COMANDO = new Set(['repo', 'input', 'alvo', 'ref', 'saida']);
+
 export const TAREFAS_DE_FASE = new Set([
   'fluxo-agente', 'fluxo-navegador', 'heygen.baixar', 'heygen.gerar',
   // A rota de CRÉDITOS: mesma fase, outra autenticação (OAuth pela CLI).
@@ -431,6 +441,28 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       if (kind !== 'function') erro(`fases[${i}].kind`, '"cli.rodar" é function — quem roda é o bot');
       if (comando && !comando.includes('{{repo}}')) {
         erro(`fases[${i}].comando`, 'precisa citar {{repo}} — caminho fixo não sobrevive a outra máquina');
+      }
+      // VOCABULÁRIO FECHADO de marcadores. `{{anteriro:slug}}` (typo) passava a
+      // carga, passava o `conferir-comandos` e virava argumento VAZIO no
+      // primeiro job — um erro de digitação custando uma execução inteira.
+      //
+      // `{{anterior:*}}` na PRIMEIRA fase é recusado à parte: não há fase
+      // anterior, então o argumento nasceria vazio sempre. É o tipo de coisa
+      // que só se descobre rodando, e não deveria.
+      for (const [, marcador] of (comando ?? '').matchAll(/\{\{([\w:]+)\}\}/g)) {
+        if (marcador.startsWith('anterior:')) {
+          if (i === 0) {
+            erro(`fases[${i}].comando`, `"{{${marcador}}}" na PRIMEIRA fase — não há recibo anterior`);
+          }
+          continue;
+        }
+        if (!MARCADORES_DE_COMANDO.has(marcador)) {
+          erro(
+            `fases[${i}].comando`,
+            `marcador "{{${marcador}}}" não existe — conhecidos: `
+            + `${[...MARCADORES_DE_COMANDO].map((m) => `{{${m}}}`).join(', ')}, {{anterior:<campo>}}`,
+          );
+        }
       }
     } else if (f.comando !== undefined) {
       erro(`fases[${i}].comando`, 'só faz sentido em tarefa "cli.rodar"');

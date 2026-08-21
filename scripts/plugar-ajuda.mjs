@@ -189,6 +189,27 @@ try {
         }
       }
     }
+  } else if (comando === 'validar-repo') {
+    // `<caminho-do-repo>` → roda o validador REAL (`carregarFlow`) contra o
+    // `flow.json` QUE ESTÁ NO REPO, depois da materialização.
+    //
+    // O buraco que isto fecha: `validar-fluxo` (passo 1) confere a cópia do
+    // MANIFESTO num temporário, e o registry do boot só confere que o arquivo
+    // EXISTE. Nos dois caminhos em que o repo é a fonte — divergência que vira
+    // IMPORTAR, e manifesto sem `definicao` — um flow.json semanticamente
+    // inválido atravessava a instalação inteira e morria no primeiro comando.
+    // A tese do script é que "a instalação parou" é melhor que "o bot não
+    // sobe"; até hoje ela valia para o manifesto e não para o repo.
+    const [repo] = args;
+    const { carregarFlow } = await import('../dist/dominio/flow.js');
+    const { carregarSkills } = await import('../dist/dominio/registry.js');
+    let skills = [];
+    try {
+      skills = carregarSkills(join(import.meta.dirname, '..', 'config', 'skills.json'),
+        join(import.meta.dirname, '..')).map((x) => x.command);
+    } catch { /* sem catálogo de skill: o flow que não usa skill continua válido */ }
+    const def = carregarFlow(repo, skills);
+    process.stdout.write(`${def.fases.length} fase(s) válida(s): ${def.fases.map((f) => f.id).join(', ')}\n`);
   } else if (comando === 'conferir-comandos') {
     // `<caminho-do-repo>` → confere que o script de cada fase `cli.rodar`
     // EXISTE. É o passo 3 (`command -v` dos binários) aplicado ao comando que o
@@ -230,7 +251,7 @@ try {
   } else {
     morrer(new Error(
       'uso: plugar-ajuda.mjs validar|chaves-faltando|invocacao|entrada'
-      + '|validar-fluxo|materializar|conferir-comandos|entrada-fluxo',
+      + '|validar-fluxo|materializar|validar-repo|conferir-comandos|entrada-fluxo',
     ));
   }
 } catch (e) {

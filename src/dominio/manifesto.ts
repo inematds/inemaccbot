@@ -16,6 +16,7 @@
 import { isAbsolute } from 'node:path';
 
 import type { Fila } from '../fila/types.js';
+import { NOME_SIMPLES } from './flow.js';
 import { COMANDO_VALIDO, FILAS_VALIDAS } from './registry.js';
 
 /**
@@ -267,7 +268,13 @@ const AJUDA_MINIMA = 60;
 
 /** Nome de fase: vira parte da referência no chat (`M#3/faixa`) e nome de
  *  arquivo de estado. Mesma forma conservadora do resto do sistema. */
-const ID_FASE = /^[a-z][a-z0-9-]{0,30}$/;
+// A regra de id de fase é UMA, e mora no `flow.ts` — este arquivo não tem uma
+// segunda opinião. A divergência era real e já mordia: aqui era
+// `^[a-z][a-z0-9-]{0,30}$` e lá `^[a-z0-9][a-z0-9_-]{0,40}$`, então uma fase
+// `40mais` ou `a_b` passava no `carregarFlow` e era recusada pelo manifesto —
+// exatamente o "segunda implementação divergiria no primeiro campo novo" que o
+// comentário do `conferirDefinicao` previa.
+const ID_FASE = NOME_SIMPLES;
 
 /**
  * Valida o manifesto de FLUXO.

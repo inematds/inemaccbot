@@ -943,6 +943,23 @@ describe('perfil por fase', () => {
       }, REPO_DOMINIO, def.fases.map((f) => f.tarefa))).toThrow(/cli\.rodar/);
     });
 
+    // Um typo (`{{anteriro:slug}}`) passava a carga e virava argumento VAZIO no
+    // primeiro job: o comando roda, faz outra coisa, e ninguém liga o efeito ao
+    // erro de digitação. Vocabulário fechado, como `TAREFAS_DE_FASE`.
+    it('marcador que não existe é recusado, com a lista do que existe', () => {
+      expect(() => validarFlow(comCli({ comando: 'bash {{repo}}/x.sh {{anteriro:slug}}' }),
+        REPO_DOMINIO, tarefas)).toThrow(/anteriro.*não existe/s);
+      expect(() => validarFlow(comCli({ comando: 'bash {{repo}}/x.sh {{publico}}' }),
+        REPO_DOMINIO, tarefas)).toThrow(/\{\{publico\}\}/);
+    });
+
+    // `{{anterior:*}}` na primeira fase nasce vazio SEMPRE — é erro de desenho,
+    // e só apareceria rodando.
+    it('{{anterior:campo}} na PRIMEIRA fase é recusado', () => {
+      expect(() => validarFlow(comCli({ comando: 'bash {{repo}}/x.sh {{anterior:slug}}' }),
+        REPO_DOMINIO, tarefas)).toThrow(/PRIMEIRA fase/);
+    });
+
     it('declarado direito, passa e sobrevive ao congelamento', () => {
       const d = validarFlow(comCli({ comando: 'bash {{repo}}/x.sh plano {{input}}' }),
         REPO_DOMINIO, tarefas);
