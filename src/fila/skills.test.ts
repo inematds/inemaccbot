@@ -211,6 +211,28 @@ describe('criarPromptDe', () => {
         .toThrow(/terminou sem declarar/);
     });
 
+    // O MVD#89: o agente declarou `RESULT: {{saida}}` CERTINHO e escreveu no
+    // recibo que a geração tinha falhado (o Suno recusou o prompt de estilo).
+    // O guarda do A#17 não pegou — ele só olha o caminho do RESGATE pelo
+    // arquivo, e aqui o contrato foi cumprido à risca. O job virou `done`, o
+    // portão da música abriu, e a fase de capa e clipe começou a rodar sobre
+    // uma faixa que não existia.
+    it('RESULT: correto com recibo que anuncia erro NÃO é sucesso', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(
+        caminhoSaida(),
+        'slug: para-a-musica-2\nerro: geração de música falhou — Suno recusou a tag\n',
+      );
+      expect(() => ctx.interpretarSaida!(`RESULT: ${caminhoSaida()}`))
+        .toThrow(/recibo da fase declara erro/);
+    });
+
+    it('recibo sem erro nenhum continua passando com RESULT: correto', async () => {
+      const ctx = await criarPromptDe(opts())(jobDeFase());
+      writeFileSync(caminhoSaida(), 'slug: x\nfaixa: /out/faixa-1.mp3\n');
+      expect(ctx.interpretarSaida!(`RESULT: ${caminhoSaida()}`)).toBe(caminhoSaida());
+    });
+
     it('arquivo que só MENCIONA erro no meio da linha continua válido', async () => {
       const ctx = await criarPromptDe(opts())(jobDeFase());
       writeFileSync(caminhoSaida(), 'A17-jovens-v1 (gerado após um ERRO: de rede)\n');

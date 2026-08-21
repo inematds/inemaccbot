@@ -214,7 +214,7 @@ function contextoDeFase(job: Job, opts: OpcoesSkills, motorForcado?: string): Co
     // Ver `aceitarPeloArquivo`.
     interpretarSaida: (bruto: string) => {
       try {
-        return extrairArtefato(bruto, ['txt']);
+        return recusarReciboDeErro(extrairArtefato(bruto, ['txt']));
       } catch (err) {
         if (aceitarPeloArquivo(err, bruto, saida)) {
           opts.log?.(`[job ${job.id}] sem "RESULT:", mas ${saida} existe — aceito pelo arquivo`);
@@ -248,6 +248,34 @@ function contextoDeFase(job: Job, opts: OpcoesSkills, motorForcado?: string): Co
  *    arquivo e morrido antes de escrever; aceitar isso entregaria um recibo em
  *    branco para a fase seguinte.
  */
+/**
+ * Recibo que ANUNCIA ERRO não é recibo — mesmo com o `RESULT:` correto.
+ *
+ * O guarda equivalente já existia, mas só no resgate pelo arquivo (o furo do
+ * A#17). Faltava o caminho normal: o agente declara `RESULT: {{saida}}`
+ * certinho e escreve DENTRO do arquivo que a coisa falhou. O job vira `done`, o
+ * portão abre, e a fase seguinte roda sobre um trabalho que não existe.
+ *
+ * Aconteceu no MVD#89 (2026-08-21): o Suno recusou o `prompt_estilo` por citar
+ * um artista, nenhuma faixa foi gerada, o recibo dizia `erro: geração de música
+ * falhou` — e o fluxo seguiu para a fase de capa e clipe como se a música
+ * estivesse pronta.
+ *
+ * Início de linha, e só: um artefato legítimo pode citar a palavra no meio de
+ * uma frase, e recusar isso trocaria um defeito por outro.
+ */
+function recusarReciboDeErro(caminho: string): string {
+  let texto: string;
+  try {
+    texto = readFileSync(caminho, 'utf8');
+  } catch {
+    return caminho;   // ilegível é outro problema, e quem espera pelo arquivo o vê
+  }
+  const m = /^[\s>*_`-]*ERRO\s*:\s*(.+)$/im.exec(texto);
+  if (m) throw new SemContrato(`o recibo da fase declara erro: ${m[1]!.trim()}`);
+  return caminho;
+}
+
 function aceitarPeloArquivo(err: unknown, bruto: string, saida: string): boolean {
   if (!(err instanceof SemContrato)) return false;
   // Só o caso "não declarou NADA". As outras mensagens de `SemContrato` são
