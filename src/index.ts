@@ -194,7 +194,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   let fluxosRegistrados: FluxoRegistrado[] = [];
   /** Avisos de fluxo produzidos DENTRO da transação do ack, drenados logo
    * depois dela — ver `aoEvento` abaixo. */
-  const eventosDeFluxo: { chatId: number; texto: string }[] = [];
+  const eventosDeFluxo: { chatId: number; texto: string; anexo?: string }[] = [];
   let lacos: Promise<void>[] = [];
 
   const timeouts = new Set<NodeJS.Timeout>();
@@ -447,6 +447,18 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
         const e = eventosDeFluxo.shift()!;
         try {
           await transporte.responder(e.chatId, e.texto);
+          // O ANEXO é tentado DEPOIS do texto e num try próprio: arquivo grande
+          // demais para o Telegram (50 MB) não pode fazer sumir a mensagem que
+          // diz o que aconteceu. O caminho já foi no texto do portão, então
+          // falhar aqui degrada para "está no disco", não para silêncio.
+          if (e.anexo && transporte.enviarDocumento) {
+            try {
+              await transporte.enviarDocumento(e.chatId, e.anexo);
+            } catch (erroAnexo) {
+              deps.log(`fluxo: anexo não entregue (${e.anexo}): ${(erroAnexo as Error).message}`);
+              await transporte.responder(e.chatId, `⚠️ não consegui enviar o arquivo — ele está em ${e.anexo}`);
+            }
+          }
         } catch (erro) {
           // §8: perder o aviso é ruim, derrubar o worker é pior. O log fica.
           deps.log(`fluxo: aviso não entregue: ${(erro as Error).message}`);

@@ -57,7 +57,7 @@
           "pausa_apos": true,
           "portao": {
             "mostrar": [
-              "{{artefato}}"
+              "{{artefato:musica}}"
             ]
           },
           "comando": "bash {{repo}}/musicavideo.sh faz {{anterior:slug}} musica --sim --sem-revisao --aprovar"
@@ -72,7 +72,8 @@
           "pausa_apos": true,
           "portao": {
             "mostrar": [
-              "{{artefato}}"
+              "{{artefato:capa}}",
+              "{{artefato:clipe}}"
             ]
           },
           "comando": "bash {{repo}}/musicavideo.sh faz {{anterior:slug}} --sim --sem-revisao --aprovar"

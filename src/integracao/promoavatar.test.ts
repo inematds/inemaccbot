@@ -27,7 +27,7 @@ let fila: FilaSqlite;
 let estado: EstadoFluxos;
 let fluxos: Fluxos;
 let def: FlowDef;
-const eventos: { chatId: number; texto: string }[] = [];
+const eventos: { chatId: number; texto: string; anexo?: string }[] = [];
 const t = 1_000;
 
 beforeEach(() => {
@@ -276,6 +276,52 @@ describe('portão entrega os roteiros no chat', () => {
     // Declarou: nenhuma das duas heurísticas antigas entra.
     expect(eventos.some((e) => e.texto.includes('Sem roteiro em'))).toBe(false);
     expect(eventos.some((e) => e.texto.includes('produziu'))).toBe(false);
+  });
+
+  // MÍDIA VAI COMO ARQUIVO. Até 2026-08-21 o portão só empurrava texto: a
+  // faixa, a capa e o clipe ficavam no disco e, do chat, "não acontecia nada"
+  // quando o fluxo terminava. Um `.mp3` lido como UTF-8 seria lixo na tela.
+  it('portão que aponta mídia manda o ARQUIVO, não o conteúdo', () => {
+    const recibo = join(dir, 'recibo-midia.txt');
+    const faixa = join(dir, 'faixa-1.mp3');
+    writeFileSync(faixa, 'nao-e-texto');
+    writeFileSync(recibo, `musica: ${faixa}\n`);
+    const comPortao = {
+      ...def,
+      fases: def.fases.map((f) => (f.id === 'texto'
+        ? { ...f, portao: { mostrar: ['{{artefato:musica}}'] } } : f)),
+    };
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: comPortao, hash: hashDefinicao(comPortao, REPO_DOMINIO),
+      assunto: 'assunto', alvos: ['jovens'], chatId: 55,
+    }).id;
+    ackar(`A#${id}//texto`, recibo);
+
+    const evento = eventos.find((e) => e.anexo);
+    expect(evento?.anexo).toBe(faixa);
+    // O texto que acompanha diz o NOME, não o conteúdo do arquivo.
+    expect(evento?.texto).toContain('faixa-1.mp3');
+    expect(evento?.texto).not.toContain('nao-e-texto');
+  });
+
+  it('arquivo de texto continua indo INLINE, sem virar anexo', () => {
+    const recibo = join(dir, 'recibo-texto.txt');
+    const plano = join(dir, 'PLANO-inline.md');
+    writeFileSync(plano, '# Além da Terra\n\nconteúdo para ler no chat');
+    writeFileSync(recibo, `plano: ${plano}\n`);
+    const comPortao = {
+      ...def,
+      fases: def.fases.map((f) => (f.id === 'texto'
+        ? { ...f, portao: { mostrar: ['{{artefato:plano}}'] } } : f)),
+    };
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: comPortao, hash: hashDefinicao(comPortao, REPO_DOMINIO),
+      assunto: 'assunto', alvos: ['jovens'], chatId: 55,
+    }).id;
+    ackar(`A#${id}//texto`, recibo);
+
+    expect(eventos.some((e) => e.anexo)).toBe(false);
+    expect(eventos.some((e) => e.texto.includes('conteúdo para ler no chat'))).toBe(true);
   });
 
   // Marcador que não resolve vira AVISO, nunca portão mudo — que é o defeito

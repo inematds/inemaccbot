@@ -6,6 +6,7 @@
 // transação do ack, para que "fase feita" e "próxima fase enfileirada" nunca
 // existam separadas (foi assim que o v1 produziu dispatch duplicado).
 import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { flowRef, type FaseDef, type FlowDef } from '../dominio/flow.js';
 import { primeiraFala } from '../dominio/roteiro.js';
 import type { FilaSqlite } from '../fila/store.js';
@@ -72,6 +73,15 @@ export interface OpcoesRuntime {
 export interface EventoFluxo {
   chatId: number;
   texto: string;
+  /**
+   * Arquivo a ANEXAR — a faixa, a capa, o clipe.
+   *
+   * Até 2026-08-21 o portão de fluxo só empurrava texto, e o material ficava no
+   * disco: o fluxo terminava e, do chat, "não acontecia nada". O bot já sabia
+   * mandar documento (`transporte.enviarDocumento`), mas só no caminho de
+   * notificação de job com chat — que fase de fluxo não tem, de propósito.
+   */
+  anexo?: string;
 }
 
 /** O que o gateway passa para criar um fluxo. */
@@ -165,9 +175,9 @@ export class Fluxos {
     return { ...pedido.definicao, fases };
   }
 
-  private avisar(fluxo: Fluxo, texto: string): void {
+  private avisar(fluxo: Fluxo, texto: string, anexo?: string): void {
     if (fluxo.chat_id === null) return;
-    this.aoEvento({ chatId: fluxo.chat_id, texto });
+    this.aoEvento({ chatId: fluxo.chat_id, texto, ...(anexo ? { anexo } : {}) });
   }
 
   /**
@@ -424,6 +434,12 @@ export class Fluxos {
         const caminho = resolverMostrar(molde, { repo, ref: `${fluxo.prefixo}${fluxo.id}`, alvo, artefato });
         if (!caminho) {
           this.avisar(fluxo, `⚠️ ${fluxo.prefixo}#${fluxo.id} — o portão pede "${molde}" e não consegui resolver.`);
+          continue;
+        }
+        // MÍDIA VAI COMO ARQUIVO. Um `.mp3` lido como UTF-8 vira lixo no chat, e
+        // era isso que impedia o material de chegar: o portão só sabia texto.
+        if (ehMidia(caminho)) {
+          this.avisar(fluxo, `📎 ${basename(caminho)}`, caminho);
           continue;
         }
         let corpo: string;
@@ -885,4 +901,24 @@ export function resolverMostrar(
     return valor;
   });
   return faltou ? null : caminho;
+}
+
+/**
+ * O que vai como ARQUIVO em vez de texto.
+ *
+ * Por extensão, e não por heurística de conteúdo: adivinhar "isto parece
+ * binário" erra nos dois sentidos — um `.md` com um caractere estranho viraria
+ * anexo, e um `.mp4` truncado viraria parede de lixo no chat. Extensão é o que
+ * o domínio controla e o que o operador consegue prever.
+ */
+const EXT_MIDIA = new Set([
+  'mp3', 'wav', 'm4a', 'ogg', 'flac',
+  'mp4', 'mov', 'webm', 'mkv',
+  'png', 'jpg', 'jpeg', 'webp', 'gif',
+  'pdf', 'zip',
+]);
+
+export function ehMidia(caminho: string): boolean {
+  const ext = caminho.split('.').pop()?.toLowerCase() ?? '';
+  return EXT_MIDIA.has(ext);
 }
