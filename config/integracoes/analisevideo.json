@@ -3,17 +3,18 @@
   "rota": "skill",
   "command": "analisevideo",
   "repo": {
-    "url": "https://github.com/inematds/analisevideo.git",
-    "commit": "2b16f14"
+    "url": "https://github.com/inematds/analisevideo",
+    "commit": "2b16f14",
+    "pasta": "repo"
   },
   "invocacao": "bash {{repo}}/analisevideo.sh analisa \"{{input}}\"",
-  "fila": "io",
+  "fila": "navegador",
   "artefato_exts": [
     "md",
     "json"
   ],
-  "timeout_segundos": 1800,
-  "max_tentativas": 2,
+  "timeout_segundos": 600,
+  "max_tentativas": 1,
   "aceita_destino": false,
   "requer": {
     "bin": [
@@ -29,20 +30,25 @@
     "fontes": []
   },
   "prompt": "prompts/analisevideo.md",
-  "descricao": "Análise visual/cinematográfica de vídeo (câmera, luz, montagem, trilha) com Gemini, arquivada num banco pesquisável.",
-  "exemplo": "analisevideo: https://youtube.com/watch?v=exemplo",
+  "descricao": "Análise visual/cinematográfica de vídeo (câmera, luz, montagem, trilha) via Gemini, arquivada num banco pesquisável",
+  "exemplo": "analisevideo: https://youtube.com/watch?v=xxxx",
   "gerado": {
     "em": "2026-08-20",
     "por": "claude",
     "confianca": {
+      "manifesto": "chute",
+      "rota": "chute",
+      "command": "lido",
+      "repo": "lido",
       "invocacao": "lido",
       "fila": "chute",
+      "artefato_exts": "lido",
       "timeout_segundos": "chute",
       "max_tentativas": "chute",
       "aceita_destino": "chute",
-      "requer.bin": "lido",
-      "requer.chaves": "lido",
-      "artefato_exts": "lido"
+      "requer": "lido",
+      "prompt": "chute",
+      "descricao": "lido"
     }
   }
 }
