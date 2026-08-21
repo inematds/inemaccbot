@@ -796,4 +796,60 @@ describe('perfil por fase', () => {
       fases: def.fases.map((f) => (f.id === 'texto' ? { ...f, perfil: { modelo: 'opus5' } } : f)),
     }, REPO_DOMINIO, def.fases.map((f) => f.tarefa))).toThrow(/opus5/);
   });
+
+  // `cli.rodar` — o comando é do domínio, e é CONFERIDO na carga. A alternativa
+  // (prosa dentro de um prompt) foi o que deixou um modelo inventar o binário
+  // `musicavideo`, que não existe no PATH, e só falhar no primeiro job real.
+  describe('cli.rodar: o comando é declarado e validado', () => {
+    const comCli = (extra: Record<string, unknown>): FlowDef => ({
+      ...def,
+      fases: [{
+        id: 'roda', escopo: 'fluxo', fila: 'io', kind: 'function',
+        tarefa: 'cli.rodar', max_tentativas: 1, ...extra,
+      }] as FlowDef['fases'],
+    });
+    const tarefas = ['cli.rodar'];
+
+    it('sem `comando`, o flow.json é recusado na carga', () => {
+      expect(() => validarFlow(comCli({}), REPO_DOMINIO, tarefas)).toThrow(/comando/);
+    });
+
+    it('comando com caminho FIXO é recusado — não sobrevive a outra máquina', () => {
+      expect(() => validarFlow(comCli({ comando: 'bash /home/alguem/x.sh {{input}}' }),
+        REPO_DOMINIO, tarefas)).toThrow(/\{\{repo\}\}/);
+    });
+
+    // Com prompt e tudo: mesmo assim é recusado. `cli.rodar` como agente seria
+    // exatamente o desenho que estamos desmontando — um modelo lendo prosa para
+    // digitar um comando que já está declarado ao lado.
+    it('kind agent com cli.rodar é recusado — quem roda é o BOT', () => {
+      expect(() => validarFlow(
+        comCli({ comando: 'bash {{repo}}/x.sh', kind: 'agent', prompt: 'prompts/fase1-texto.md' }),
+        REPO_DOMINIO, tarefas,
+      )).toThrow(/function/);
+    });
+
+    it('`comando` em fase que não é cli.rodar é recusado', () => {
+      expect(() => validarFlow({
+        ...def,
+        fases: def.fases.map((f) => (f.id === 'texto' ? { ...f, comando: 'bash {{repo}}/x.sh' } : f)),
+      }, REPO_DOMINIO, def.fases.map((f) => f.tarefa))).toThrow(/cli\.rodar/);
+    });
+
+    it('declarado direito, passa e sobrevive ao congelamento', () => {
+      const d = validarFlow(comCli({ comando: 'bash {{repo}}/x.sh plano {{input}}' }),
+        REPO_DOMINIO, tarefas);
+      expect(d.fases[0]!.comando).toBe('bash {{repo}}/x.sh plano {{input}}');
+      expect(congelar(d, REPO_DOMINIO).fases[0]!.comando)
+        .toBe('bash {{repo}}/x.sh plano {{input}}');
+    });
+  });
+
+  // A GARANTIA DE NÃO-REGRESSÃO: o promoavatar é anterior a tudo isso e não
+  // declara `comando` em fase nenhuma. Campo novo é opcional — quem não usa
+  // continua idêntico.
+  it('o flow.json REAL do promoavatar não muda com o campo novo', () => {
+    expect(def.fases.some((f) => f.comando !== undefined)).toBe(false);
+    expect(def.fases.map((f) => f.tarefa)).not.toContain('cli.rodar');
+  });
 });

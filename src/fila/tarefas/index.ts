@@ -9,6 +9,7 @@ import { criarClienteHeygen, criarHeygenBaixar, criarHeygenGerar, lerChaveHeygen
 import { clienteViaCli, rodarCliReal } from './heygen-cli.js';
 import { criarReelMontar, disparoReal } from './reel.js';
 import { criarHeygenEstudio } from './heygen-estudio.js';
+import { criarCliRodar } from './cli.js';
 
 export function criarTarefas(opts: {
   raizMidia: string;
@@ -44,6 +45,11 @@ export function criarTarefas(opts: {
     'reel.montar': criarReelMontar({ disparar: disparoReal() }),
     // A rota `| estudio`: mesmo efeito e mesma cobrança do `| navega`, com um
     // script no lugar do agente. O `navega` fica de pé como caminho de volta.
+    // O CLI do domínio, sem agente: o comando é declarado no `flow.json` da
+    // fase e o bot o executa. Genérica de propósito — serve a qualquer domínio
+    // com linha de comando, e é o que impede o próximo de nascer com um prompt
+    // explicando a um modelo como rodar o próprio script.
+    'cli.rodar': criarCliRodar(),
     'heygen.estudio': criarHeygenEstudio(cliente, {
       perfil: opts.heygenPerfilChrome ?? '',
       script: opts.heygenEstudioScript ?? 'scripts/heygen-estudio.mjs',

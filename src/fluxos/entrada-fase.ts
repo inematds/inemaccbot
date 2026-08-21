@@ -74,6 +74,30 @@ export function montarInput(ctx: ContextoEntrada): string {
     fluxo: { ref: `${fluxo.prefixo}#${fluxo.id}`, fase: fase.id, alvo, ...dadosAlvo },
   };
 
+  // `cli.rodar` — o CLI do domínio, sem agente. Os marcadores viram uma linha de
+  // comando AQUI, onde o bot conhece repo, ref, alvo e a entrada do usuário; a
+  // tarefa só executa. Ver o cabeçalho de `fila/tarefas/cli.ts` para o que isso
+  // deixou de custar.
+  if (fase.tarefa === 'cli.rodar') {
+    const saida = `${ctx.raizArtefatos}/fluxos/${fluxo.prefixo}${fluxo.id}`
+      + `/${fase.id}${alvo ? `-${alvo}` : ''}.txt`;
+    return JSON.stringify({
+      ...base,
+      comando: resolverComando(fase.comando ?? '', {
+        repo: ctx.repoDominio ?? '',
+        input: fluxo.assunto,
+        alvo,
+        ref: `${fluxo.prefixo}${fluxo.id}`,
+        saida,
+      }),
+      // O cwd é o repo de DOMÍNIO, como nas fases de agente: é onde o script
+      // mora e onde ele espera estar.
+      cwd: ctx.repoDominio ?? '',
+      saida,
+      ...(fase.espera ? { espera: fase.espera } : {}),
+    });
+  }
+
   if (fase.tarefa === 'heygen.baixar') {
     return JSON.stringify({
       ...base,
@@ -266,4 +290,35 @@ function falaDoAlvo(repo: string | undefined, fluxo: Fluxo, alvo: string): strin
   } catch {
     return '';
   }
+}
+
+/**
+ * Marcador → valor, com ASPAS POSIX em tudo que vem de fora.
+ *
+ * O `{{input}}` é texto que o usuário digitou no Telegram. Interpolar isso numa
+ * linha de `bash -c` sem aspar é a diferença entre um assunto com aspas simples
+ * e um comando arbitrário rodando no repo de domínio. Aspar aqui — e não pedir
+ * ao domínio que se lembre de aspar no `flow.json` — é o que faz a regra valer
+ * para todo domínio, inclusive o que ainda não existe.
+ *
+ * Marcador sem valor vira string vazia ASPADA (`''`), nunca o marcador cru: um
+ * `{{alvo}}` sobrando na linha de comando seria interpretado pelo shell.
+ */
+export function resolverComando(
+  molde: string,
+  campos: { repo: string; input: string; alvo: string; ref: string; saida: string },
+): string {
+  return molde.replace(/\{\{(\w+)\}\}/g, (_, chave: string) => {
+    const valor = (campos as Record<string, string>)[chave] ?? '';
+    // O `{{repo}}` entra SEM aspas quando é um caminho simples, para o comando
+    // ficar legível no log e no `/status`; qualquer coisa fora de [\w/.-] volta
+    // a ser aspada. Os outros campos são sempre aspados.
+    if (chave === 'repo' && /^[\w/.@+-]+$/.test(valor)) return valor;
+    return aspar(valor);
+  });
+}
+
+/** Aspas simples no estilo POSIX: nenhum texto vira comando. */
+function aspar(s: string): string {
+  return `'${String(s ?? '').replace(/'/g, `'\\''`)}'`;
 }

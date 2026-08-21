@@ -106,6 +106,26 @@ export interface FaseDef {
    * como rede quando não há roteiro nenhum.
    */
   portao?: { mostrar: string[] };
+  /**
+   * O COMANDO da fase, quando `tarefa: "cli.rodar"` — o domínio declara, o bot
+   * executa. Sem agente no meio.
+   *
+   * Existe pelo mesmo motivo que `reel.montar` existe (ver o cabeçalho de
+   * `fila/tarefas/reel.ts`): fase que só monta uma linha de comando não precisa
+   * de um modelo. No musicavideo eram QUATRO fases assim — e o prompt de uma
+   * delas mandava rodar um binário `musicavideo` que não existe no PATH, porque
+   * quem o escreveu foi um modelo adivinhando (MVD#87, 2026-08-21). Comando
+   * declarado é comando que o `plugar-fluxo.sh` consegue conferir na
+   * instalação; prosa dentro de prompt, não.
+   *
+   * Marcadores: `{{repo}}`, `{{input}}`, `{{alvo}}`, `{{ref}}` e `{{saida}}` —
+   * todos já ASPADOS na hora de montar a linha, então texto do usuário nunca
+   * vira comando.
+   *
+   * `{{repo}}` é obrigatório pela mesma regra da rota skill do manifesto
+   * (`invocacao`): caminho fixo não sobrevive a outra máquina.
+   */
+  comando?: string;
 }
 
 export interface AlvoDef {
@@ -222,6 +242,11 @@ export const TAREFAS_DE_FASE = new Set([
   // A fase de reel como FUNÇÃO: o agente só resolvia nomes e disparava um
   // comando. Ver `fila/tarefas/reel.ts` e `docs/custo-por-fase-a19-a29.md`.
   'reel.montar',
+  // O CLI do domínio, com o comando declarado em `comando`. Genérica: é a que
+  // dispensa cada domínio novo de escrever um prompt ensinando um modelo a
+  // rodar o próprio script — que foi como o musicavideo nasceu, com um binário
+  // inventado e um contrato de saída errado (MVD#87, 2026-08-21).
+  'cli.rodar',
 ]);
 
 export function validarFlow(dados: unknown, raiz: string, skills: string[] = []): FlowDef {
@@ -397,6 +422,20 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       portao = { mostrar: (lista as string[]).map((x) => x.trim()) };
     }
 
+    // `cli.rodar` — o comando é do DOMÍNIO, e é conferido aqui, não descoberto
+    // no primeiro job às três da manhã.
+    let comando: string | undefined;
+    if (f.tarefa === 'cli.rodar') {
+      comando = typeof f.comando === 'string' ? f.comando.trim() : '';
+      if (!comando) erro(`fases[${i}].comando`, 'obrigatório em tarefa "cli.rodar"');
+      if (kind !== 'function') erro(`fases[${i}].kind`, '"cli.rodar" é function — quem roda é o bot');
+      if (comando && !comando.includes('{{repo}}')) {
+        erro(`fases[${i}].comando`, 'precisa citar {{repo}} — caminho fixo não sobrevive a outra máquina');
+      }
+    } else if (f.comando !== undefined) {
+      erro(`fases[${i}].comando`, 'só faz sentido em tarefa "cli.rodar"');
+    }
+
     let espera: FaseDef['espera'];
     if (f.espera !== undefined) {
       const e = f.espera as Record<string, unknown>;
@@ -423,6 +462,7 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       ...(typeof f.entrega === 'string' ? { entrega: f.entrega } : {}),
       ...(f.pausa_apos === true ? { pausa_apos: true } : {}),
       ...(portao ? { portao } : {}),
+      ...(comando ? { comando } : {}),
       ...(opcional ? { opcional } : {}),
       ...(perfil ? { perfil } : {}),
     };

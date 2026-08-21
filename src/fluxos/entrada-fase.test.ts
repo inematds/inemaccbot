@@ -23,6 +23,53 @@ function ctx(over: Partial<ContextoEntrada> = {}): ContextoEntrada {
   };
 }
 
+// `cli.rodar` — a linha de comando é montada AQUI, onde o bot conhece repo,
+// ref, alvo e a entrada do usuário. O agente que fazia isso inventou um binário
+// que não existe (MVD#87, 2026-08-21).
+describe('montarInput: cli.rodar', () => {
+  function ctxCli(comando: string, assunto = 'balada pop sobre recomeço') {
+    return ctx({
+      fluxo: { id: 89, prefixo: 'MVD', versao: 1, assunto } as Fluxo,
+      fase: { id: 'plano', kind: 'function', tarefa: 'cli.rodar', comando } as unknown as FaseDef,
+      alvo: 'unico',
+    });
+  }
+
+  it('resolve os marcadores e ASPA a entrada do usuário', () => {
+    const e = JSON.parse(montarInput(ctxCli('bash {{repo}}/musicavideo.sh plano {{input}}')));
+    expect(e.comando).toBe("bash /repo/musicavideo.sh plano 'balada pop sobre recomeço'");
+    expect(e.cwd).toBe('/repo');
+  });
+
+  // O assunto vem do Telegram. Sem aspar, um apóstrofo já quebra a linha — e
+  // pior que quebrar é NÃO quebrar e virar comando.
+  it('texto com aspas e ponto-e-vírgula não vira comando', () => {
+    const e = JSON.parse(montarInput(
+      ctxCli('bash {{repo}}/x.sh {{input}}', "o'brien; rm -rf /tmp/nao"),
+    ));
+    expect(e.comando).toBe("bash /repo/x.sh 'o'\\''brien; rm -rf /tmp/nao'");
+  });
+
+  // Determinístico por fluxo × fase × alvo: uma retentativa nasce com outro id
+  // de job e tem que reescrever o MESMO recibo.
+  it('o recibo é nomeado pelo bot, não pelo domínio', () => {
+    const e = JSON.parse(montarInput(ctxCli('bash {{repo}}/x.sh {{input}}')));
+    expect(e.saida).toBe('/art/fluxos/MVD89/plano-unico.txt');
+  });
+
+  it('{{alvo}}, {{ref}} e {{saida}} também chegam resolvidos', () => {
+    const e = JSON.parse(montarInput(ctxCli('x {{ref}} {{alvo}} {{saida}}')));
+    expect(e.comando).toBe("x 'MVD89' 'unico' '/art/fluxos/MVD89/plano-unico.txt'");
+  });
+
+  // Marcador sem valor vira string vazia ASPADA, nunca o marcador cru — que o
+  // shell interpretaria.
+  it('marcador desconhecido não sobra na linha', () => {
+    const e = JSON.parse(montarInput(ctxCli('x {{inexistente}}')));
+    expect(e.comando).toBe("x ''");
+  });
+});
+
 describe('montarInput: fase de reel como função', () => {
   it('deriva TODOS os campos do fluxo e do alvo — nada de parsear nome de arquivo', () => {
     const e = JSON.parse(montarInput(ctx()));
