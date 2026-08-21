@@ -467,7 +467,15 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
 export function criarFluxo(
   registrado: FluxoRegistrado, argumento: string, deps: DepsFluxo,
 ): string {
-  const lido = interpretarArgumento(argumento);
+  // COPIAR E COLAR A MENSAGEM ANTERIOR é o jeito mais natural de repetir um
+  // pedido — e traz o `/comando` junto. Sem isto ele vira a primeira palavra do
+  // ASSUNTO: no MVD#90 o texto que foi para o planejador começava com
+  // "/musicavideo Para a música...", e o domínio planejou uma música sobre isso.
+  // Tirar o eco é seguro porque o comando já foi consumido pelo roteamento; o
+  // que sobra aqui é assunto por definição.
+  const lido = interpretarArgumento(
+    argumento.replace(new RegExp(`^\\s*/${registrado.command}\\b\\s*`, 'i'), ''),
+  );
   if ('erro' in lido) return lido.erro === 'sem-assunto'
     ? `faltou o assunto — ex.: ${registrado.exemplo}`
     : lido.erro;

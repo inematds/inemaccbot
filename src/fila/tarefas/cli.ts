@@ -142,10 +142,25 @@ function executar(e: EntradaCli, ctx: ContextoTarefa): Promise<string> {
     };
 
     proc.on('error', (erro) => { limpar(); reject(erro); });
-    proc.on('close', (codigo) => {
+    proc.on('close', (codigo, sinalDeMorte) => {
       limpar();
       if (codigo === 0) {
         resolve(out.trim() ? out : err);
+        return;
+      }
+      // MORTO POR SINAL não é "código null". Node dá `code: null` quando o
+      // processo foi morto, e o sinal vem no segundo argumento — sem ele a
+      // mensagem no chat era `o comando saiu com código null:` e nem dizia que
+      // alguém o matou. Aconteceu no MVD#90: um `systemctl restart` derrubou a
+      // fase de plano no meio, e o chat culpou o domínio.
+      if (codigo === null) {
+        const ondeVer = e.saida ? ` (saída parcial em ${e.saida}.log, se houver)` : '';
+        reject(new Error(
+          `o comando foi MORTO por ${sinalDeMorte ?? 'sinal desconhecido'}`
+          + ' — restart do serviço, `/cancelar` ou o teto de tempo.'
+          + ' Fase longa deve declarar `espera` no flow.json para rodar destacada'
+          + `${ondeVer}: ${cauda(err || out)}`,
+        ));
         return;
       }
       // A mensagem de erro carrega a CAUDA da saída, não o comando inteiro: é o

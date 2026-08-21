@@ -410,6 +410,23 @@ describe('--alvo=x, a forma de bandeira', () => {
 // Em 2026-08-21 o `/musicavideo status` criou o MVD#88 — um fluxo de verdade,
 // com o assunto "status", que rodou a fase de plano e falhou. Perguntar pelo
 // andamento não pode custar um fluxo.
+// Copiar e colar a mensagem anterior traz o `/comando` junto, e ele virava a
+// primeira palavra do ASSUNTO: no MVD#90 (2026-08-21) o texto que foi para o
+// planejador começava com "/musicavideo Para a música...", e o domínio planejou
+// uma música sobre isso.
+describe('/<fluxo> com o comando ecoado no texto', () => {
+  it('o eco do comando não vira parte do assunto', async () => {
+    await manda('/brinquedo /brinquedo Lançamento de março | alvos=um');
+    const fluxo = fluxos.status(1)!.fluxo;
+    expect(fluxo.assunto).toBe('Lançamento de março');
+  });
+
+  it('um assunto que só MENCIONA o comando no meio fica intacto', async () => {
+    await manda('/brinquedo compare o /brinquedo com o outro | alvos=um');
+    expect(fluxos.status(1)!.fluxo.assunto).toBe('compare o /brinquedo com o outro');
+  });
+});
+
 describe('/<fluxo> status — a situação do último fluxo do domínio', () => {
   it('não cria fluxo nenhum', async () => {
     await manda('/brinquedo status');
