@@ -10,5 +10,11 @@
     "repo": "promoavatar3",
     "descricao": "como o promoavatar, mas TRÊS vídeos por público (alcance/autoridade/promocional) — alvo é <publico>-alc|aut|pro",
     "exemplo": "/promoavatar3 Não comece aprendendo ferramentas | alvos=jovens-alc,jovens-aut,jovens-pro"
+  },
+  {
+    "command": "musicavideo",
+    "repo": "musicavideo",
+    "descricao": "Uma frase vira música + capa + clipe, planejados juntos e executados em fases com portão de aprovação.",
+    "exemplo": "/musicavideo balada pop sobre recomeço"
   }
 ]
