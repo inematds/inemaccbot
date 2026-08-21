@@ -79,6 +79,31 @@ Três regras governam a materialização, e nenhuma é negociável:
    commitar. Commit em repo alheio, com autor que talvez não seja o certo, é
    decisão do dono.
 
+### O portão é do domínio: `portao.mostrar`
+
+O portão nasceu lendo `textos/<REF>/<alvo>.md` — a forma do promoavatar. Quando
+o musicavideo entrou, o portão dele abriu **mudo** (MVD#89): o produto era um
+`PLANO.md` numa pasta cujo slug o bot nem conhece, e a fase seguinte era a única
+paga do fluxo. Em vez de o bot ganhar uma segunda convenção chumbada, a fase
+DECLARA o que mostrar:
+
+```json
+{ "id": "plano", "pausa_apos": true, "portao": { "mostrar": ["{{artefato:plano}}"] } }
+```
+
+Marcadores: `{{repo}}`, `{{ref}}` (`A32`), `{{alvo}}`, `{{artefato}}` (o arquivo
+que a fase declarou no `RESULT:`) e `{{artefato:campo}}` — o valor de `campo:`
+DENTRO desse arquivo. Este último é o que faz o mecanismo servir de verdade: o
+slug do musicavideo é derivado do texto e desambiguado com `-2`, então o caminho
+do produto só o domínio sabe montar. Ele escreve `plano: <caminho>` no recibo, e
+o portão vai buscar ali.
+
+Regras: `portao` só é aceito em fase com `pausa_apos` (declarar o que mostrar
+numa fase que não para seria pedido nunca atendido); molde que não resolve vira
+**aviso nomeando o molde**, nunca portão calado; e quem declara não recebe
+nenhuma heurística por cima — sem declaração, vale o comportamento de sempre
+(roteiros, e o artefato como rede quando não há roteiro nenhum).
+
 ## Gerar (uma vez, com modelo)
 
 ```bash

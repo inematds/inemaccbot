@@ -83,6 +83,29 @@ export interface FaseDef {
    * Ausente = o padrão do `.env`, como antes.
    */
   perfil?: { motor?: string; modelo?: string; esforco?: string };
+  /**
+   * O que o PORTÃO desta fase mostra no chat — declarado pelo DOMÍNIO.
+   *
+   * O portão nasceu lendo `textos/<REF>/<alvo>.md`, que é a forma do
+   * promoavatar. O musicavideo produz um `PLANO.md` numa pasta de saída cujo
+   * nome (o slug) o bot nem conhece, e o portão dele abriu vazio (MVD#89):
+   * nada para ler, nada para decidir, e a fase seguinte é a única paga.
+   *
+   * Em vez de o bot ganhar uma segunda convenção chumbada, o domínio DIZ. Cada
+   * item é um caminho com marcadores:
+   *
+   *   `{{repo}}`      o repo de domínio
+   *   `{{ref}}`       `A32` — o mesmo nome que a pasta de textos usa
+   *   `{{alvo}}`      o público
+   *   `{{artefato}}`  o arquivo que a fase declarou no `RESULT:`
+   *   `{{artefato:campo}}`  o valor de `campo:` DENTRO desse arquivo — é assim
+   *                   que um domínio entrega um caminho que só ele sabe montar
+   *                   (`plano: /out/<slug>/PLANO.md` vira `{{artefato:plano}}`)
+   *
+   * Sem declaração, vale o comportamento de sempre: os roteiros, e o artefato
+   * como rede quando não há roteiro nenhum.
+   */
+  portao?: { mostrar: string[] };
 }
 
 export interface AlvoDef {
@@ -360,6 +383,20 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       erro(`fases[${i}].max_tentativas`, 'inteiro > 0');
     }
 
+    // `portao.mostrar` só existe onde há portão: declarar o que mostrar numa
+    // fase que não para é pedido que nunca seria atendido, e silêncio aqui
+    // viraria "configurei e não aconteceu nada".
+    let portao: FaseDef['portao'];
+    if (f.portao !== undefined) {
+      const p = f.portao as Record<string, unknown>;
+      const lista = p?.mostrar;
+      if (!Array.isArray(lista) || !lista.length || lista.some((x) => typeof x !== 'string' || !x.trim())) {
+        erro(`fases[${i}].portao.mostrar`, 'lista não vazia de caminhos (com {{marcadores}})');
+      }
+      if (f.pausa_apos !== true) erro(`fases[${i}].portao`, 'só faz sentido em fase com pausa_apos');
+      portao = { mostrar: (lista as string[]).map((x) => x.trim()) };
+    }
+
     let espera: FaseDef['espera'];
     if (f.espera !== undefined) {
       const e = f.espera as Record<string, unknown>;
@@ -385,6 +422,7 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       ...(espera ? { espera } : {}),
       ...(typeof f.entrega === 'string' ? { entrega: f.entrega } : {}),
       ...(f.pausa_apos === true ? { pausa_apos: true } : {}),
+      ...(portao ? { portao } : {}),
       ...(opcional ? { opcional } : {}),
       ...(perfil ? { perfil } : {}),
     };

@@ -243,6 +243,61 @@ describe('portão entrega os roteiros no chat', () => {
    * entraram. Vai só a lista, com os títulos do estúdio.
    */
   /**
+   * O PORTÃO QUE O DOMÍNIO DECLARA (`portao.mostrar` no flow.json).
+   *
+   * Antes disto o bot tinha duas convenções chumbadas: os roteiros do
+   * promoavatar e, como rede, o artefato. Duas heurísticas do BOT sobre o que
+   * um domínio quer mostrar — quando quem sabe isso é o domínio.
+   *
+   * `{{artefato:campo}}` é a peça que faz funcionar: o slug do musicavideo é
+   * derivado do texto e desambiguado com `-2`, então o bot nunca conhece o
+   * caminho do PLANO.md. O domínio escreve `plano: <caminho>` no recibo, e o
+   * portão vai buscar ali.
+   */
+  it('domínio que DECLARA o portão manda o arquivo que ele apontou', () => {
+    const recibo = join(dir, 'recibo.txt');
+    const plano = join(dir, 'PLANO-do-dominio.md');
+    writeFileSync(plano, '# Além da Terra\n\nEstrutura: intro · verso · refrão');
+    writeFileSync(recibo, `slug: para-a-musica-2\nplano: ${plano}\n`);
+    const comPortao = {
+      ...def,
+      fases: def.fases.map((f) => (f.id === 'texto'
+        ? { ...f, portao: { mostrar: ['{{artefato:plano}}'] } } : f)),
+    };
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: comPortao, hash: hashDefinicao(comPortao, REPO_DOMINIO),
+      assunto: 'assunto', alvos: ['jovens'], chatId: 55,
+    }).id;
+    ackar(`A#${id}//texto`, recibo);
+
+    const texto = eventos.map((e) => e.texto).find((t) => t.includes('Além da Terra'));
+    expect(texto).toBeDefined();
+    expect(texto).toContain('intro · verso · refrão');
+    // Declarou: nenhuma das duas heurísticas antigas entra.
+    expect(eventos.some((e) => e.texto.includes('Sem roteiro em'))).toBe(false);
+    expect(eventos.some((e) => e.texto.includes('produziu'))).toBe(false);
+  });
+
+  // Marcador que não resolve vira AVISO, nunca portão mudo — que é o defeito
+  // que este mecanismo existe para consertar.
+  it('molde que não resolve avisa, em vez de abrir o portão calado', () => {
+    const recibo = join(dir, 'recibo-sem-campo.txt');
+    writeFileSync(recibo, 'slug: x\n');
+    const comPortao = {
+      ...def,
+      fases: def.fases.map((f) => (f.id === 'texto'
+        ? { ...f, portao: { mostrar: ['{{artefato:plano}}'] } } : f)),
+    };
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: comPortao, hash: hashDefinicao(comPortao, REPO_DOMINIO),
+      assunto: 'assunto', alvos: ['jovens'], chatId: 55,
+    }).id;
+    ackar(`A#${id}//texto`, recibo);
+
+    expect(eventos.some((e) => e.texto.includes('não consegui resolver'))).toBe(true);
+  });
+
+  /**
    * DOMÍNIO QUE NÃO ESCREVE ROTEIRO — o portão ainda tem que dar o que ler.
    *
    * `textos/<REF>/<alvo>.md` é a forma do promoavatar, e o portão nasceu com

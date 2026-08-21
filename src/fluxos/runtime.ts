@@ -405,6 +405,46 @@ export class Fluxos {
    * 90 min esperando um vídeo que existe com outro nome.
    */
   /**
+   * O portão que o DOMÍNIO declarou (`portao.mostrar` no `flow.json`).
+   *
+   * Um item por mensagem, como nos roteiros: o que se faz com o conteúdo de um
+   * portão é ler e decidir, e juntar tudo numa mensagem só empurra o começo
+   * para fora da tela (`cortar`, no telegram.ts, trunca em ~4000 chars).
+   *
+   * Caminho que não resolve NÃO é silêncio: vira aviso com o marcador que ficou
+   * sem valor. Portão que abre mudo é o defeito que isto existe para consertar.
+   */
+  private entregarDeclarado(fluxo: Fluxo, faseDef: FaseDef): void {
+    const repo = this.repoDe(fluxo.tipo) ?? '';
+    for (const alvo of this.alvosDoFluxo(fluxo)) {
+      const fase = this.estado.fases(fluxo.id)
+        .find((f) => f.fase === faseDef.id && (f.alvo === alvo || f.alvo === ''));
+      const artefato = fase?.job_id == null ? '' : (this.fila.obter(fase.job_id)?.resultado?.trim() ?? '');
+      for (const molde of faseDef.portao?.mostrar ?? []) {
+        const caminho = resolverMostrar(molde, { repo, ref: `${fluxo.prefixo}${fluxo.id}`, alvo, artefato });
+        if (!caminho) {
+          this.avisar(fluxo, `⚠️ ${fluxo.prefixo}#${fluxo.id} — o portão pede "${molde}" e não consegui resolver.`);
+          continue;
+        }
+        let corpo: string;
+        try {
+          corpo = readFileSync(caminho, 'utf8').trim();
+        } catch {
+          this.avisar(fluxo, `⚠️ ${fluxo.prefixo}#${fluxo.id} — o portão pede ${caminho}, que não consegui ler.`);
+          continue;
+        }
+        const LIMITE = 3000;
+        this.avisar(fluxo, corpo.length <= LIMITE
+          ? corpo
+          : `${corpo.slice(0, LIMITE)}\n\n[…cortado — inteiro em ${caminho}]`);
+      }
+      // Fase de escopo `fluxo` tem um resultado só: repetir por público mandaria
+      // o mesmo texto N vezes.
+      if (faseDef.escopo === 'fluxo') return;
+    }
+  }
+
+  /**
    * O que a fase produziu, para o portão de um domínio que não escreve roteiro.
    *
    * Sai do `resultado` do job — o caminho que o agente declarou no `RESULT:` e
@@ -437,6 +477,13 @@ export class Fluxos {
 
   private entregarRoteiros(fluxo: Fluxo, faseDef?: FaseDef): void {
     if (fluxo.chat_id === null) return;
+    // O DOMÍNIO DECLAROU o que este portão mostra: obedecemos, e não há
+    // heurística nenhuma depois. Um domínio que declara e mesmo assim recebe a
+    // convenção de outro domínio no chat não teria por que declarar.
+    if (faseDef?.portao) {
+      this.entregarDeclarado(fluxo, faseDef);
+      return;
+    }
     const repo = this.repoDe(fluxo.tipo);
     if (!repo) {
       this.avisar(fluxo, `⚠️ Não sei o repo do fluxo "${fluxo.tipo}" — os roteiros não vão no chat.`);
@@ -800,4 +847,42 @@ export class Fluxos {
     if (n) this.log(`boot: ${n} fase(s) órfã(s) reenfileirada(s)`);
     return n;
   }
+}
+
+/**
+ * Resolve um molde de `portao.mostrar` num caminho.
+ *
+ * `{{artefato:campo}}` lê `campo: valor` DENTRO do artefato — é o que permite a
+ * um domínio entregar um caminho que só ele sabe montar (o slug do musicavideo
+ * é derivado do texto e desambiguado com `-2`, e o bot nunca o conhece).
+ *
+ * Devolve `null` quando algum marcador fica sem valor: caminho meio resolvido
+ * (`/out/{{artefato:plano}}/x`) aponta para lugar nenhum, e tentar ler daria uma
+ * mensagem de erro pior que dizer que o molde não resolveu.
+ */
+export function resolverMostrar(
+  molde: string,
+  campos: { repo: string; ref: string; alvo: string; artefato: string },
+): string | null {
+  let faltou = false;
+  const caminho = molde.replace(/\{\{([\w:]+)\}\}/g, (_, chave: string) => {
+    if (chave.startsWith('artefato:')) {
+      const campo = chave.slice('artefato:'.length);
+      if (!campos.artefato) { faltou = true; return ''; }
+      let texto: string;
+      try {
+        texto = readFileSync(campos.artefato, 'utf8');
+      } catch {
+        faltou = true;
+        return '';
+      }
+      const m = new RegExp(`^\\s*${campo}\\s*:\\s*(.+)$`, 'im').exec(texto);
+      if (!m) { faltou = true; return ''; }
+      return m[1]!.trim();
+    }
+    const valor = (campos as Record<string, string>)[chave];
+    if (!valor) { faltou = true; return ''; }
+    return valor;
+  });
+  return faltou ? null : caminho;
 }
