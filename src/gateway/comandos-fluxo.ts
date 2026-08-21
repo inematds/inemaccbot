@@ -133,10 +133,11 @@ export function ajudaDoFluxo(
     '  | alvos=a,b   só esses públicos (ou --alvo=a --alvo=b)',
     '  | de=<fase>   começa nessa fase (as anteriores ficam puladas)',
     // Condicional pelo mesmo critério das linhas abaixo: só aparece onde faz
-    // algo. `legenda` só tem efeito substituindo `{legenda}` no `entrega` de
-    // alguma fase (`resolverOpcoes`) — num domínio sem esse marcador o campo é
-    // aceito pelo parser e não muda nada, e anunciá-lo é ajuda que mente.
-    ...(def.fases.some((f) => f.entrega?.includes('{legenda}'))
+    // algo. São os dois caminhos por onde a decisão chega ao render — a fase de
+    // reel como FUNÇÃO (vira `--sem-legenda`) ou o `{legenda}` no `entrega` de
+    // uma fase de agente. Sem nenhum dos dois o campo é aceito pelo parser e não
+    // muda nada, e anunciá-lo é ajuda que mente.
+    ...(def.fases.some((f) => f.tarefa === 'reel.montar' || f.entrega?.includes('{legenda}'))
       ? ['  | legenda=nao desliga a legenda do reel (padrão: COM, palavra a palavra)'] : []),
     '  | versao=N    versão do assunto',
     '  | sombra      mostra o plano sem enfileirar nada',
@@ -249,7 +250,11 @@ function resolverOpcoes(def: FlowDef, repo: string, opcoes: OpcoesDoFluxo): Flow
   // A recusa que existia aqui caiu em 2026-08-07: o `montar-reel.py` PASSOU a
   // legendar (ver `promoavatar/docs/legenda.md`). Enquanto ele não legendava,
   // aceitar a opção em silêncio seria mentir; agora recusá-la é que seria.
-  return { ...def, fases };
+  // A decisão VIAJA na definição congelada, e não só como prosa dentro de
+  // `entrega`: a fase de reel é função (`reel.montar`), não lê prompt nenhum,
+  // e era aí que a opção se perdia. Gravada só quando DESLIGADA, pelo mesmo
+  // motivo do `pausa_apos` acima — o normal fica igual ao de sempre.
+  return { ...def, fases, ...(legenda ? {} : { legenda: false }) };
 }
 
 /** Leitura tolerante: ajuda ausente é o caso NORMAL, não erro. */

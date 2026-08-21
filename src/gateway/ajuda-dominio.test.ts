@@ -62,11 +62,11 @@ describe('REGRA: todo domínio do catálogo é documentado', () => {
       const ajuda = ajudaDoFluxo(reg, comandosSkill, undefined, () => undefined);
       if (!ajuda.includes('| legenda')) return;
       const flow = JSON.parse(readFileSync(join(reg.repo, 'flow.json'), 'utf8')) as {
-        fases: { entrega?: string }[];
+        fases: { tarefa?: string; entrega?: string }[];
       };
       expect(
-        flow.fases.some((f) => f.entrega?.includes('{legenda}')),
-        `${reg.command} anuncia | legenda mas nenhuma fase usa {legenda}`,
+        flow.fases.some((f) => f.tarefa === 'reel.montar' || f.entrega?.includes('{legenda}')),
+        `${reg.command} anuncia | legenda mas não tem fase reel.montar nem {legenda}`,
       ).toBe(true);
     });
   }

@@ -166,6 +166,10 @@ export function montarInput(ctx: ContextoEntrada): string {
       ...(dadosAlvo.canal
         ? { destino: resolverDestino(dadosAlvo.canal, ctx.projetosDir) ?? undefined }
         : {}),
+      // Legenda desligada na criação (`| legenda=nao`) vira `--sem-legenda`.
+      // Sai da definição CONGELADA, como o CTA: quem criou o fluxo sem legenda
+      // continua sem legenda mesmo que o default do domínio mude no meio (§3.4).
+      ...(def.legenda === false ? { semLegenda: true } : {}),
       ...(fase.espera ? { espera: fase.espera } : {}),
     });
   }

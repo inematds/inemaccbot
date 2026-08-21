@@ -53,6 +53,9 @@ export interface EntradaReel {
   /** Clipe de encerramento, quando o domínio declara um por variante. Ausente =
    *  o `montar-reel.py` usa o default dele (o `cta/cta-9x16.mp4` do domínio). */
   cta?: string;
+  /** Desliga a legenda do reel. Ausente = vale o default do
+   *  `montar-reel.py`, que legenda palavra a palavra (`docs/legenda.md`). */
+  semLegenda?: boolean;
   espera?: { intervalo: number; timeout: number };
 }
 
@@ -81,6 +84,7 @@ export function montarComando(e: EntradaReel): string {
     '--saida', q(e.saida),
     ...(e.flow ? ['--flow', q(e.flow)] : []),
     ...(e.cta ? ['--cta', q(e.cta)] : []),
+    ...(e.semLegenda ? ['--sem-legenda'] : []),
   ].join(' ');
   return `echo $$ > ${q(`${e.saida}.pid`)}; ${py} || touch ${q(`${e.saida}.err`)}`;
 }

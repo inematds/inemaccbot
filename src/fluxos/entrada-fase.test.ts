@@ -49,4 +49,19 @@ describe('montarInput: fase de reel como função', () => {
       ref: 'A#32', fase: 'reel', alvo: 'jovens', canal: 'lives22',
     });
   });
+
+  // O elo do meio do `| legenda=nao`: a decisão está na definição CONGELADA
+  // (`legenda: false`, gravada por `resolverOpcoes`) e é daqui que ela alcança o
+  // `montar-reel.py`. Fase de função não lê prompt — sem este repasse a opção
+  // morre entre o chat e o render, que foi o estado até 2026-08-21.
+  it('leva `semLegenda` quando o fluxo foi congelado sem legenda', () => {
+    const semLegenda = { ...def, legenda: false } as unknown as FlowDef;
+    expect(JSON.parse(montarInput(ctx({ def: semLegenda }))).semLegenda).toBe(true);
+  });
+
+  it('não leva nada quando ninguém desligou — o default é do montar-reel.py', () => {
+    expect(JSON.parse(montarInput(ctx())).semLegenda).toBeUndefined();
+    const comLegenda = { ...def, legenda: true } as unknown as FlowDef;
+    expect(JSON.parse(montarInput(ctx({ def: comLegenda }))).semLegenda).toBeUndefined();
+  });
 });

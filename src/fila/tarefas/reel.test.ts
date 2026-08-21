@@ -206,3 +206,25 @@ describe('--cta', () => {
     expect(montarComando({ ...base, cta: "/dom/it's.mp4" })).toContain(`'/dom/it'\\''s.mp4'`);
   });
 });
+
+// A ponta que faltava do `| legenda=nao`. Até 2026-08-21 a opção era aceita no
+// chat, virava prosa dentro de `entrega` — campo que nenhum domínio tem desde
+// que o reel virou função — e MORRIA ali: o comando saía idêntico, e o
+// `montar-reel.py` legendava porque legendar é o default dele.
+describe('--sem-legenda', () => {
+  const base = {
+    avatar: '/a.mp4', alvo: 'jovens', textos: '/t.md', saida: '/s.mp4',
+    ws: '/ws', script: '/m.py',
+  };
+
+  it('entra no comando quando o fluxo foi criado sem legenda', () => {
+    expect(montarComando({ ...base, semLegenda: true })).toContain('--sem-legenda');
+  });
+
+  // O default é LEGENDAR (`promoavatar/docs/legenda.md`, 2026-08-07): quem não
+  // pediu nada não pode receber a flag, ou o default se inverte calado.
+  it('some quando ninguém desligou', () => {
+    expect(montarComando(base)).not.toContain('--sem-legenda');
+    expect(montarComando({ ...base, semLegenda: false })).not.toContain('--sem-legenda');
+  });
+});

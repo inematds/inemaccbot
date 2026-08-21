@@ -882,6 +882,22 @@ describe('legenda e CTA como opções do fluxo', () => {
     expect(entregaDoFluxo(1)).toContain('NÃO gere legenda');
   });
 
+  // E a decisão fica GRAVADA na definição, não só na prosa da `entrega`: é o
+  // único caminho para uma fase de FUNÇÃO (`reel.montar`), que não lê prompt.
+  it('| legenda=nao fica gravado na definição congelada', async () => {
+    await manda('/brinquedo Assunto | alvos=um | legenda=nao');
+    const def = JSON.parse(fluxos.status(1)!.fluxo.definicao_json) as { legenda?: boolean };
+    expect(def.legenda).toBe(false);
+  });
+
+  // Com legenda (o default) o campo NEM APARECE: a definição de um fluxo normal
+  // continua idêntica à de antes de a opção existir, como no `pausa_apos`.
+  it('com legenda, a definição não ganha campo nenhum', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    const def = JSON.parse(fluxos.status(1)!.fluxo.definicao_json) as { legenda?: boolean };
+    expect(def.legenda).toBeUndefined();
+  });
+
   // Sem clipe no domínio, o CTA volta a ser desenhado — nunca aponta para um
   // arquivo que não existe.
   it('sem clipe no repo, o CTA é desenhado pelo agente', async () => {

@@ -112,6 +112,19 @@ export interface FlowDef {
    */
   cta?: Record<string, string>;
   /**
+   * LEGENDA do reel, resolvida no congelamento — não vem do `flow.json`.
+   *
+   * Só é gravada quando DESLIGADA (`| legenda=nao`): um fluxo normal fica com a
+   * definição idêntica à de antes desta opção existir, e o hash não muda por
+   * causa de um campo que repete o default. `false` aqui vira `--sem-legenda`
+   * no `montar-reel.py` (`entrada-fase.ts` → `reel.ts`).
+   *
+   * Antes de 2026-08-21 a opção só sabia substituir `{legenda}` num campo
+   * `entrega` de fase — que nenhum domínio tem desde que o reel virou função.
+   * `| legenda=nao` era aceito e não fazia nada.
+   */
+  legenda?: boolean;
+  /**
    * A variante com que ESTE fluxo foi criado (`| prompt=viral`), gravada na
    * definição congelada por `aplicarVariante`.
    *
