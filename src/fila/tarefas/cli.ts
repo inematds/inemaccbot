@@ -24,7 +24,7 @@
 // Nenhum desses três é consertável escrevendo prosa melhor. Todos somem quando
 // o comando é DECLARADO no `flow.json` e quem o executa é o bot.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { esperarArtefato, limparMarcadores, trabalhoEmCurso } from '../render.js';
@@ -209,10 +209,24 @@ async function destacado(
 
   // Tentativa anterior ENCERRADA com erro: o `.log` tem o motivo, e falhar COM
   // ele vale mais que um erro genérico.
+  //
+  // ...MENOS quando o motivo foi um SINAL. O `código 143` já tem seção própria
+  // no README ("não é erro do agente — é restart"), e aqui ele chegava
+  // disfarçado: o `|| touch .err` do embrulho dispara igual quando o SIGTERM do
+  // `systemctl restart` mata o comando, e a tentativa seguinte lia esse marcador
+  // e falhava com a última linha do log — que era uma mensagem de PROGRESSO
+  // ("comprimindo pra análise..."), não um erro. Foi assim que a análise do
+  // job 4774 morreu em 2026-08-21: o trabalho foi interrompido, não recusado.
+  //
+  // Interrompido se REFAZ; recusado FALHA. É o `.rc` que separa os dois.
   if (existsSync(`${e.saida}.err`)) {
+    const rc = Number(lerSeDer(`${e.saida}.rc`).trim());
+    const interrompido = rc === 143 || rc === 137 || rc === 129;
     const motivo = cauda(lerSeDer(`${e.saida}.log`));
     limparMarcadores(e.saida);
-    throw new Error(`o comando falhou: ${motivo}`);
+    try { unlinkSync(`${e.saida}.rc`); } catch { /* não existia */ }
+    if (!interrompido) throw new Error(`o comando falhou: ${motivo}`);
+    ctx.log(`[job ${ctx.job.id}] cli.rodar: tentativa anterior foi INTERROMPIDA (sinal ${rc}) — refazendo`);
   }
 
   if (!trabalhoEmCurso(e.saida)) {
@@ -223,8 +237,12 @@ async function destacado(
     // `&&` e não `;`: só o sucesso vira recibo. Sem isso um comando que morre
     // no meio deixaria um recibo parcial, e a fase seguinte leria dele o slug
     // de um trabalho que não terminou.
+    // O `.rc` guarda o código de saída REAL — é o que distingue "falhou" de
+    // "foi morto". Sem ele, um restart vira falha permanente na retentativa.
     disparar({
-      comando: `${e.comando} && cp ${aspas(`${e.saida}.log`)} ${aspas(e.saida)} || touch ${aspas(`${e.saida}.err`)}`,
+      comando: `${e.comando}; c=$?; echo $c > ${aspas(`${e.saida}.rc`)}; `
+        + `[ "$c" = 0 ] && cp ${aspas(`${e.saida}.log`)} ${aspas(e.saida)} `
+        + `|| touch ${aspas(`${e.saida}.err`)}`,
       saida: e.saida,
     });
     ctx.log(`[job ${ctx.job.id}] cli.rodar: disparado destacado → ${e.saida}`);

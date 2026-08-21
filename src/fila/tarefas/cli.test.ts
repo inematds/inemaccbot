@@ -108,6 +108,34 @@ describe('cli.rodar', () => {
       expect(existsSync(`${saida}.err`)).toBe(false);
     });
 
+    // `código 143` já tem seção própria no README ("não é erro do agente — é
+    // restart") e chegava aqui disfarçado: o `|| touch .err` dispara igual
+    // quando o SIGTERM mata o comando, e a tentativa seguinte falhava citando a
+    // última linha do log — que era uma mensagem de PROGRESSO. Foi assim que a
+    // análise do job 4774 morreu (2026-08-21): interrompida, não recusada.
+    it('interrompido por SINAL é REFEITO, não falha', async () => {
+      const saida = join(dir, 'recibo.txt');
+      writeFileSync(`${saida}.err`, '');
+      writeFileSync(`${saida}.rc`, '143\n');
+      writeFileSync(`${saida}.log`, '[analisevideo] comprimindo pra analise...\n');
+      let disparos = 0;
+      const p = criarCliRodar({
+        vigia: { intervaloMs: 5, estavelMs: 5 },
+        disparar: () => { disparos += 1; writeFileSync(saida, 'slug: x\n'); },
+      })(ctxEspera());
+      await expect(p).resolves.toBe(saida);
+      expect(disparos, 'devia ter refeito').toBe(1);
+    });
+
+    it('falha de verdade (exit != 0) continua falhando com o motivo', async () => {
+      const saida = join(dir, 'recibo.txt');
+      writeFileSync(`${saida}.err`, '');
+      writeFileSync(`${saida}.rc`, '1\n');
+      writeFileSync(`${saida}.log`, 'yt-dlp: vídeo privado\n');
+      await expect(criarCliRodar({ disparar: () => {} })(ctxEspera()))
+        .rejects.toThrow(/vídeo privado/);
+    });
+
     it('dispara com o comando embrulhado: só o sucesso vira recibo', async () => {
       const saida = join(dir, 'recibo.txt');
       let comando = '';
@@ -121,7 +149,10 @@ describe('cli.rodar', () => {
         },
       })(ctxEspera());
       await expect(p).resolves.toBe(saida);
-      expect(comando).toContain('echo pronto &&');
+      expect(comando).toContain('echo pronto;');
+      // O `.rc` guarda o código de saída real: é o que distingue "falhou" de
+      // "foi morto por um restart" na tentativa seguinte.
+      expect(comando).toContain(`echo $c > '${saida}.rc'`);
       expect(comando).toContain(`cp '${saida}.log' '${saida}'`);
       expect(comando).toContain(`|| touch '${saida}.err'`);
     });
