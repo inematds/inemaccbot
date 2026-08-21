@@ -362,6 +362,29 @@ describe('portão entrega os roteiros no chat', () => {
     expect(eventos.some((e) => e.texto.includes('conteúdo para ler no chat'))).toBe(true);
   });
 
+  // Valor de recibo com quebra de linha não vira caminho: o portão avisa em vez
+  // de tentar ler um arquivo cujo nome tem `\n` no meio.
+  it('valor de recibo multilinha não vira caminho', () => {
+    const recibo = join(dir, 'recibo-sujo.txt');
+    writeFileSync(recibo, 'plano: /out/PLANO.md\nmalicioso\n');
+    const bom = join(dir, 'PLANO-ok.md');
+    writeFileSync(bom, 'ok');
+    const comPortao = {
+      ...def,
+      fases: def.fases.map((f) => (f.id === 'texto'
+        ? { ...f, portao: { mostrar: ['{{artefato:plano}}'] } } : f)),
+    };
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: comPortao, hash: hashDefinicao(comPortao, REPO_DOMINIO),
+      assunto: 'assunto', alvos: ['jovens'], chatId: 55,
+    }).id;
+    ackar(`A#${id}//texto`, recibo);
+    // A primeira linha é o valor; o resto do recibo não entra no caminho.
+    const aviso = eventos.map((e) => e.texto).find((t) => t.includes('não consegui ler'));
+    expect(aviso).toContain('/out/PLANO.md');
+    expect(aviso).not.toContain('malicioso');
+  });
+
   // Marcador que não resolve vira AVISO, nunca portão mudo — que é o defeito
   // que este mecanismo existe para consertar.
   it('molde que não resolve avisa, em vez de abrir o portão calado', () => {

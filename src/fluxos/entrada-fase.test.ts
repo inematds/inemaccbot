@@ -62,6 +62,28 @@ describe('montarInput: cli.rodar', () => {
     expect(e.comando).toBe("x 'MVD89' 'unico' '/art/fluxos/MVD89/plano-unico.txt'");
   });
 
+  // Recibo é saída de programa: valor com quebra de linha ou caractere de
+  // controle não é caminho, é acidente chegando a uma linha de comando. As
+  // aspas impedem virar comando; o saneamento impede quebrar a linha.
+  it('valor de recibo com quebra de linha é saneado', () => {
+    const { montarInput: mi } = { montarInput };
+    const e = JSON.parse(mi({
+      fluxo: { id: 89, prefixo: 'MVD', versao: 1, assunto: 'x' } as Fluxo,
+      def,
+      fase: {
+        id: 'p', kind: 'function', tarefa: 'cli.rodar',
+        comando: 'x {{anterior:slug}}',
+      } as unknown as FaseDef,
+      alvo: 'jovens',
+      raizArtefatos: '/art',
+      projetosDir: '/home/u/projetos',
+      repoDominio: '/repo',
+      anterior: '/tmp/recibo-que-nao-existe.txt',
+    }));
+    // Arquivo ausente: argumento VAZIO, nunca o marcador cru.
+    expect(e.comando).toBe("x ''");
+  });
+
   // Marcador sem valor vira string vazia ASPADA, nunca o marcador cru — que o
   // shell interpretaria.
   it('marcador desconhecido não sobra na linha', () => {

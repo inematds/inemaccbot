@@ -76,7 +76,11 @@
               "{{artefato:clipe}}"
             ]
           },
-          "comando": "bash {{repo}}/musicavideo.sh faz {{anterior:slug}} --sim --sem-revisao --aprovar"
+          "comando": "bash {{repo}}/musicavideo.sh faz {{anterior:slug}} --sim --sem-revisao --aprovar",
+          "espera": {
+            "intervalo": 60,
+            "timeout": 10800
+          }
         },
         {
           "id": "entrega",

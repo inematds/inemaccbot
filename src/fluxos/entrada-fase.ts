@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { resolverDestino } from '../dominio/destinos.js';
+import { sanearValorDeRecibo } from './runtime.js';
 import { primeiraFala } from '../dominio/roteiro.js';
 import { ctaDaDefinicao } from '../dominio/flow.js';
 import type { FaseDef, FlowDef } from '../dominio/flow.js';
@@ -329,7 +330,10 @@ export function resolverComando(
       try {
         const achado = new RegExp(`^\\s*${chave.slice('anterior:'.length)}\\s*:\\s*(.+)$`, 'im')
           .exec(ler(campos.anterior));
-        return aspar(achado ? achado[1]!.trim() : '');
+        // SANEADO antes de aspar: uma linha, sem controles, com teto de
+        // tamanho. As aspas já impedem o valor de virar comando; o saneamento
+        // impede que ele quebre a linha ou entre um `\n` no meio do argumento.
+        return aspar(achado ? sanearValorDeRecibo(achado[1]!) : '');
       } catch {
         return aspar('');
       }

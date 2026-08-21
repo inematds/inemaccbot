@@ -7,7 +7,7 @@
 // novo. Aqui não há regra nenhuma: só leitura de arquivo e chamada.
 //
 // Usa `dist/` porque é o que existe na VPS — o shell garante o build antes.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -189,6 +189,32 @@ try {
         }
       }
     }
+  } else if (comando === 'conferir-comandos') {
+    // `<caminho-do-repo>` → confere que o script de cada fase `cli.rodar`
+    // EXISTE. É o passo 3 (`command -v` dos binários) aplicado ao comando que o
+    // domínio declara: agora que ele não é mais prosa dentro de um prompt, dá
+    // para verificar. Um `musicavideo.sh` ausente deixa de aparecer no primeiro
+    // job, às três da manhã, e aparece na instalação.
+    const [repo] = args;
+    const flow = JSON.parse(readFileSync(join(repo, 'flow.json'), 'utf8'));
+    const faltando = [];
+    for (const fase of flow.fases ?? []) {
+      if (fase.tarefa !== 'cli.rodar' || typeof fase.comando !== 'string') continue;
+      // O primeiro token que parece caminho DENTRO do repo. Não tentamos
+      // entender a linha inteira: `bash x.sh sub --flag` tem um script e o
+      // resto é argumento, e adivinhar mais que isso seria reimplementar um
+      // shell para ganhar nada.
+      const m = /\{\{repo\}\}\/([\w./-]+)/.exec(fase.comando);
+      if (!m) continue;
+      const alvo = join(repo, m[1]);
+      if (!existsSync(alvo)) faltando.push(`${fase.id}: ${m[1]}`);
+      else process.stdout.write(`OK ${fase.id}: ${m[1]}\n`);
+    }
+    if (faltando.length) {
+      morrer(new Error(
+        `fase com comando apontando para script que não existe no repo:\n  ${faltando.join('\n  ')}`,
+      ));
+    }
   } else if (comando === 'entrada-fluxo') {
     // `<manifesto.json> <fluxos.json> <PROJETOS_DIR>`
     // → o fluxos.json JÁ com a entrada, na saída padrão; a AÇÃO, na de erro.
@@ -204,7 +230,7 @@ try {
   } else {
     morrer(new Error(
       'uso: plugar-ajuda.mjs validar|chaves-faltando|invocacao|entrada'
-      + '|validar-fluxo|materializar|entrada-fluxo',
+      + '|validar-fluxo|materializar|conferir-comandos|entrada-fluxo',
     ));
   }
 } catch (e) {

@@ -237,6 +237,19 @@ else
   ok "o repo já traz o flow.json — o manifesto é só registro"
 fi
 
+# O comando declarado aponta para um script que EXISTE? É o `command -v` do
+# passo 3 aplicado ao que o domínio declarou — só possível desde que a invocação
+# deixou de ser prosa dentro de um prompt.
+if [ -f "$CLONE/flow.json" ]; then
+  if SAIDA_CMD="$(node "$REPO/scripts/plugar-ajuda.mjs" conferir-comandos "$CLONE" 2>&1)"; then
+    [ -n "$SAIDA_CMD" ] && printf '%s\n' "$SAIDA_CMD" | sed 's/^/     /'
+    [ -n "$SAIDA_CMD" ] && ok "os comandos declarados apontam para scripts que existem"
+  else
+    printf '%s\n' "$SAIDA_CMD" | sed 's/^/     /'
+    morre "conserte o comando no flow.json do domínio (ou traga o script) e rode de novo"
+  fi
+fi
+
 titulo "6. Entrada no config/fluxos.json"
 # O validador REAL do registry de fluxos (o do boot), e ele vai ao DISCO: é por
 # isso que este passo vem DEPOIS da materialização.

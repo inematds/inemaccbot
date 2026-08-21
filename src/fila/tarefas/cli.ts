@@ -24,11 +24,13 @@
 // Nenhum desses três é consertável escrevendo prosa melhor. Todos somem quando
 // o comando é DECLARADO no `flow.json` e quem o executa é o bot.
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { esperarArtefato, limparMarcadores, trabalhoEmCurso } from '../render.js';
 import type { ContextoTarefa } from '../types.js';
 import type { Tarefa } from '../worker.js';
+import { disparoReal, type Disparo } from './reel.js';
 
 /** Entrada da fase, montada por `entrada-fase.ts`. Nada aqui é adivinhado. */
 export interface EntradaCli {
@@ -38,8 +40,18 @@ export interface EntradaCli {
   cwd: string;
   /** O recibo: `.txt` que o bot nomeia, onde a saída do comando é gravada. */
   saida: string;
-  /** Teto de execução. Ausente = `PADRAO_TIMEOUT_S`. */
+  /** Teto de execução INLINE. Ausente = `PADRAO_TIMEOUT_S`. */
   timeout_segundos?: number;
+  /**
+   * Declarada no `flow.json`, muda o MODO: o comando vai para segundo plano
+   * DESTACADO e a tarefa vigia o recibo aparecer.
+   *
+   * É o que faz um render longo caber. Inline, o comando morre no teto de 1h e
+   * ainda prende uma vaga da fila o tempo todo; destacado, ele sobrevive a um
+   * restart do serviço e a tentativa seguinte o ADOTA em vez de disparar um
+   * segundo render (a lição do A#25/A#30, ver `fila/render.ts`).
+   */
+  espera?: { intervalo: number; timeout: number };
 }
 
 /** Uma hora — o mesmo teto das fases de agente (`fila/skills.ts`). Render longo
@@ -59,7 +71,10 @@ function cauda(texto: string, linhas = 4): string {
   return texto.split('\n').filter((l) => l.trim()).slice(-linhas).join('\n').slice(0, 800);
 }
 
-export function criarCliRodar(): Tarefa {
+export function criarCliRodar(
+  opts: { disparar?: Disparo['disparar']; vigia?: Disparo['vigia'] } = {},
+): Tarefa {
+  const disparar = opts.disparar ?? disparoReal();
   return async (ctx: ContextoTarefa): Promise<string> => {
     // O sinal ANTES de qualquer coisa: worker encerrando não deve gastar um
     // spawn, e a falha tem que dizer que foi abort — senão ela se confunde com
@@ -74,13 +89,15 @@ export function criarCliRodar(): Tarefa {
     }
     if (!e.comando?.trim()) throw new Error('fase sem comando — flow.json declarou "cli.rodar" sem `comando`?');
 
+    mkdirSync(dirname(e.saida), { recursive: true });
     ctx.log(`[job ${ctx.job.id}] cli.rodar: ${e.comando}`);
-    const saidaTexto = await executar(e, ctx);
 
+    if (e.espera) return destacado(e, ctx, disparar, opts.vigia);
+
+    const saidaTexto = await executar(e, ctx);
     // O recibo é do BOT: ele nomeia o arquivo e grava a saída do comando.
     // Nenhum modelo decide o que vai aqui, que era a origem do `RESULT:`
     // apontando para o artefato do domínio em vez do recibo.
-    mkdirSync(dirname(e.saida), { recursive: true });
     writeFileSync(e.saida, saidaTexto);
     return e.saida;
   };
@@ -137,4 +154,71 @@ function executar(e: EntradaCli, ctx: ContextoTarefa): Promise<string> {
       reject(new Error(`o comando saiu com código ${codigo}: ${cauda(err || out)}`));
     });
   });
+}
+
+/**
+ * O comando LONGO: destacado, vigiado, adotável.
+ *
+ * O contrato de marcadores é o mesmo do `reel.montar` (`.pid`/`.log`/`.err` ao
+ * lado do alvo), e por isso `render.ts` serve aos dois sem saber de nenhum.
+ * O recibo é o `.log` copiado no fim — o arquivo APARECER é o sinal de sucesso,
+ * que é o que a vigília sabe observar.
+ *
+ * A vaga da fila fica SEGURA de propósito. Devolver `aindaNao` aqui liberaria o
+ * worker, o job seguinte entraria e dispararia o SEU render: foi assim que o
+ * A#30/A#31 produziu 24 renders simultâneos e derrubou a máquina. Segurar o job
+ * não prende o trabalho a este processo — ele é destacado e sobrevive ao
+ * restart, e a tentativa seguinte o adota.
+ */
+async function destacado(
+  e: EntradaCli, ctx: ContextoTarefa, disparar: Disparo['disparar'], vigia?: Disparo['vigia'],
+): Promise<string> {
+  // Procure ANTES de criar (§2.5): recibo pronto é a resposta.
+  if (existsSync(e.saida) && statSync(e.saida).size > 0) return e.saida;
+
+  // Tentativa anterior ENCERRADA com erro: o `.log` tem o motivo, e falhar COM
+  // ele vale mais que um erro genérico.
+  if (existsSync(`${e.saida}.err`)) {
+    const motivo = cauda(lerSeDer(`${e.saida}.log`));
+    limparMarcadores(e.saida);
+    throw new Error(`o comando falhou: ${motivo}`);
+  }
+
+  if (!trabalhoEmCurso(e.saida)) {
+    if (ctx.agora() - ctx.job.criado_em > e.espera!.timeout) {
+      throw new Error(`não ficou pronto em ${Math.round(e.espera!.timeout / 60)} min`);
+    }
+    limparMarcadores(e.saida);
+    // `&&` e não `;`: só o sucesso vira recibo. Sem isso um comando que morre
+    // no meio deixaria um recibo parcial, e a fase seguinte leria dele o slug
+    // de um trabalho que não terminou.
+    disparar({
+      comando: `${e.comando} && cp ${aspas(`${e.saida}.log`)} ${aspas(e.saida)} || touch ${aspas(`${e.saida}.err`)}`,
+      saida: e.saida,
+    });
+    ctx.log(`[job ${ctx.job.id}] cli.rodar: disparado destacado → ${e.saida}`);
+  } else {
+    ctx.log(`[job ${ctx.job.id}] cli.rodar: adotando o comando em curso`);
+  }
+
+  return esperarArtefato(e.saida, {
+    timeoutMs: e.espera!.timeout * 1_000,
+    intervaloMs: vigia?.intervaloMs ?? e.espera!.intervalo * 1_000,
+    sinal: ctx.sinal,
+    log: ctx.log,
+    ...(vigia?.estavelMs ? { estavelMs: vigia.estavelMs } : {}),
+  });
+}
+
+function lerSeDer(caminho: string): string {
+  try {
+    return readFileSync(caminho, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/** Aspas simples POSIX — os caminhos entram no comando destacado. */
+function aspas(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
 }

@@ -908,7 +908,9 @@ export function resolverMostrar(
       }
       const m = new RegExp(`^\\s*${campo}\\s*:\\s*(.+)$`, 'im').exec(texto);
       if (!m) { faltou = true; return ''; }
-      return m[1]!.trim();
+      const valor = sanearValorDeRecibo(m[1]!);
+      if (!valor) { faltou = true; return ''; }
+      return valor;
     }
     const valor = (campos as Record<string, string>)[chave];
     if (!valor) { faltou = true; return ''; }
@@ -949,4 +951,25 @@ export function ehVideo(caminho: string): boolean {
 export function ehMidia(caminho: string): boolean {
   const ext = caminho.split('.').pop()?.toLowerCase() ?? '';
   return EXT_MIDIA.has(ext);
+}
+
+/**
+ * O valor que veio de um RECIBO, saneado.
+ *
+ * Recibo é saída de programa — hoje do CLI do domínio, mas já foi de agente, e
+ * pode voltar a ser. Um valor com quebra de linha, caractere de controle ou
+ * comprimento absurdo não é caminho: é acidente (ou coisa pior) chegando a um
+ * `readFileSync`, a uma mensagem de chat e, no `{{anterior:campo}}`, a uma
+ * linha de comando. Risco que ESTE mecanismo introduziu em 2026-08-21, apontado
+ * na revisão do mesmo dia.
+ *
+ * Uma linha, sem controles, no máximo 500 caracteres. Vazio = "não resolveu",
+ * que os dois chamadores já sabem tratar (aviso no portão, argumento vazio no
+ * comando — e nunca marcador cru).
+ */
+export function sanearValorDeRecibo(bruto: string): string {
+  const linha = bruto.split(/[\r\n]/)[0] ?? '';
+  // eslint-disable-next-line no-control-regex
+  const limpo = linha.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  return limpo.length > 500 ? '' : limpo;
 }
