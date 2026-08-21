@@ -406,6 +406,39 @@ describe('--alvo=x, a forma de bandeira', () => {
   });
 });
 
+// A MESMA armadilha da ajuda, com a palavra que todo mundo digita primeiro.
+// Em 2026-08-21 o `/musicavideo status` criou o MVD#88 — um fluxo de verdade,
+// com o assunto "status", que rodou a fase de plano e falhou. Perguntar pelo
+// andamento não pode custar um fluxo.
+describe('/<fluxo> status — a situação do último fluxo do domínio', () => {
+  it('não cria fluxo nenhum', async () => {
+    await manda('/brinquedo status');
+    expect(fila.listar()).toHaveLength(0);
+  });
+
+  it('mostra a tabela de fases do último fluxo daquele domínio', async () => {
+    await manda('/brinquedo Assunto de verdade | alvos=um');
+    const r = await manda('/brinquedo status');
+    expect(r).toContain('B#1');
+    expect(r).toContain('texto');   // as fases, que é o que se foi ver
+  });
+
+  it('status, situação e andamento são a mesma coisa', async () => {
+    await manda('/brinquedo Assunto de verdade | alvos=um');
+    for (const forma of ['status', 'situacao', 'situação', 'andamento']) {
+      expect(await manda(`/brinquedo ${forma}`)).toContain('B#1');
+    }
+    expect(fila.listar()).toHaveLength(1);   // nenhum fluxo a mais
+  });
+
+  // Sem fluxo nenhum, a resposta ensina a começar em vez de dizer "não existe".
+  it('sem fluxo do domínio, aponta o exemplo do registro', async () => {
+    const r = await manda('/brinquedo status');
+    expect(r).toContain('nenhum fluxo');
+    expect(r).toContain('/brinquedo');
+  });
+});
+
 describe('/<fluxo> help — a ajuda mora no DOMÍNIO', () => {
   it('usa o HELP.md do repo de domínio quando ele existe', async () => {
     writeFileSync(join(repo, 'HELP.md'), 'ajuda escrita por quem entende do assunto');

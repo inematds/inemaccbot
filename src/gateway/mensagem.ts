@@ -23,7 +23,7 @@ import { ajudaDaSkill } from './ajuda-dominio.js';
 import { AJUDA_COMPLETA, executar, parseComando } from './comandos.js';
 import {
   ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, definirCapaFluxo, fluxosCompletos,
-  painelFluxos, parseCapa, refazerFluxo, statusFluxo, textoFluxos,
+  painelFluxos, parseCapa, refazerFluxo, statusDoDominio, statusFluxo, textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
 import { interpretar } from './interpret.js';
@@ -175,6 +175,11 @@ function tratarComandoDeFluxo(
     const pedido = /^(?:help|ajuda|\?)(?:\s+(.+))?$/i.exec(argumento.trim());
     if (pedido) {
       return ajudaDoFluxo(registrado, depsFluxo.skills, pedido[1]?.trim());
+    }
+    // `/<fluxo> status` — a mesma armadilha da ajuda, e ela mordeu: quem digitou
+    // `/musicavideo status` criou um fluxo com o assunto "status" (MVD#88).
+    if (/^(?:status|situa[cç][aã]o|andamento)$/i.test(argumento.trim())) {
+      return statusDoDominio(registrado, depsFluxo);
     }
     return criarFluxo(registrado, argumento, depsFluxo);
   }

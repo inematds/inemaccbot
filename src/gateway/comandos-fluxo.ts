@@ -540,6 +540,33 @@ export function criarFluxo(
   }
 }
 
+/**
+ * `/<fluxo> status` — a situação do ÚLTIMO fluxo daquele domínio.
+ *
+ * Existe pelo mesmo motivo que `/<fluxo> help` existe (ver o roteamento em
+ * `mensagem.ts`): a palavra depois do comando é o ASSUNTO, então quem digitava
+ * `/musicavideo status` querendo ver as fases criava um fluxo novo com o
+ * assunto "status" — e ele rodou, gastou uma fase e falhou (MVD#88, 2026-08-21).
+ * Perguntar pelo andamento é a coisa mais natural de se digitar; virar comando
+ * é mais barato que ensinar todo mundo a escrever `/status MVD#87`.
+ *
+ * O ÚLTIMO, e não uma lista: com um domínio na mão, a pergunta é sobre o que
+ * acabou de ser mandado. Para os outros, o painel (`/status`) continua lá.
+ */
+export function statusDoDominio(registrado: FluxoRegistrado, deps: DepsFluxo): string {
+  const meus = deps.fluxos.listarFluxos()
+    .filter((f) => f.tipo === registrado.command)
+    .sort((a, b) => b.id - a.id);
+  if (!meus.length) {
+    return `nenhum fluxo de /${registrado.command} ainda. Comece com: ${registrado.exemplo}`;
+  }
+  const ultimo = meus[0]!;
+  const texto = statusFluxo(`${ultimo.prefixo}#${ultimo.id}`, deps) ?? '';
+  return meus.length > 1
+    ? `${texto}\n\nOutros ${meus.length - 1} de /${registrado.command}: /status`
+    : texto;
+}
+
 /** Tabela fase × alvo do `/status P#16`. */
 export function statusFluxo(ref: string, deps: DepsFluxo): string | undefined {
   const r = parseRef(ref);
