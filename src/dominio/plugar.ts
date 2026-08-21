@@ -114,6 +114,16 @@ export interface PlanoMaterializacao {
   importar: ArquivoPlanejado[];
   /** Já existe DIFERENTE em repo que ainda NÃO é domínio: paramos. */
   conflitos: string[];
+  /**
+   * Prompt que o MANIFESTO carrega e o `flow.json` do domínio não referencia
+   * mais: some do manifesto, e NÃO volta para o repo.
+   *
+   * Sem isto, "o domínio é a fonte" valia só para conteúdo, não para remoção:
+   * ao portar o musicavideo para `cli.rodar` (2026-08-21) as quatro fases
+   * deixaram de ter prompt, os arquivos foram apagados no repo — e o plug
+   * seguinte os escreveu de volta, ressuscitando a definição velha.
+   */
+  descartar: string[];
 }
 
 /**
@@ -135,7 +145,9 @@ export function planoMaterializacao(
   definicao: DefinicaoFluxo,
   lerAtual: (caminho: string) => string | undefined,
 ): PlanoMaterializacao {
-  const plano: PlanoMaterializacao = { escrever: [], iguais: [], importar: [], conflitos: [] };
+  const plano: PlanoMaterializacao = {
+    escrever: [], iguais: [], importar: [], conflitos: [], descartar: [],
+  };
 
   // O REPO JÁ É DOMÍNIO quando traz o próprio `flow.json`. A partir daí ele não
   // é só o dono do arquivo: é a FONTE. Divergência deixa de ser conflito para
@@ -160,10 +172,40 @@ export function planoMaterializacao(
   };
 
   considerar('flow.json', `${JSON.stringify(definicao.flow, null, 2)}\n`);
-  for (const [caminho, corpo] of Object.entries(definicao.prompts)) considerar(caminho, corpo);
+
+  // Quais prompts o domínio AINDA declara. Quando ele é a fonte, é o `flow.json`
+  // DELE que responde — não o do manifesto, que pode ser de antes do porte.
+  const flowEfetivo = repoEhDominio ? lerFlowDoRepo(lerAtual) : definicao.flow;
+  const declarados = new Set(
+    (((flowEfetivo?.fases as { prompt?: string }[] | undefined) ?? [])
+      .map((f) => f.prompt)
+      .filter((c): c is string => typeof c === 'string')),
+  );
+
+  for (const [caminho, corpo] of Object.entries(definicao.prompts)) {
+    if (repoEhDominio && !declarados.has(caminho)) {
+      plano.descartar.push(caminho);
+      continue;
+    }
+    considerar(caminho, corpo);
+  }
   if (definicao.help !== undefined) considerar('HELP.md', definicao.help);
 
   return plano;
+}
+
+/** O `flow.json` do REPO, quando dá para ler. Erro de parse não derruba o
+ *  plano: quem valida o flow de verdade é `carregarFlow`, logo adiante. */
+function lerFlowDoRepo(
+  lerAtual: (caminho: string) => string | undefined,
+): Record<string, unknown> | undefined {
+  const bruto = lerAtual('flow.json');
+  if (!bruto) return undefined;
+  try {
+    return JSON.parse(bruto) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

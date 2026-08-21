@@ -128,8 +128,11 @@ describe('invocacaoResolvida', () => {
 // ── rota de fluxo ────────────────────────────────────────────────────────────
 
 describe('planoMaterializacao', () => {
+  // A fase DECLARA o prompt — é o que torna o par (flow, prompts) coerente. Um
+  // prompt que fase nenhuma referencia é justamente o caso de descarte, testado
+  // mais abaixo.
   const DEF = {
-    flow: { nome: 'x', fases: [{ id: 'a' }] },
+    flow: { nome: 'x', fases: [{ id: 'a', prompt: 'prompts/fase-a.md' }] },
     prompts: { 'prompts/fase-a.md': 'texto do prompt' },
     help: '# ajuda',
   };
@@ -171,7 +174,11 @@ describe('planoMaterializacao', () => {
   // errado, e os dois só falharam em produção (MVD#87/#88, 2026-08-21).
   it('em repo que já é domínio, o divergente é IMPORTADO — o domínio vence', () => {
     const atual = (c: string): string | undefined => {
-      if (c === 'flow.json') return '{"nome":"do proprio dominio"}';
+      // O flow do REPO declara o mesmo prompt — senão ele seria descarte, não
+      // importação (é a diferença testada logo abaixo).
+      if (c === 'flow.json') {
+        return JSON.stringify({ nome: 'do proprio dominio', fases: [{ id: 'a', prompt: 'prompts/fase-a.md' }] });
+      }
       if (c === 'prompts/fase-a.md') return 'o prompt QUE O DOMÍNIO versiona';
       return undefined;
     };
@@ -183,6 +190,32 @@ describe('planoMaterializacao', () => {
     expect(p.importar[1]!.conteudo).toBe('o prompt QUE O DOMÍNIO versiona');
     // O que o domínio ainda não tem continua sendo escrito.
     expect(p.escrever.map((a) => a.caminho)).toEqual(['HELP.md']);
+  });
+
+  // Remoção também é sincronização. Ao portar o musicavideo para `cli.rodar`
+  // (2026-08-21) as quatro fases deixaram de ter prompt e os arquivos foram
+  // apagados no repo — e o plug seguinte os escreveu de volta, ressuscitando a
+  // definição velha. "O domínio é a fonte" tem que valer para o que ele TIROU.
+  it('prompt que o flow.json do domínio não declara mais é DESCARTADO', () => {
+    const flowSemPrompt = { nome: 'x', fases: [{ id: 'a', tarefa: 'cli.rodar' }] };
+    const atual = (c: string): string | undefined => (
+      c === 'flow.json' ? JSON.stringify(flowSemPrompt) : undefined);
+    const p = planoMaterializacao(DEF, atual);
+    expect(p.descartar).toEqual(['prompts/fase-a.md']);
+    // E não volta para o repo por nenhum outro caminho.
+    expect(p.escrever.map((a) => a.caminho)).not.toContain('prompts/fase-a.md');
+    expect(p.importar.map((a) => a.caminho)).not.toContain('prompts/fase-a.md');
+  });
+
+  // O contrário também: prompt que o domínio AINDA declara e não tem no disco
+  // continua sendo escrito — descartar tudo o que falta seria o outro extremo.
+  it('prompt declarado e ausente no disco continua sendo escrito', () => {
+    const flowComPrompt = { nome: 'x', fases: [{ id: 'a', prompt: 'prompts/fase-a.md' }] };
+    const atual = (c: string): string | undefined => (
+      c === 'flow.json' ? JSON.stringify(flowComPrompt) : undefined);
+    const p = planoMaterializacao(DEF, atual);
+    expect(p.descartar).toEqual([]);
+    expect(p.escrever.map((a) => a.caminho)).toContain('prompts/fase-a.md');
   });
 
   // Sem `flow.json` próprio o repo ainda não é domínio: não há fonte de onde

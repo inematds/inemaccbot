@@ -150,6 +150,7 @@ try {
       });
       for (const c of plano.conflitos) process.stdout.write(`CONFLITO ${c}\n`);
       for (const a of plano.importar) process.stdout.write(`IMPORTAR ${a.caminho} (a versão do DOMÍNIO vence)\n`);
+      for (const c of plano.descartar) process.stdout.write(`DESCARTAR ${c} (o flow.json do domínio não declara mais)\n`);
       for (const c of plano.iguais) process.stdout.write(`IGUAL ${c}\n`);
       for (const a of plano.escrever) process.stdout.write(`ESCREVER ${a.caminho} (gerado — REVISE)\n`);
       // Conflito agora só sobra em repo que ainda NÃO é domínio (sem flow.json
@@ -172,15 +173,19 @@ try {
         // plug numa máquina limpa escreveria ela no repo como se fosse a
         // definição — que é exatamente como os prompts quebrados do musicavideo
         // chegaram à produção.
-        if (plano.importar.length) {
+        if (plano.importar.length || plano.descartar.length) {
           const bruto = JSON.parse(readFileSync(caminhoManifesto, 'utf8'));
+          // Remoção também é sincronização: prompt que o domínio não declara
+          // mais sai do manifesto, senão o próximo plug o ressuscita no repo.
+          for (const c of plano.descartar) delete bruto.definicao.prompts[c];
           for (const a of plano.importar) {
             if (a.caminho === 'flow.json') bruto.definicao.flow = JSON.parse(a.conteudo);
             else if (a.caminho === 'HELP.md') bruto.definicao.help = a.conteudo;
             else bruto.definicao.prompts[a.caminho] = a.conteudo;
           }
           writeFileSync(caminhoManifesto, `${JSON.stringify(bruto, null, 2)}\n`);
-          process.stdout.write(`manifesto atualizado a partir do domínio: ${plano.importar.length} arquivo(s)\n`);
+          const n = plano.importar.length + plano.descartar.length;
+          process.stdout.write(`manifesto atualizado a partir do domínio: ${n} arquivo(s)\n`);
         }
       }
     }

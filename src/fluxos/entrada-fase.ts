@@ -89,6 +89,10 @@ export function montarInput(ctx: ContextoEntrada): string {
         alvo,
         ref: `${fluxo.prefixo}${fluxo.id}`,
         saida,
+        // O recibo da fase ANTERIOR: é por ele que passa o dado que só o
+        // domínio sabe montar — o slug, derivado do texto e desambiguado com
+        // `-2`, que o bot nunca conhece.
+        anterior: ctx.anterior ?? '',
       }),
       // O cwd é o repo de DOMÍNIO, como nas fases de agente: é onde o script
       // mora e onde ele espera estar.
@@ -306,9 +310,30 @@ function falaDoAlvo(repo: string | undefined, fluxo: Fluxo, alvo: string): strin
  */
 export function resolverComando(
   molde: string,
-  campos: { repo: string; input: string; alvo: string; ref: string; saida: string },
+  campos: {
+    repo: string; input: string; alvo: string; ref: string; saida: string; anterior?: string;
+  },
+  ler: (caminho: string) => string = (c) => readFileSync(c, 'utf8'),
 ): string {
-  return molde.replace(/\{\{(\w+)\}\}/g, (_, chave: string) => {
+  return molde.replace(/\{\{([\w:]+)\}\}/g, (_, chave: string) => {
+    // `{{anterior:campo}}` — o valor de `campo:` DENTRO do recibo da fase
+    // anterior, mesma gramática do `portao.mostrar`. É por onde passa o dado
+    // que só o domínio sabe montar: o slug do musicavideo é derivado do texto e
+    // desambiguado com `-2`, e sem isto a fase seguinte teria que adivinhar —
+    // que era o que o agente fazia, e errava.
+    //
+    // Campo ausente vira string vazia ASPADA: um argumento vazio, que o domínio
+    // recusa com mensagem própria, é melhor que um marcador cru no shell.
+    if (chave.startsWith('anterior:')) {
+      if (!campos.anterior) return aspar('');
+      try {
+        const achado = new RegExp(`^\\s*${chave.slice('anterior:'.length)}\\s*:\\s*(.+)$`, 'im')
+          .exec(ler(campos.anterior));
+        return aspar(achado ? achado[1]!.trim() : '');
+      } catch {
+        return aspar('');
+      }
+    }
     const valor = (campos as Record<string, string>)[chave] ?? '';
     // O `{{repo}}` entra SEM aspas quando é um caminho simples, para o comando
     // ficar legível no log e no `/status`; qualquer coisa fora de [\w/.-] volta
