@@ -150,8 +150,8 @@ Os sete passos, e o que cada um evita:
 | 1. Manifesto | valida; local vence o do repo | manifesto inválido virando config quebrada |
 | 2. Repo | clone, e confere o **commit** do manifesto | confiar num desenho feito para outra versão do repo |
 | 3. Dependências | `command -v` de cada `requer.bin` | fase que falha no primeiro job, não na instalação |
-| 4. Chaves | confere no cofre; **vazia conta como ausente** | `CHAVE=` que passa no boot e falha 40 min depois |
-| 5. Definição | importa do domínio o que ele declara; materializa só o que falta | escrever por cima do dono, e definição chutada virando fonte |
+| 4. Chaves e fontes | confere chave no cofre (**vazia conta como ausente**) e fonte no registry | `CHAVE=` que passa no boot e falha 40 min depois; fonte exigida que ninguém pode satisfazer |
+| 5. Definição | importa do domínio o que ele declara; materializa só o que falta; **valida o `flow.json` do repo** e confere que os `comando` apontam para scripts existentes | escrever por cima do dono, definição chutada virando fonte, e flow.json inválido morrendo só no primeiro job |
 | 6. `config/fluxos.json` | insere e valida com o validador **do boot** | entrada que derruba o serviço |
 | 7. Suíte e build | roda os dois | descobrir a quebra no restart |
 

@@ -4,8 +4,7 @@
   "command": "analisevideo",
   "repo": {
     "url": "https://github.com/inematds/analisevideo",
-    "commit": "2b16f14",
-    "pasta": "repo"
+    "commit": "2b16f14"
   },
   "invocacao": "bash {{repo}}/analisevideo.sh analisa \"{{input}}\"",
   "fila": "navegador",

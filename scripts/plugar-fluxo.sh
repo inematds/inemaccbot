@@ -203,6 +203,17 @@ else
   ok "nenhuma chave exigida"
 fi
 
+# FONTES exigidas (o material de entrada: trilha, b-roll). Era campo declarado,
+# validado, exportado — e ignorado por este script. Mecanismo que não é
+# conferido é mecanismo morto, e o custo aparece no primeiro job que precisa do
+# material.
+if SAIDA_FON="$(node "$REPO/scripts/plugar-ajuda.mjs" conferir-fontes $M_FONTES 2>&1)"; then
+  ok "$SAIDA_FON"
+else
+  printf '%s\n' "$SAIDA_FON" | sed 's/^/     /'
+  morre "resolva as fontes exigidas e rode de novo"
+fi
+
 titulo "5. Definição no repo de domínio"
 # Modo seco: lista o plano e não escreve. O CONFLITO mata o script aqui — antes
 # de qualquer escrita, e antes de tocar no config do bot.

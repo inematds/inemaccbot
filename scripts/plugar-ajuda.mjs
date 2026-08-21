@@ -189,6 +189,39 @@ try {
         }
       }
     }
+  } else if (comando === 'conferir-fontes') {
+    // `<nome...>` → as FONTES que o manifesto exige existem no registry?
+    //
+    // O campo `requer.fontes` era validado, exportado para o shell e IGNORADO
+    // por ele: um domínio podia declarar que precisa da fonte `trilhas` e a
+    // instalação passava verde, para a fase falhar (ou pior, gerar sem trilha)
+    // lá na frente. Mecanismo declarado e não conferido é o mesmo defeito do
+    // `exige` de motor.
+    //
+    // Fonte é DECLARADA em `config/fontes.json` (ao contrário de destino, que é
+    // descoberto no disco) — então, sem esse arquivo, exigir fonte é exigir o
+    // que ninguém pode satisfazer, e isso tem que ser um NÃO na instalação.
+    const nomes = args.filter(Boolean);
+    if (!nomes.length) {
+      process.stdout.write('nenhuma fonte exigida\n');
+    } else {
+      const caminho = join(import.meta.dirname, '..', 'config', 'fontes.json');
+      if (!existsSync(caminho)) {
+        morrer(new Error(
+          `o manifesto exige as fontes [${nomes.join(', ')}], mas este bot não tem `
+          + 'config/fontes.json — o registry de fontes não está ligado aqui. '
+          + 'Crie o arquivo (ver dominio/fontes.ts) ou tire o campo do manifesto.',
+        ));
+      }
+      const { validarFontes, resolverFonte } = await import('../dist/dominio/fontes.js');
+      const fontes = validarFontes(JSON.parse(readFileSync(caminho, 'utf8')));
+      const raiz = process.env.PROJETOS_DIR || join(import.meta.dirname, '..', '..');
+      const faltando = nomes.filter((n) => !resolverFonte(n, fontes, raiz));
+      if (faltando.length) {
+        morrer(new Error(`fonte exigida e ausente no registry (ou sem pasta no disco): ${faltando.join(', ')}`));
+      }
+      process.stdout.write(`fontes presentes: ${nomes.join(' ')}\n`);
+    }
   } else if (comando === 'validar-repo') {
     // `<caminho-do-repo>` → roda o validador REAL (`carregarFlow`) contra o
     // `flow.json` QUE ESTÁ NO REPO, depois da materialização.
@@ -251,7 +284,7 @@ try {
   } else {
     morrer(new Error(
       'uso: plugar-ajuda.mjs validar|chaves-faltando|invocacao|entrada'
-      + '|validar-fluxo|materializar|validar-repo|conferir-comandos|entrada-fluxo',
+      + '|validar-fluxo|materializar|validar-repo|conferir-comandos|conferir-fontes|entrada-fluxo',
     ));
   }
 } catch (e) {
