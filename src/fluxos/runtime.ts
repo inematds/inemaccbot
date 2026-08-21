@@ -385,6 +385,23 @@ export class Fluxos {
       return;
     }
 
+    // SEM PORTÃO, MAS NÃO MUDO. `| sem-portao` REMOVE o `pausa_apos` da definição
+    // congelada — e, até 2026-08-21, levava junto tudo o que a fase mandaria no
+    // chat: o fluxo corria inteiro em silêncio e o material só aparecia no
+    // disco. Não é o que se pede quando se pede "não me faça aprovar".
+    //
+    // A marca de que era isso: `portao.mostrar` declarado numa fase SEM
+    // `pausa_apos`. Não acontece por acidente — a validação do `flow.json` exige
+    // portão para declarar `portao`, então essa combinação só existe quando o
+    // `sem-portao` tirou a pausa de um fluxo que tinha portão declarado.
+    if (faseDef?.portao && this.faseCompleta(fluxo, fase.fase)) {
+      this.avisar(
+        fluxo,
+        `▶️ ${fluxo.prefixo}#${fluxo.id} — fase ${fase.fase} concluída (sem portão, seguindo).`,
+      );
+      this.entregarDeclarado(fluxo, faseDef);
+    }
+
     const proxima = this.proximaFase(def, fase);
     if (proxima) {
       // Fase de escopo `fluxo` alimenta TODOS os alvos; fase de alvo alimenta só
@@ -690,6 +707,16 @@ export class Fluxos {
 
   /** Todos os alvos daquela fase já chegaram ao portão? Só então vale avisar —
    * senão um fluxo de 12 públicos mandaria 12 mensagens de "aguardando". */
+  /**
+   * A fase terminou para TODOS os alvos — a versão sem portão do
+   * `portaoCompleto`. Com 12 públicos, entregar a cada alvo mandaria a mesma
+   * coisa 12 vezes; o que se quer é uma entrega quando a fase fecha.
+   */
+  private faseCompleta(fluxo: Fluxo, fase: string): boolean {
+    const daFase = this.estado.fases(fluxo.id).filter((f) => f.fase === fase);
+    return daFase.every((f) => f.estado === 'feito' || f.estado === 'pulado');
+  }
+
   private portaoCompleto(fluxo: Fluxo, def: FlowDef, fase: string): boolean {
     const daFase = this.estado.fases(fluxo.id).filter((f) => f.fase === fase);
     return daFase.every((f) => f.estado === 'aguardando-ok' || f.estado === 'pulado');

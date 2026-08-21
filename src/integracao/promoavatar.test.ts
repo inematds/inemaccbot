@@ -278,6 +278,38 @@ describe('portão entrega os roteiros no chat', () => {
     expect(eventos.some((e) => e.texto.includes('produziu'))).toBe(false);
   });
 
+  // SEM PORTÃO, MAS NÃO MUDO. `| sem-portao` tira a pausa — e levava junto tudo
+  // o que a fase mandaria no chat: o fluxo corria inteiro em silêncio e o
+  // material só aparecia no disco. Não é o que se pede quando se pede "não me
+  // faça aprovar".
+  it('com | sem-portao, a fase ainda ENTREGA o que declarou — só não para', () => {
+    const recibo = join(dir, 'recibo-sem-portao.txt');
+    const plano = join(dir, 'PLANO-corrido.md');
+    writeFileSync(plano, 'o plano que eu quero ver mesmo sem aprovar');
+    writeFileSync(recibo, `plano: ${plano}\n`);
+    // A marca do `sem-portao`: `portao` declarado e `pausa_apos` REMOVIDO — que
+    // é exatamente o que o `resolverOpcoes` produz.
+    const comPortaoSemPausa = {
+      ...def,
+      fases: def.fases.map(({ pausa_apos: _, ...f }) => (f.id === 'texto'
+        ? { ...f, portao: { mostrar: ['{{artefato:plano}}'] } } : f)),
+    } as typeof def;
+    const id = fluxos.criar({
+      tipo: 'promoavatar', definicao: comPortaoSemPausa,
+      hash: hashDefinicao(comPortaoSemPausa, REPO_DOMINIO),
+      assunto: 'assunto', alvos: ['jovens'], chatId: 55,
+    }).id;
+    ackar(`A#${id}//texto`, recibo);
+
+    // Entregou...
+    expect(eventos.some((e) => e.texto.includes('o plano que eu quero ver'))).toBe(true);
+    // ...e NÃO parou: a fase seguinte já está na fila.
+    expect(fila.listar().some((j) => (j.flow_ref ?? "").startsWith(`A#${id}/`) && (j.flow_ref ?? "").endsWith("/baixar")))
+      .toBe(true);
+    // E nenhuma mensagem pedindo /aprovar.
+    expect(eventos.some((e) => e.texto.includes('AGUARDANDO você'))).toBe(false);
+  });
+
   // MÍDIA VAI COMO ARQUIVO. Até 2026-08-21 o portão só empurrava texto: a
   // faixa, a capa e o clipe ficavam no disco e, do chat, "não acontecia nada"
   // quando o fluxo terminava. Um `.mp3` lido como UTF-8 seria lixo na tela.

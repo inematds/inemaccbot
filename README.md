@@ -496,6 +496,7 @@ campos próprios de cada skill saem em `/ajuda <skill>`.
 | `\| versao=N` | 1 | muda o `-vN` do título do estúdio |
 | `\| de=<fase>` | — | começa no meio (você já fez texto e/ou avatar) |
 | `\| sombra` | — | mostra o plano, não enfileira nada |
+| `\| sem-portao` | — | vai até o fim sem parar para `/aprovar` — **mas continua mandando no chat** o que cada fase declarou em `portao.mostrar` |
 
 O `|` e o `--` convivem. **Campo escrito sem um dos dois é RECUSADO** — não vira
 assunto em silêncio, que é como um fluxo já nasceu com 12 públicos por engano.
