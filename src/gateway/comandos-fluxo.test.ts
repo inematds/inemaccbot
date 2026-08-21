@@ -550,6 +550,21 @@ describe('/status P#N', () => {
       expect(r).toContain('/jobs');
     });
 
+    // Job de SKILL (sem fluxo) não aparecia em lugar nenhum do painel. Quem
+    // manda um `analisevideo:` e digita `/status` está perguntando o que o bot
+    // está FAZENDO — e via um painel que não mencionava o trabalho em curso.
+    it('mostra os jobs de skill vivos, que não têm fluxo', async () => {
+      fila.enfileirar({ tarefa: 'brinquedo', fila: 'io', kind: 'agent', input: '{}', chat_id: 9 });
+      const r = await manda('/status');
+      expect(r).toContain('Skills:');
+      expect(r).toContain('brinquedo');
+    });
+
+    it('sem job de skill, a linha nem aparece', async () => {
+      const r = await manda('/status');
+      expect(r).not.toContain('Skills:');
+    });
+
     it('lista o número, a situação e o assunto de cada fluxo aberto', async () => {
       await manda('/brinquedo Primeiro assunto');
       await manda('/brinquedo Segundo assunto');

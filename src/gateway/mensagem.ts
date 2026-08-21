@@ -70,6 +70,15 @@ function tratarComandoDeFluxo(
   const depsFluxo = {
     fluxos: deps.fluxos, registrados, chatId,
     skills: deps.defs.map((d) => d.command),
+    // Jobs de skill vivos: sem fluxo, eles não apareciam em lugar nenhum do
+    // painel — e quem digita `/status` está perguntando o que o bot está
+    // fazendo, não "quais fluxos existem".
+    jobsSoltos: () => [
+      ...deps.fila.listar({ status: 'running' }),
+      ...deps.fila.listar({ status: 'queued' }),
+    ]
+      .filter((j) => !j.flow_ref)
+      .map((j) => ({ id: j.id, tarefa: j.tarefa, status: j.status })),
   };
 
   const t = texto.trim();

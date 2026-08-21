@@ -26,6 +26,13 @@ export interface DepsFluxo {
    * última do promoavatar é a mesma `reel` do chat), e a validação do `flow.json`
    * precisa conhecê-las para não recusar o que existe. */
   skills?: string[];
+  /**
+   * Jobs de SKILL vivos (sem fluxo). O painel é de fluxos, mas quem manda um
+   * `analisevideo:` e digita `/status` está perguntando "o que o bot está
+   * fazendo" — e via um painel que não mencionava o trabalho em curso. O rodapé
+   * já apontava `/jobs`; uma linha aqui evita a viagem.
+   */
+  jobsSoltos?: () => { id: number; tarefa: string; status: string }[];
 }
 
 const ICONE: Record<Fase['estado'], string> = {
@@ -847,8 +854,29 @@ export function painelFluxos(deps: DepsFluxo): string {
     ...deps.fluxos.listarFluxos('falhou'),
   ].sort((a, b) => a.id - b.id);
 
+  const soltos = deps.jobsSoltos?.() ?? [];
+  const linhaSoltos = (): string[] => {
+    if (!soltos.length) return [];
+    const rodando = soltos.filter((j) => j.status === 'running');
+    const fila = soltos.filter((j) => j.status !== 'running');
+    // O NOME da skill, não só a contagem: "⏳ 2 na fila" não diz se o que espera
+    // é a análise que você acabou de mandar ou outra coisa. Acima de três, a
+    // contagem volta — a parede é o defeito que o painel existe para evitar.
+    const nomes = fila.slice(0, 3).map((j) => j.tarefa);
+    const sobra = fila.length - nomes.length;
+    const partes = [
+      ...rodando.map((j) => `▶️ ${j.tarefa} #${j.id}`),
+      ...(fila.length ? [`⏳ ${nomes.join(', ')}${sobra ? ` +${sobra}` : ''}`] : []),
+    ];
+    return ['', `Skills: ${partes.join(' · ')}`];
+  };
+
   if (!abertos.length) {
-    return 'Nenhum fluxo aberto. Terminados: /completos · fila de jobs: /jobs';
+    return [
+      'Nenhum fluxo aberto.',
+      ...linhaSoltos().filter(Boolean),
+      'Terminados: /completos · fila de jobs: /jobs',
+    ].join('\n');
   }
 
   const visoes = abertos
@@ -871,6 +899,7 @@ export function painelFluxos(deps: DepsFluxo): string {
     ? `${visoes[0]!.fluxo.prefixo}#${visoes[0]!.fluxo.id}`
     : '<ref>';
   linhas.push(
+    ...linhaSoltos(),
     '',
     `Detalhe de um: /status ${ref} · liberar: /aprovar ${ref} · retentar: /refazer ${ref}`,
     'Terminados: /completos · fila de jobs: /jobs',
