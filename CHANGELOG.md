@@ -8,6 +8,65 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.11.4 — 2026-08-21
+
+O dia em que o agente saiu das fases onde ele não pensava — e o contrato entre
+bot e domínio passou a ser declarado em vez de narrado. Tudo nasceu da primeira
+execução real do musicavideo (MVD#87 a #91), que falhou seis vezes seguidas, uma
+por silêncio do contrato.
+
+### Adicionado
+
+- **`cli.rodar`** — a fase declara `comando` no `flow.json` e o BOT executa, sem
+  agente lendo prompt para digitar bash. Validado na CARGA (exige `{{repo}}`,
+  recusa `kind: agent`, vocabulário de marcadores fechado); texto do chat entra
+  sempre ASPADO; o recibo é nomeado pelo bot. Com `espera`, dispara destacado e
+  vigia — o mesmo contrato de marcadores do `reel.montar`, então `render.ts`
+  serve aos dois. O musicavideo foi portado: 4 fases de agente viraram 4
+  comandos, e 23 KB de prompt foram apagados.
+- **Skill sem agente** — `comando` + `kind: function` no `config/skills.json`
+  (`sem_agente: true` no manifesto, e a `invocacao` que já existia vira o
+  comando). O `analisevideo` pagava um modelo para montar uma linha de bash; o
+  modelo destacava o processo (proibido no prompt), o job morria sem contrato e
+  a análise ia junto. O que volta ao chat é o ARTEFATO que o domínio imprimiu,
+  conferido contra `artefato_exts` e contra o disco.
+- **`portao.mostrar`** — o DOMÍNIO declara o que o portão manda no chat, com
+  `{{artefato:campo}}` lendo o recibo da fase. Texto vai inline, áudio e imagem
+  vão como ARQUIVO, vídeo vai como LINK publicado (mp4 de música passa dos 50 MB
+  do Telegram). Antes o portão só sabia a convenção do promoavatar, e abria mudo
+  para qualquer outro domínio.
+- **`/<fluxo> status`** — a palavra que todo mundo digita deixou de criar um
+  fluxo com o assunto "status".
+- **O plug IMPORTA do domínio** — repo com `flow.json` próprio é a FONTE, e o
+  manifesto se atualiza a partir dele (`IMPORTAR`), inclusive nas remoções
+  (`DESCARTAR`). Antes a definição chutada por um modelo competia de igual para
+  igual com a que o domínio versiona.
+- **O plug confere mais** — `validar-repo` roda o validador REAL contra o
+  `flow.json` do repo (ninguém rodava, nos caminhos em que o repo é a fonte),
+  `conferir-comandos` verifica que o script declarado existe, e `conferir-fontes`
+  tirou o `requer.fontes` do limbo de campo validado e ignorado.
+
+### Corrigido
+
+- **Recibo que anuncia erro não é sucesso**, mesmo com o `RESULT:` correto: o
+  guarda do A#17 só cobria o resgate pelo arquivo. Um `erro:` no recibo abria o
+  portão e mandava a fase seguinte rodar sobre trabalho que não existia.
+- **`| legenda=nao` voltou a fazer algo** — era aceito e morria: só substituía
+  `{legenda}` num campo `entrega` que nenhum domínio tem desde que o reel virou
+  função. Agora viaja na definição congelada e vira `--sem-legenda`.
+- **`| sem-portao` deixou de ser mudo** — tirava a pausa e levava junto tudo o
+  que a fase mandaria no chat.
+- **"código null"** era o serviço matando o comando: agora a falha nomeia o
+  sinal e as causas, em vez de culpar o domínio.
+- **O `/comando` ecoado** (copiar e colar a mensagem anterior) virava a primeira
+  palavra do assunto.
+- **Valores lidos de recibo são saneados** (uma linha, sem controles, teto de
+  500 chars) — buraco aberto pelo próprio `{{artefato:campo}}`.
+- **`ID_FASE` tinha duas implementações divergentes** entre manifesto e flow;
+  agora é uma. Era o "segunda implementação divergiria no primeiro campo novo"
+  que o comentário do `conferirDefinicao` previa.
+- **`analisevideo.json` apontava `repo.pasta: "repo"`**, pasta que não existe.
+
 ## 0.10.4 — 2026-08-20
 
 ### Adicionado
