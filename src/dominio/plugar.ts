@@ -106,7 +106,13 @@ export interface PlanoMaterializacao {
   escrever: ArquivoPlanejado[];
   /** Já existe com o MESMO conteúdo: nada a fazer, e não é conflito. */
   iguais: string[];
-  /** Já existe DIFERENTE: o repo é o dono, e nós paramos. */
+  /**
+   * O REPO tem a sua própria versão, diferente da do manifesto — e ela VENCE.
+   * Quem sincroniza é o manifesto, no sentido domínio → bot. Só acontece em
+   * repo que já é domínio (tem `flow.json` próprio).
+   */
+  importar: ArquivoPlanejado[];
+  /** Já existe DIFERENTE em repo que ainda NÃO é domínio: paramos. */
   conflitos: string[];
 }
 
@@ -129,7 +135,18 @@ export function planoMaterializacao(
   definicao: DefinicaoFluxo,
   lerAtual: (caminho: string) => string | undefined,
 ): PlanoMaterializacao {
-  const plano: PlanoMaterializacao = { escrever: [], iguais: [], conflitos: [] };
+  const plano: PlanoMaterializacao = { escrever: [], iguais: [], importar: [], conflitos: [] };
+
+  // O REPO JÁ É DOMÍNIO quando traz o próprio `flow.json`. A partir daí ele não
+  // é só o dono do arquivo: é a FONTE. Divergência deixa de ser conflito para
+  // resolver na mão e vira importação — o manifesto se atualiza a partir dele.
+  //
+  // O que motivou: o manifesto do musicavideo foi ESCRITO POR UM MODELO,
+  // chutando como o domínio funciona, e o chute inventou um binário que não
+  // existe e um contrato de saída errado. Os dois só falharam em produção
+  // (MVD#87/#88, 2026-08-21). Definição adivinhada não pode competir de igual
+  // para igual com a que o domínio versiona.
+  const repoEhDominio = lerAtual('flow.json') !== undefined;
 
   const considerar = (caminho: string, conteudo: string): void => {
     const atual = lerAtual(caminho);
@@ -138,6 +155,7 @@ export function planoMaterializacao(
     // põe e todo `JSON.stringify` não) não é divergência de definição, e tratá-lo
     // como conflito faria a operação idempotente falhar na segunda vez.
     else if (atual.trim() === conteudo.trim()) plano.iguais.push(caminho);
+    else if (repoEhDominio) plano.importar.push({ caminho, conteudo: atual });
     else plano.conflitos.push(caminho);
   };
 

@@ -208,10 +208,24 @@ titulo "5. Definição no repo de domínio"
 # de qualquer escrita, e antes de tocar no config do bot.
 if [ -n "$M_TEM_DEFINICAO" ]; then
   if [ "$APLICAR" = 1 ]; then
-    node "$REPO/scripts/plugar-ajuda.mjs" materializar "$MANIFESTO" "$CLONE" --sim \
-      | sed 's/^/     /' || morre "materialização recusada — nada foi escrito"
-    ok "definição materializada em $CLONE"
-    aviso "os arquivos NÃO foram commitados: revise e comite VOCÊ, no repo $M_PASTA"
+    SAIDA_MAT="$(node "$REPO/scripts/plugar-ajuda.mjs" materializar "$MANIFESTO" "$CLONE" --sim)" \
+      || { printf '%s\n' "$SAIDA_MAT" | sed 's/^/     /'; morre "materialização recusada — nada foi escrito"; }
+    printf '%s\n' "$SAIDA_MAT" | sed 's/^/     /'
+    # O DOMÍNIO É A FONTE. Quando ele traz a própria definição, é o MANIFESTO
+    # que se atualiza — e é isso que impede a definição chutada por um modelo de
+    # voltar a ser escrita no repo no próximo plug (os prompts quebrados do
+    # musicavideo chegaram à produção exatamente assim).
+    if printf '%s' "$SAIDA_MAT" | grep -q '^IMPORTAR '; then
+      ok "manifesto sincronizado A PARTIR do domínio (o repo é a fonte)"
+      aviso "confira o diff do manifesto antes de commitar: git diff config/integracoes/$NOME.json"
+    fi
+    if printf '%s' "$SAIDA_MAT" | grep -q '^ESCREVER '; then
+      ok "definição materializada em $CLONE"
+      aviso "os arquivos ESCREVER são GERADOS, não versionados pelo domínio: leia antes de rodar.
+     Confira principalmente a invocação (binário que talvez não exista no PATH) e o
+     contrato de saída (RESULT: tem que apontar o {{saida}} do bot, não o artefato do domínio)."
+      aviso "os arquivos NÃO foram commitados: revise e comite VOCÊ, no repo $M_PASTA"
+    fi
   else
     node "$REPO/scripts/plugar-ajuda.mjs" materializar "$MANIFESTO" "$CLONE" \
       | sed 's/^/     /' || morre "materialização recusada — nada foi escrito"

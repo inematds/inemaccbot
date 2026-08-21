@@ -162,13 +162,38 @@ describe('planoMaterializacao', () => {
     expect(p.conflitos).toEqual([]);
   });
 
-  // O REPO é o dono da definição. Sobrescrever um flow.json divergente apagaria
-  // a máquina de estados de um fluxo que pode estar em produção.
-  it('conteúdo divergente é CONFLITO, nunca sobrescrita', () => {
-    const atual = (c: string): string | undefined => (c === 'flow.json' ? '{"nome":"outro"}' : undefined);
+  // O REPO é o dono da definição — e, quando ele já é DOMÍNIO (tem flow.json
+  // próprio), é também a FONTE: divergência não é conflito para resolver na
+  // mão, é importação. Quem se atualiza é o manifesto.
+  //
+  // O manifesto do musicavideo foi escrito por um modelo, chutando como o
+  // domínio funciona: inventou um binário que não existe e um contrato de saída
+  // errado, e os dois só falharam em produção (MVD#87/#88, 2026-08-21).
+  it('em repo que já é domínio, o divergente é IMPORTADO — o domínio vence', () => {
+    const atual = (c: string): string | undefined => {
+      if (c === 'flow.json') return '{"nome":"do proprio dominio"}';
+      if (c === 'prompts/fase-a.md') return 'o prompt QUE O DOMÍNIO versiona';
+      return undefined;
+    };
     const p = planoMaterializacao(DEF, atual);
-    expect(p.conflitos).toEqual(['flow.json']);
-    expect(p.escrever.map((a) => a.caminho)).toEqual(['prompts/fase-a.md', 'HELP.md']);
+    expect(p.conflitos).toEqual([]);
+    expect(p.importar.map((a) => a.caminho)).toEqual(['flow.json', 'prompts/fase-a.md']);
+    // E o conteúdo que viaja é o DO REPO, não o do manifesto.
+    expect(p.importar[0]!.conteudo).toContain('do proprio dominio');
+    expect(p.importar[1]!.conteudo).toBe('o prompt QUE O DOMÍNIO versiona');
+    // O que o domínio ainda não tem continua sendo escrito.
+    expect(p.escrever.map((a) => a.caminho)).toEqual(['HELP.md']);
+  });
+
+  // Sem `flow.json` próprio o repo ainda não é domínio: não há fonte de onde
+  // importar, e sobrescrever arquivo alheio continua fora de questão.
+  it('repo que NÃO é domínio: divergente segue sendo CONFLITO', () => {
+    const atual = (c: string): string | undefined => (
+      c === 'prompts/fase-a.md' ? 'um prompt de outra coisa' : undefined);
+    const p = planoMaterializacao(DEF, atual);
+    expect(p.conflitos).toEqual(['prompts/fase-a.md']);
+    expect(p.importar).toEqual([]);
+    expect(p.escrever.map((a) => a.caminho)).toEqual(['flow.json', 'HELP.md']);
   });
 });
 

@@ -22,7 +22,7 @@ acontecendo: rota B de [`docs/instalar-analisevideo.md`](instalar-analisevideo.m
 | `gerar-manifesto-fluxo.sh` | `scripts/` | lê o repo com modelo e DESENHA as fases |
 | `plugar-fluxo.sh` | `scripts/` | materializa no repo de domínio e registra no bot |
 | conferência com `carregarFlow` | `plugar-ajuda.mjs` | roda o validador REAL do `flow.json` num temporário, antes de escrever |
-| `planoMaterializacao` | `dominio/plugar.ts` | decide escrever / igual / **conflito** |
+| `planoMaterializacao` | `dominio/plugar.ts` | decide escrever / igual / **importar** / conflito |
 | `inserirEntradaFluxo` | idem | entrada em `config/fluxos.json`, validada pelo validador do BOOT |
 
 ## Skill ou fluxo?
@@ -50,15 +50,32 @@ manifesto **carrega a definição** (`definicao.flow`, `definicao.prompts`,
 `definicao.help`) e o `plugar-fluxo` a **materializa** no repo. Quando o repo já
 tem `flow.json`, o manifesto é só **registro**.
 
-Duas regras governam a materialização, e nenhuma é negociável:
+Três regras governam a materialização, e nenhuma é negociável:
 
-1. **O repo é o dono da definição.** Arquivo com conteúdo diferente é
-   **conflito** e para a instalação — nunca sobrescrita. Sobrescrever um
-   `flow.json` alheio apagaria a máquina de estados de um fluxo que pode estar
-   em produção, e `--desfazer` num repo que não é nosso é promessa que não se
-   cumpre. Conteúdo idêntico não é conflito: re-plugar tem que ser operação que
-   não faz nada.
-2. **O script não commita no repo de domínio.** Ele escreve e diz o que
+1. **O repo é o dono da definição.** Arquivo com conteúdo diferente nunca é
+   sobrescrito. Sobrescrever um `flow.json` alheio apagaria a máquina de estados
+   de um fluxo que pode estar em produção, e `--desfazer` num repo que não é
+   nosso é promessa que não se cumpre. Conteúdo idêntico não é conflito:
+   re-plugar tem que ser operação que não faz nada.
+2. **Repo que já é domínio é a FONTE, e a sincronização é domínio → manifesto.**
+   Quando o repo traz `flow.json` próprio, divergência não para nada: o arquivo
+   do repo é `IMPORTAR`, e é o **manifesto** que se atualiza a partir dele. O
+   conflito sobra só para repo que ainda não é domínio, onde não há de onde
+   importar.
+
+   O motivo é concreto. O manifesto do musicavideo foi escrito por um modelo,
+   chutando como o domínio funciona: inventou um binário `musicavideo` que não
+   existe no PATH e um contrato de saída errado (`RESULT:` apontando o
+   `PLANO.md` do domínio em vez do `{{saida}}` do bot). Os dois passaram por
+   toda a validação e só falharam em produção, no MVD#87 e no MVD#88. Definição
+   adivinhada não pode competir de igual para igual com a que o domínio
+   versiona — e, corrigida no repo, tem que voltar para o manifesto, senão o
+   próximo plug numa máquina limpa reescreve a versão quebrada.
+
+   Por isso o que sai como `ESCREVER` vem marcado **(gerado — REVISE)**: ali o
+   domínio não declarou nada, e o que está indo para o disco é palpite. Leia
+   principalmente a invocação e o contrato de saída.
+3. **O script não commita no repo de domínio.** Ele escreve e diz o que
    commitar. Commit em repo alheio, com autor que talvez não seja o certo, é
    decisão do dono.
 
@@ -109,7 +126,7 @@ Os sete passos, e o que cada um evita:
 | 2. Repo | clone, e confere o **commit** do manifesto | confiar num desenho feito para outra versão do repo |
 | 3. Dependências | `command -v` de cada `requer.bin` | fase que falha no primeiro job, não na instalação |
 | 4. Chaves | confere no cofre; **vazia conta como ausente** | `CHAVE=` que passa no boot e falha 40 min depois |
-| 5. Definição | materializa (ou confirma que o repo já traz) | escrever por cima do dono |
+| 5. Definição | importa do domínio o que ele declara; materializa só o que falta | escrever por cima do dono, e definição chutada virando fonte |
 | 6. `config/fluxos.json` | insere e valida com o validador **do boot** | entrada que derruba o serviço |
 | 7. Suíte e build | roda os dois | descobrir a quebra no restart |
 
@@ -182,7 +199,7 @@ com desconfiança amanhã.
 | peça | como foi verificado |
 |---|---|
 | validador (`rota: fluxo`) | teste automatizado — pacote válido, prompt ausente, fase sem id, caminho com `..`, HELP curto, chave com valor |
-| `planoMaterializacao` | teste automatizado — escrever, igual (com `\n` a mais), conflito |
+| `planoMaterializacao` | teste automatizado — escrever, igual (com `\n` a mais), importar (domínio vence), conflito (repo que não é domínio) |
 | `inserirEntradaFluxo` | teste automatizado, incluindo repo sem `flow.json` |
 | `plugar-fluxo.sh` | **ponta a ponta com repo de domínio real**: modo seco, `--sim`, re-plugar, conflito, `--desfazer`, e o ciclo `--sim` → `--sim` → `--desfazer` |
 | `PROJETOS_DIR` | as três precedências (ambiente, `.env`, pasta-pai) |
@@ -273,8 +290,10 @@ git pull
 
 O que ler na saída, em ordem de importância:
 
-- **passo 5** — `ESCREVER` / `IGUAL` / `CONFLITO`. `CONFLITO` para tudo, e é o
-  comportamento certo: o repo é o dono.
+- **passo 5** — `IMPORTAR` / `IGUAL` / `ESCREVER` / `CONFLITO`. `IMPORTAR` é o
+  domínio vencendo e o manifesto se atualizando (confira o diff dele antes de
+  commitar). `ESCREVER` é conteúdo GERADO indo para o repo: leia. `CONFLITO`
+  para tudo, e é o comportamento certo num repo que ainda não é domínio.
 - **passo 1** — a linha de chutes. `definicao.flow.alvos` estará lá sempre.
 - **passo 2** — se o repo andou desde o commit do manifesto, o aviso aparece.
 
@@ -322,7 +341,7 @@ segue a conta de destino daquele repo, não a deste.
 |---|---|---|
 | `registry de fluxos: … diretório não existe` no boot | `PROJETOS_DIR` divergente, ou repo não clonado | passo 1 do roteiro |
 | `não há flow.json em …` | registrou sem materializar | `--desfazer`, e rode com `--sim` |
-| `CONFLITO flow.json` | o repo já tem definição diferente | compare os dois; o repo manda |
+| `CONFLITO flow.json` | repo que ainda não é domínio já tem arquivo diferente | compare os dois; o repo manda. Em repo COM `flow.json` próprio isto não acontece: vira `IMPORTAR` |
 | a suíte reprova em "todo domínio do catálogo é documentado" | `HELP.md` curto | omita o `help` do manifesto: a ajuda derivada é melhor |
 | `manifesto inválido` no passo 1 | manifesto velho para o esquema atual | regere na sua máquina |
 | o fluxo aparece no `/ajuda` mas o primeiro comando falha | `flow.json` semanticamente inválido | o boot não valida conteúdo; o erro vem do `carregarFlow` — leia a mensagem, ela nomeia o campo. Se o fluxo foi plugado por manifesto isto não deveria acontecer: a conferência do passo 1 já roda o `carregarFlow` |

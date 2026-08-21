@@ -149,11 +149,12 @@ try {
         try { return readFileSync(join(repo, c), 'utf8'); } catch { return undefined; }
       });
       for (const c of plano.conflitos) process.stdout.write(`CONFLITO ${c}\n`);
+      for (const a of plano.importar) process.stdout.write(`IMPORTAR ${a.caminho} (a versão do DOMÍNIO vence)\n`);
       for (const c of plano.iguais) process.stdout.write(`IGUAL ${c}\n`);
-      for (const a of plano.escrever) process.stdout.write(`ESCREVER ${a.caminho}\n`);
-      // O conflito PARA a instalação: o repo é o dono da definição, e
-      // sobrescrever flow.json alheio apagaria a máquina de estados de um fluxo
-      // que pode estar em produção.
+      for (const a of plano.escrever) process.stdout.write(`ESCREVER ${a.caminho} (gerado — REVISE)\n`);
+      // Conflito agora só sobra em repo que ainda NÃO é domínio (sem flow.json
+      // próprio): ali não há fonte para importar, e sobrescrever arquivo alheio
+      // continua fora de questão.
       if (plano.conflitos.length) {
         morrer(new Error(
           `o repo já tem ${plano.conflitos.length} arquivo(s) com conteúdo diferente do manifesto.`
@@ -165,6 +166,21 @@ try {
           const destino = join(repo, a.caminho);
           mkdirSync(dirname(destino), { recursive: true });
           writeFileSync(destino, a.conteudo);
+        }
+        // A SINCRONIZAÇÃO, no sentido que importa: domínio → manifesto. Sem
+        // isto o manifesto guardaria para sempre a versão chutada, e o próximo
+        // plug numa máquina limpa escreveria ela no repo como se fosse a
+        // definição — que é exatamente como os prompts quebrados do musicavideo
+        // chegaram à produção.
+        if (plano.importar.length) {
+          const bruto = JSON.parse(readFileSync(caminhoManifesto, 'utf8'));
+          for (const a of plano.importar) {
+            if (a.caminho === 'flow.json') bruto.definicao.flow = JSON.parse(a.conteudo);
+            else if (a.caminho === 'HELP.md') bruto.definicao.help = a.conteudo;
+            else bruto.definicao.prompts[a.caminho] = a.conteudo;
+          }
+          writeFileSync(caminhoManifesto, `${JSON.stringify(bruto, null, 2)}\n`);
+          process.stdout.write(`manifesto atualizado a partir do domínio: ${plano.importar.length} arquivo(s)\n`);
         }
       }
     }
