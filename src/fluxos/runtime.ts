@@ -404,6 +404,37 @@ export class Fluxos {
    * a mensagem instruir um nome que o download não acha, e a fase expira em
    * 90 min esperando um vídeo que existe com outro nome.
    */
+  /**
+   * O que a fase produziu, para o portão de um domínio que não escreve roteiro.
+   *
+   * Sai do `resultado` do job — o caminho que o agente declarou no `RESULT:` e
+   * que o contrato do artefato já validou. Não adivinhamos formato: se der para
+   * ler como texto, vai o texto; se for binário ou grande demais, vai o
+   * caminho. Truncar em silêncio seria repetir o defeito que `cortar` já
+   * causou no telegram.ts.
+   */
+  private artefatoDaFase(fluxo: Fluxo, faseDef: FaseDef | undefined, alvo: string): string | null {
+    if (!faseDef) return null;
+    const fase = this.estado.fases(fluxo.id)
+      .find((f) => f.fase === faseDef.id && (f.alvo === alvo || f.alvo === ''));
+    const caminho = fase?.job_id === null || fase?.job_id === undefined
+      ? undefined
+      : this.fila.obter(fase.job_id)?.resultado?.trim();
+    if (!caminho) return null;
+    const cabecalho = `📄 ${fluxo.prefixo}#${fluxo.id} — o que a fase ${faseDef.id} produziu:`;
+    let texto: string;
+    try {
+      texto = readFileSync(caminho, 'utf8').trim();
+    } catch {
+      return `${cabecalho}\n${caminho}`;
+    }
+    if (!texto) return `${cabecalho}\n${caminho}`;
+    const LIMITE = 3000;
+    return texto.length <= LIMITE
+      ? `${cabecalho}\n\n${texto}`
+      : `${cabecalho}\n\n${texto.slice(0, LIMITE)}\n\n[…cortado — inteiro em ${caminho}]`;
+  }
+
   private entregarRoteiros(fluxo: Fluxo, faseDef?: FaseDef): void {
     if (fluxo.chat_id === null) return;
     const repo = this.repoDe(fluxo.tipo);
@@ -436,7 +467,10 @@ export class Fluxos {
     const soLista = faseDef !== undefined && faseDef.escopo !== 'fluxo';
     const titulos: string[] = [];
 
-    for (const alvo of this.alvosDoFluxo(fluxo)) {
+    const todosAlvos = this.alvosDoFluxo(fluxo);
+    const alvosVistos = todosAlvos.length;
+
+    for (const alvo of todosAlvos) {
       const bruto = this.lerRoteiro(pasta, alvo);
       const fala = bruto === null ? null : primeiraFala(bruto);
       if (!fala) {
@@ -465,6 +499,28 @@ export class Fluxos {
         `🎬 ${fluxo.prefixo}#${fluxo.id} — ${titulos.length} avatar(es) a gerar:\n`
         + titulos.map((t) => `· ${t}`).join('\n'),
       );
+    }
+
+    // DOMÍNIO QUE NÃO ESCREVE ROTEIRO: quando NENHUM público tem arquivo, o que
+    // falta não é um texto — é a convenção inteira. `textos/<REF>/<alvo>.md` é a
+    // forma do promoavatar, e o portão nasceu com ela; o musicavideo produz um
+    // PLANO.md na pasta de saída dele. No MVD#89 (2026-08-21) o portão abriu
+    // dizendo só "sem roteiro": nada para ler, nada para decidir, e a fase
+    // seguinte é a única paga do fluxo.
+    //
+    // Então mandamos o que a fase REALMENTE produziu — o artefato que ela
+    // declarou no `RESULT:`, o mínimo que todo domínio tem por contrato.
+    //
+    // Só no TUDO-faltando, e não por público: no promoavatar, um público sem
+    // texto entre outros doze continua sendo FALTA, e trocar o aviso pelo
+    // artefato da fase esconderia justamente o defeito que o aviso existe para
+    // mostrar.
+    if (!soLista && faltando.length === alvosVistos && alvosVistos > 0) {
+      const artefato = this.artefatoDaFase(fluxo, faseDef, faltando[0]!);
+      if (artefato) {
+        this.avisar(fluxo, artefato);
+        return;
+      }
     }
 
     // Falta NUNCA vira lista curta silenciosa: sem esta linha, um público sem

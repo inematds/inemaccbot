@@ -242,6 +242,40 @@ describe('portão entrega os roteiros no chat', () => {
    * blocos empurraria para cima a única coisa que se olha, que é QUAIS públicos
    * entraram. Vai só a lista, com os títulos do estúdio.
    */
+  /**
+   * DOMÍNIO QUE NÃO ESCREVE ROTEIRO — o portão ainda tem que dar o que ler.
+   *
+   * `textos/<REF>/<alvo>.md` é a forma do promoavatar, e o portão nasceu com
+   * ela. O musicavideo produz um `PLANO.md` na pasta de saída dele, e no MVD#89
+   * (2026-08-21) o portão abriu dizendo só "sem roteiro": nada para ler, nada
+   * para decidir — e a fase seguinte é a única paga do fluxo. Agora, sem
+   * roteiro, vai o ARTEFATO que a fase declarou no `RESULT:`, que todo domínio
+   * tem por contrato.
+   */
+  it('sem roteiro no domínio, o portão manda o artefato que a fase produziu', () => {
+    const recibo = join(dir, 'recibo.txt');
+    writeFileSync(recibo, 'slug: para-a-musica-2\ntitulo: Além da Terra\nplano: /out/PLANO.md');
+    const id = criar(['jovens']);
+    ackar(`A#${id}//texto`, recibo);
+
+    const texto = eventos.map((e) => e.texto).find((t) => t.includes('a fase texto produziu'));
+    expect(texto).toBeDefined();
+    expect(texto).toContain('Além da Terra');
+    expect(texto).toContain('/out/PLANO.md');
+    // E a reclamação de roteiro faltando NÃO aparece: havia o que mostrar.
+    expect(eventos.some((e) => e.texto.includes('Sem roteiro em'))).toBe(false);
+  });
+
+  // Artefato ilegível (sumiu, é binário) não vira silêncio nem stack trace: vai
+  // o caminho, que é o que permite ir olhar.
+  it('artefato que não dá para ler vira o caminho no chat', () => {
+    const id = criar(['jovens']);
+    ackar(`A#${id}//texto`, join(dir, 'nao-existe.txt'));
+
+    const texto = eventos.map((e) => e.texto).find((t) => t.includes('a fase texto produziu'));
+    expect(texto).toContain('nao-existe.txt');
+  });
+
   it('o portão dos AVATARES manda só a lista, não as falas de novo', () => {
     const id = criar(['mulheres', 'jovens']);
     escreverRoteiro(id, 'mulheres', 'Autonomia de verdade com IA.');
