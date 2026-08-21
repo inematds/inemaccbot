@@ -700,6 +700,37 @@ describe('/status P#N', () => {
       expect(r).toContain('02/02 ✅');
     });
 
+    // O ✅ é AFIRMAÇÃO, não enfeite da contagem. Ele vinha colado sempre, e
+    // `capa-clipe 00/01 ✅ · 01 ❌` dizia visto-e-erro na mesma linha: quem
+    // varre o painel lê o verde primeiro e conclui que aquilo está pronto.
+    it('fase incompleta NÃO leva ✅ — só os números e o que está acontecendo', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', 'um', 'falhou')]), false);
+      expect(r).toContain('00/01');
+      expect(r).not.toContain('00/01 ✅');
+      expect(r).toContain('❌');
+    });
+
+    it('fase pela metade também não leva ✅', () => {
+      const r = tabelaFluxo(visaoCom([
+        fase('render', 'um', 'feito'), fase('render', 'dois', 'rodando'),
+      ]), false);
+      expect(r).toContain('01/02');
+      expect(r).not.toContain('01/02 ✅');
+      expect(r).toContain('▶️');
+    });
+
+    // A coluna dos números alinha pelo NOME MAIS LONGO: com `capa-clipe` (10) e
+    // largura fixa em 8, essa linha saía do prumo e a pilha deixava de ser
+    // varrível de cima a baixo, que é a única coisa que o painel faz bem.
+    it('a coluna alinha pelo nome de fase mais longo', () => {
+      const r = tabelaFluxo(visaoCom([
+        fase('plano', '', 'feito'), fase('capa-clipe', '', 'rodando'),
+      ]), false);
+      const linhas = r.split('\n').filter((l) => /\d\d\/\d\d/.test(l));
+      const colunas = linhas.map((l) => l.indexOf(l.match(/\d\d\/\d\d/)![0]));
+      expect(new Set(colunas).size, `números em colunas diferentes: ${linhas.join(' | ')}`).toBe(1);
+    });
+
     // O celular quebra por volta de 40 colunas. O assunto tem uma linha só para
     // ele (cortado), e as linhas de estado não passam da largura — senão o
     // painel volta pela metade e deixa de ser varrível com o olho.

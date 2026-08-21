@@ -618,8 +618,9 @@ export function tabelaFluxo(
     lista.push(f);
     porFase.set(f.fase, lista);
   }
+  const largura = Math.max(LARGURA_FASE, ...[...porFase.keys()].map((f) => f.length));
   for (const [fase, lista] of porFase) {
-    linhas.push(...linhasDaFase(fase, lista, comandos));
+    linhas.push(...linhasDaFase(fase, lista, comandos, largura));
   }
   // A legenda entra UMA vez, no fim do bloco, e só no painel — é o que paga a
   // remoção da palavra de cada estado em cada linha de cada fluxo.
@@ -755,12 +756,14 @@ function n2(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** Largura do nome da fase na pilha, para os números começarem juntos. A fonte
- *  do Telegram é proporcional, então isto aproxima — não alinha ao pixel. */
+/** Largura MÍNIMA do nome da fase na pilha, para os números começarem juntos. A
+ *  fonte do Telegram é proporcional, então isto aproxima — não alinha ao pixel.
+ *  Fase com nome mais longo (`capa-clipe`) manda: alinhar pelo maior é o que
+ *  mantém a coluna, e fixar em 8 fazia justamente essa linha sair do prumo. */
 const LARGURA_FASE = 8;
 
-function linhasDaFase(fase: string, lista: Fase[], detalhe: boolean): string[] {
-  const rotulo = fase.padEnd(LARGURA_FASE);
+function linhasDaFase(fase: string, lista: Fase[], detalhe: boolean, largura = LARGURA_FASE): string[] {
+  const rotulo = fase.padEnd(largura);
   if (lista.length <= ALVOS_ANTES_DE_CONTAR && detalhe) {
     const alvos = lista.map((f) => `${ICONE[f.estado]} ${f.alvo || '(todos)'}`).join(' · ');
     return [`${rotulo} ${alvos}`];
@@ -770,7 +773,12 @@ function linhasDaFase(fase: string, lista: Fase[], detalhe: boolean): string[] {
   for (const f of lista) porEstado.set(f.estado, [...(porEstado.get(f.estado) ?? []), f]);
 
   const feitos = porEstado.get('feito')?.length ?? 0;
-  const partes = [`${n2(feitos)}/${n2(lista.length)} ✅`];
+  // O ✅ SÓ quando a fase fechou. Ele vinha colado na contagem sempre, e
+  // `capa-clipe 00/01 ✅ · 01 ❌` dizia visto-e-erro na mesma linha: quem varre
+  // o painel lê o verde primeiro e conclui que aquilo está pronto. Incompleto
+  // mostra só os números — o que já foi, e o que está acontecendo agora.
+  const completa = feitos === lista.length && feitos > 0;
+  const partes = [`${n2(feitos)}/${n2(lista.length)}${completa ? ' ✅' : ''}`];
   for (const [estado, fs] of porEstado) {
     if (estado === 'feito') continue;
     // No painel a palavra do estado sai: ela se repete em toda fase de todo
