@@ -155,9 +155,28 @@ describe('o registry REAL do repo', () => {
     }
   });
 
+  // SKILL COM `comando` não tem prompt: quem roda é o bot, não há agente para
+  // instruir. As regras abaixo são todas sobre o texto do prompt, então só
+  // valem para as skills de agente — e o contrato equivalente da rota de
+  // comando é testado logo depois.
+  for (const d of defs.filter((x) => x.comando)) {
+    it(`${d.command}: comando declarado, sem prompt e sem agente`, () => {
+      expect(d.kind).toBe('function');
+      expect(d.prompt).toBe('');
+      expect(d.comando).toContain('{{repo}}');
+      expect(d.comando).toContain('{{input}}');
+      expect(d.repo, 'comando precisa saber em que repo roda').toBeDefined();
+      // Todo campo declarado tem que aparecer no comando — a mesma regra do
+      // prompt, no outro lado da rota.
+      for (const nome of Object.keys(d.campos)) {
+        expect(d.comando!.includes(`{{${nome}}}`), `campo "${nome}" declarado e não usado no comando`).toBe(true);
+      }
+    });
+  }
+
   // O contrato prometido no plano: declarar um campo e esquecê-lo no prompt é
   // erro de teste, não comportamento silencioso. Vale nos dois sentidos.
-  for (const d of defs) {
+  for (const d of defs.filter((x) => !x.comando)) {
     it(`${d.command}: campos declarados e variáveis do prompt batem`, () => {
       const template = readFileSync(join(repo, d.prompt), 'utf8');
       const usadas = new Set(

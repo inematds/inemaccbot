@@ -10,6 +10,8 @@ import { clienteViaCli, rodarCliReal } from './heygen-cli.js';
 import { criarReelMontar, disparoReal } from './reel.js';
 import { criarHeygenEstudio } from './heygen-estudio.js';
 import { criarCliRodar } from './cli.js';
+import { criarSkillCli } from './skill-cli.js';
+import type { SkillDef } from '../../dominio/registry.js';
 
 export function criarTarefas(opts: {
   raizMidia: string;
@@ -22,6 +24,11 @@ export function criarTarefas(opts: {
   heygenPerfilChrome?: string;
   /** `scripts/heygen-estudio.mjs` — o roteiro do estúdio, sem agente. */
   heygenEstudioScript?: string;
+  /** Skills que declaram `comando`: cada uma vira uma tarefa `function` com o
+   *  nome do próprio comando. É a rota de skill sem agente. */
+  skills?: SkillDef[];
+  raizArtefatos?: string;
+  projetosDir?: string;
 }): Record<string, Tarefa> {
   const cliente = criarClienteHeygen(
     () => lerChaveHeygen(opts.heygenEnvPath ?? '', (p) => readFileSync(p, 'utf8')),
@@ -54,5 +61,15 @@ export function criarTarefas(opts: {
       perfil: opts.heygenPerfilChrome ?? '',
       script: opts.heygenEstudioScript ?? 'scripts/heygen-estudio.mjs',
     }),
+    // Uma tarefa por SKILL que declara `comando`. O nome é o do próprio
+    // comando porque é isso que o job carrega em `tarefa` — o worker procura
+    // aqui quando `kind: function`. Skill sem `comando` continua sendo agente e
+    // não aparece neste mapa.
+    ...Object.fromEntries((opts.skills ?? [])
+      .filter((s) => s.comando)
+      .map((s) => [s.command, criarSkillCli(s, {
+        raizArtefatos: opts.raizArtefatos ?? opts.raizMidia,
+        projetosDir: opts.projetosDir ?? '',
+      })])),
   };
 }

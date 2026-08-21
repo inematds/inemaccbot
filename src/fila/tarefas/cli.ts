@@ -71,6 +71,31 @@ function cauda(texto: string, linhas = 4): string {
   return texto.split('\n').filter((l) => l.trim()).slice(-linhas).join('\n').slice(0, 800);
 }
 
+/**
+ * O miolo, compartilhado com a rota de SKILL (`criarSkillCli`): recebe a
+ * entrada já montada e executa. A diferença entre as duas rotas é só QUEM monta
+ * a `EntradaCli` — o `entrada-fase.ts` no fluxo, a própria tarefa na skill.
+ */
+export async function rodarEntradaCli(
+  e: EntradaCli, ctx: ContextoTarefa,
+  opts: { disparar: Disparo['disparar']; vigia?: Disparo['vigia'] },
+): Promise<string> {
+  if (!e.comando?.trim()) throw new Error('sem comando — `comando` não declarado?');
+  // `spawn` com cwd inexistente devolve `ENOENT` e nada mais: a mensagem no
+  // chat não diria QUAL caminho faltou, nem que o problema era o cwd. Dizer o
+  // caminho é a diferença entre "o repo não está clonado nesta máquina" e meia
+  // hora de investigação.
+  if (e.cwd && !existsSync(e.cwd)) {
+    throw new Error(`o repo do domínio não existe nesta máquina: ${e.cwd}`);
+  }
+  mkdirSync(dirname(e.saida), { recursive: true });
+  ctx.log(`[job ${ctx.job.id}] cli.rodar: ${e.comando}`);
+  if (e.espera) return destacado(e, ctx, opts.disparar, opts.vigia);
+  const saidaTexto = await executar(e, ctx);
+  writeFileSync(e.saida, saidaTexto);
+  return e.saida;
+}
+
 export function criarCliRodar(
   opts: { disparar?: Disparo['disparar']; vigia?: Disparo['vigia'] } = {},
 ): Tarefa {
@@ -87,19 +112,10 @@ export function criarCliRodar(
     } catch {
       throw new Error('input da fase não é JSON');
     }
-    if (!e.comando?.trim()) throw new Error('fase sem comando — flow.json declarou "cli.rodar" sem `comando`?');
-
-    mkdirSync(dirname(e.saida), { recursive: true });
-    ctx.log(`[job ${ctx.job.id}] cli.rodar: ${e.comando}`);
-
-    if (e.espera) return destacado(e, ctx, disparar, opts.vigia);
-
-    const saidaTexto = await executar(e, ctx);
     // O recibo é do BOT: ele nomeia o arquivo e grava a saída do comando.
     // Nenhum modelo decide o que vai aqui, que era a origem do `RESULT:`
     // apontando para o artefato do domínio em vez do recibo.
-    writeFileSync(e.saida, saidaTexto);
-    return e.saida;
+    return rodarEntradaCli(e, ctx, { disparar, vigia: opts.vigia });
   };
 }
 

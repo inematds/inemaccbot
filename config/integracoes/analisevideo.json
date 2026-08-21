@@ -28,7 +28,6 @@
     ],
     "fontes": []
   },
-  "prompt": "prompts/analisevideo.md",
   "descricao": "Análise visual/cinematográfica de vídeo (câmera, luz, montagem, trilha) via Gemini, arquivada num banco pesquisável",
   "exemplo": "analisevideo: https://youtube.com/watch?v=xxxx",
   "gerado": {
@@ -46,8 +45,8 @@
       "max_tentativas": "chute",
       "aceita_destino": "chute",
       "requer": "lido",
-      "prompt": "chute",
       "descricao": "lido"
     }
-  }
+  },
+  "sem_agente": true
 }

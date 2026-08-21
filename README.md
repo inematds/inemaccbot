@@ -550,6 +550,30 @@ bot o pluga só com o nome, sem adaptador local.
 
 ### Uma SKILL (uma etapa, sem estado)
 
+**Sem agente, quando a skill só roda um comando.** Declare `comando` (e
+`kind: "function"`) em vez de `prompt`, e quem executa é o bot — mesma régua da
+rota de fluxo: agente onde ele pensa, função onde ele só digita. Foi o
+`analisevideo`: pagava um modelo para montar uma linha de bash, e em 2026-08-21
+o modelo mandou o script para segundo plano (o prompt proibia, em negrito),
+encerrou o turno e o job morreu sem contrato, matando a análise junto.
+
+```json
+{ "command": "analisevideo", "kind": "function", "repo": "analisevideo",
+  "comando": "bash {{repo}}/analisevideo.sh analisa {{input}}",
+  "artefato_exts": ["md", "json"], "aguarda_artefato": true }
+```
+
+Marcadores: `{{repo}}` e `{{input}}` (os dois obrigatórios), `{{saida}}` e os
+`campos` declarados — todos aspados. Com `aguarda_artefato`, o bot dispara
+destacado e vigia, então o trabalho sobrevive a restart. O que volta para o chat
+é o ARTEFATO que o domínio imprimiu na última linha (conferido contra
+`artefato_exts` e contra o disco); sem linha reconhecível, volta o recibo com a
+saída inteira — trabalho feito não vira falha.
+
+No manifesto, isso é uma linha: `"sem_agente": true`, e a `invocacao` que já
+existia vira o comando.
+
+
 Vale quando "rodar de novo do zero" é aceitável. Não guarda progresso, não tem `/status`
 próprio.
 

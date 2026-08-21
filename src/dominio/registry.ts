@@ -20,8 +20,18 @@ export interface SkillDef {
   command: string;
   fila: Fila;
   kind: Kind;
-  /** Caminho do arquivo de prompt, relativo à raiz do repo. */
+  /** Caminho do arquivo de prompt, relativo à raiz do repo. Vazio quando a
+   *  skill declara `comando` — aí não há agente para instruir. */
   prompt: string;
+  /**
+   * O COMANDO da skill, quando quem roda é o BOT (`kind: function`).
+   *
+   * Marcadores: `{{repo}}` (obrigatório), `{{input}}` (obrigatório), `{{saida}}`
+   * e os `campos` declarados. Todos entram ASPADOS — texto do chat não vira
+   * comando. É a mesma ideia do `comando` de fase (`dominio/flow.ts`), na rota
+   * de skill.
+   */
+  comando?: string;
   /**
    * Pasta do repo EXTERNO que esta skill dirige (quando ela veio de um
    * manifesto de integração). É NOME DE PASTA, nunca caminho absoluto: quem
@@ -218,7 +228,28 @@ export function validarSkills(dados: unknown, raiz: string): SkillDef[] {
     const kind = exigirTexto(d.kind, i, 'kind') as Kind;
     if (!KINDS_VALIDOS.has(kind)) erro(i, 'kind', `"${kind}" não existe (agent | function)`);
 
-    const prompt = exigirTexto(d.prompt, i, 'prompt');
+    // SKILL COM COMANDO: a rota `cli.rodar` da rota de skill. Quando a skill
+    // declara `comando`, quem executa é o BOT — não há prompt, não há agente.
+    //
+    // O caso que motivou: o `analisevideo` pagava um modelo para montar UMA
+    // linha de bash, e o modelo mandava o script para segundo plano (proibido
+    // no prompt, em negrito) e encerrava o turno. O job morria sem contrato, e
+    // a árvore de processos levava a análise junto — duas tentativas, dois
+    // downloads de 22 MB, nenhuma análise (2026-08-21). É a mesma falha que o
+    // musicavideo teve como fluxo, e o mesmo conserto.
+    const comando = d.comando === undefined ? undefined : exigirTexto(d.comando, i, 'comando');
+    if (comando !== undefined) {
+      if (kind !== 'function') erro(i, 'kind', 'skill com `comando` é kind=function — quem roda é o bot');
+      if (!comando.includes('{{repo}}')) {
+        erro(i, 'comando', 'precisa citar {{repo}} — caminho fixo não sobrevive a outra máquina');
+      }
+      if (!comando.includes('{{input}}')) {
+        erro(i, 'comando', 'precisa citar {{input}} — sem a entrada do usuário o comando é sempre o mesmo');
+      }
+      if (d.repo === undefined) erro(i, 'repo', 'skill com `comando` precisa dizer em que repo ele roda');
+      if (d.prompt !== undefined) erro(i, 'prompt', 'skill com `comando` não tem prompt: quem roda é o bot');
+    }
+    const prompt = comando === undefined ? exigirTexto(d.prompt, i, 'prompt') : '';
     if (isAbsolute(prompt) || prompt.includes('..')) {
       erro(i, 'prompt', 'precisa ser caminho relativo à raiz do repo, sem ".."');
     }
@@ -247,6 +278,7 @@ export function validarSkills(dados: unknown, raiz: string): SkillDef[] {
       fila,
       kind,
       prompt,
+      ...(comando === undefined ? {} : { comando }),
       ...(d.repo === undefined ? {} : { repo: d.repo as string }),
       artefato_exts,
       max_tentativas: exigirInteiroPositivo(d.max_tentativas, i, 'max_tentativas'),

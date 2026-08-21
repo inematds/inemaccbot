@@ -64,9 +64,21 @@ export interface ManifestoSkill {
      * `plugar-repo` procuraria o clone pelo comando e não acharia. */
     pasta?: string;
   };
-  /** Linha de comando que o PROMPT vai mandar o agente rodar. Usa `{{repo}}` e
-   * `{{input}}`; caminho absoluto é recusado (não sobrevive a outra máquina). */
+  /** Linha de comando do domínio. Usa `{{repo}}` e `{{input}}`; caminho absoluto
+   * é recusado (não sobrevive a outra máquina). Com `sem_agente`, ela É o
+   * comando que o bot roda; sem, ela é o que o prompt manda o agente rodar. */
   invocacao: string;
+  /**
+   * A skill roda SEM AGENTE: o bot executa a `invocacao` direto.
+   *
+   * Vale quando a skill só monta uma linha de comando — que é o caso normal de
+   * skill plugada de repo externo. O `analisevideo` era assim e pagava um
+   * modelo para digitar bash: em 2026-08-21 o agente destacou o processo
+   * (proibido no prompt), encerrou o turno, e o job morreu sem contrato levando
+   * a análise junto. Deixe `false` só quando o agente REALMENTE decide algo —
+   * escrever texto, navegar, escolher entre caminhos.
+   */
+  sem_agente?: boolean;
   fila: Fila;
   artefato_exts: string[];
   timeout_segundos: number;
@@ -447,6 +459,9 @@ export function validarManifesto(dados: unknown): Manifesto {
   if (!invocacao.includes('{{repo}}')) {
     erro('invocacao', 'precisa citar {{repo}} — caminho fixo não sobrevive a outra máquina');
   }
+  if (d.sem_agente !== undefined && typeof d.sem_agente !== 'boolean') {
+    erro('sem_agente', 'true ou false — com true, o BOT roda a invocação e não há prompt');
+  }
   if (!invocacao.includes('{{input}}')) {
     erro('invocacao', 'precisa citar {{input}} — sem isso o comando ignora o que o usuário pediu');
   }
@@ -471,8 +486,15 @@ export function validarManifesto(dados: unknown): Manifesto {
   const descricao = texto(d.descricao, 'descricao');
   const exemplo = texto(d.exemplo, 'exemplo');
 
-  const prompt = texto(d.prompt, 'prompt');
-  if (isAbsolute(prompt) || prompt.split('/').includes('..')) {
+  // `prompt` só é obrigatório quando HÁ agente. Com `sem_agente`, quem roda é o
+  // bot e um prompt declarado seria arquivo que ninguém lê — pior que ausente,
+  // porque parece vigente.
+  const semAgente = d.sem_agente === true;
+  if (semAgente && d.prompt !== undefined) {
+    erro('prompt', 'com sem_agente não há prompt: quem roda a invocação é o bot');
+  }
+  const prompt = semAgente ? '' : texto(d.prompt, 'prompt');
+  if (prompt && (isAbsolute(prompt) || prompt.split('/').includes('..'))) {
     erro('prompt', 'caminho relativo à raiz do bot, sem ".."');
   }
 
@@ -486,6 +508,7 @@ export function validarManifesto(dados: unknown): Manifesto {
     command,
     repo,
     invocacao,
+    ...(d.sem_agente === true ? { sem_agente: true } : {}),
     fila,
     artefato_exts,
     timeout_segundos: inteiroPositivo(d.timeout_segundos, 'timeout_segundos'),
@@ -508,6 +531,32 @@ export function validarManifesto(dados: unknown): Manifesto {
  * defesa contra um manifesto que passa aqui e derruba o boot lá.
  */
 export function paraEntradaSkill(m: ManifestoSkill): Record<string, unknown> {
+  // SEM AGENTE quando o manifesto declara `sem_agente: true`: a `invocacao`,
+  // que já é validada (cita `{{repo}}` e `{{input}}`), vira o `comando` da
+  // skill e quem executa é o bot.
+  //
+  // A invocação SEMPRE existiu neste manifesto — ela só era usada para escrever
+  // o prompt que um modelo depois leria para digitar o mesmo comando. O
+  // analisevideo mostrou o preço disso em 2026-08-21: o agente destacou o
+  // processo (proibido no prompt), encerrou o turno e o job morreu sem
+  // contrato, matando a análise junto.
+  if (m.sem_agente) {
+    return {
+      command: m.command,
+      fila: m.fila,
+      kind: 'function',
+      comando: m.invocacao,
+      repo: m.repo.pasta ?? m.command,
+      artefato_exts: m.artefato_exts,
+      max_tentativas: m.max_tentativas,
+      timeout_segundos: m.timeout_segundos,
+      aceita_destino: m.aceita_destino,
+      aguarda_artefato: true,
+      ...(Object.keys(m.campos).length ? { campos: m.campos } : {}),
+      descricao: m.descricao,
+      exemplo: m.exemplo,
+    };
+  }
   return {
     command: m.command,
     fila: m.fila,

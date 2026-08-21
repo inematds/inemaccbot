@@ -271,8 +271,7 @@
   {
     "command": "analisevideo",
     "fila": "io",
-    "kind": "agent",
-    "prompt": "prompts/analisevideo.md",
+    "kind": "function",
     "repo": "analisevideo",
     "artefato_exts": [
       "md",
@@ -282,6 +281,8 @@
     "timeout_segundos": 1800,
     "aceita_destino": false,
     "descricao": "Análise visual/cinematográfica de vídeo (câmera, luz, montagem, trilha) com Gemini, arquivada num banco pesquisável.",
-    "exemplo": "analisevideo: https://youtube.com/watch?v=exemplo"
+    "exemplo": "analisevideo: https://youtube.com/watch?v=exemplo",
+    "comando": "bash {{repo}}/analisevideo.sh analisa {{input}}",
+    "aguarda_artefato": true
   }
 ]

@@ -438,6 +438,13 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       // domínio): resolvido a partir do `dist/`, funciona rodando de qualquer
       // diretório.
       heygenEstudioScript: join(RAIZ_REPO, 'scripts', 'heygen-estudio.mjs'),
+      // As skills que declaram `comando` viram tarefa `function` aqui. `defs`
+      // já foi carregado e validado no passo anterior — registrar depois é o
+      // que garante que um catálogo inválido derrube o boot antes de existir
+      // worker para executá-lo.
+      skills: defs,
+      raizArtefatos,
+      projetosDir: cfg.projetosDir,
     });
     transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
     const transporte = transp.transporte;
