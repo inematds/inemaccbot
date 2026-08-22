@@ -558,6 +558,52 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
     rmSync(projetos, { recursive: true, force: true });
   });
 
+  it('o MESMO pacote em dois recibos entrega uma vez só', () => {
+    // Como no musicavideo de verdade: `clipe` e `entrega` são AMBAS de escopo
+    // fluxo, e as duas terminam com a linha `publicacao:` no recibo — a entrega
+    // roda no fim do `faz` e de novo no `pacote`. Sem dedup, dois avisos.
+    const eventos: { chatId: number; texto: string }[] = [];
+    const projetos = mkdtempSync(join(tmpdir(), 'projetos-'));
+    mkdirSync(join(projetos, 'yt-pub-lives21', 'imports'), { recursive: true });
+    const pacote = join(dir, 'dobrado', 'publicacao');
+    mkdirSync(pacote, { recursive: true });
+    writeFileSync(join(pacote, 'manifest.json'), '{}');
+    const recibo = (nome: string): string => {
+      const r = join(dir, nome);
+      writeFileSync(r, `publicacao: ${pacote}\n`);
+      return r;
+    };
+
+    const dom2 = join(dir, 'dominio2');
+    mkdirSync(join(dom2, 'prompts'), { recursive: true });
+    writeFileSync(join(dom2, 'prompts', 'p.md'), 'faça {{input}} em {{saida}}');
+    writeFileSync(join(dom2, 'flow.json'), JSON.stringify({
+      nome: 'duplo', prefixo: 'D', versao_def: 1,
+      alvos: { unico: { canal: 'lives21' } },
+      fases: [
+        { id: 'clipe', escopo: 'fluxo', fila: 'render', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/p.md' },
+        { id: 'entrega', escopo: 'fluxo', fila: 'io', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/p.md' },
+      ],
+    }));
+    const def2 = carregarFlow(dom2);
+
+    const f = new Fluxos({
+      fila, estado: new EstadoFluxos(db, () => t), agora: () => t,
+      aoEvento: (e) => eventos.push(e), projetosDir: projetos,
+    });
+    fluxos.criar({
+      tipo: 'duplo', definicao: congelar(def2, dom2), hash: 'h2', assunto: 'A', chatId: 77,
+    });
+    for (const [ref, dados] of [['D#1//clipe', recibo('r1.txt')], ['D#1//entrega', recibo('r2.txt')]]) {
+      const j = fila.listar().find((x) => x.flow_ref === ref)!;
+      reclamar(j.id);
+      fila.concluir(j.id, dados!, 'W', (job) => f.avancar(job));
+    }
+
+    expect(eventos.filter((e) => e.texto.includes('entregue em lives21'))).toHaveLength(1);
+    rmSync(projetos, { recursive: true, force: true });
+  });
+
   it('fase sem pacote no recibo não inventa entrega ao canal', () => {
     const eventos: { chatId: number; texto: string }[] = [];
     const projetos = mkdtempSync(join(tmpdir(), 'projetos-'));

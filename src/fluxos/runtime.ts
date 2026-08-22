@@ -671,10 +671,16 @@ export class Fluxos {
       Object.values(def.alvos ?? {}).map((a) => a?.canal).filter((c): c is string => !!c),
     )];
     if (!canais.length) return;
+    // DEDUP por caminho: a linha `publicacao:` nasce quando o domínio entrega, e
+    // o musicavideo entrega tanto no fim do `faz clipe` quanto no `pacote` da
+    // fase de entrega — dois recibos, o MESMO pacote. Sem isto o chat recebia
+    // duas vezes "entregue em lives10".
+    const entregues = new Set<string>();
     for (const fase of fases) {
       if (fase.alvo || fase.estado !== 'feito' || !fase.dados) continue;
       const pacote = pacoteNoRecibo(fase.dados);
-      if (!pacote) continue;
+      if (!pacote || entregues.has(pacote)) continue;
+      entregues.add(pacote);
       for (const canal of canais) {
         try {
           const ok = entregarPacote(pacote, canal, this.projetosDir);
