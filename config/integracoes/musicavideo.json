@@ -63,23 +63,37 @@
           "comando": "bash {{repo}}/musicavideo.sh faz {{anterior:slug}} musica --sim --sem-revisao --aprovar"
         },
         {
-          "id": "capa-clipe",
+          "id": "capa",
           "escopo": "fluxo",
-          "fila": "render",
+          "fila": "io",
           "kind": "function",
           "tarefa": "cli.rodar",
+          "comando": "bash {{repo}}/musicavideo.sh faz {{anterior:slug}} capa --sim --sem-revisao --aprovar",
           "max_tentativas": 2,
           "pausa_apos": true,
           "portao": {
             "mostrar": [
-              "{{artefato:capa}}",
-              "{{artefato:clipe}}"
+              "{{artefato:capa}}"
             ]
-          },
-          "comando": "bash {{repo}}/musicavideo.sh faz {{anterior:slug}} --sim --sem-revisao --aprovar",
+          }
+        },
+        {
+          "id": "clipe",
+          "escopo": "fluxo",
+          "fila": "render",
+          "kind": "function",
+          "tarefa": "cli.rodar",
+          "comando": "bash {{repo}}/musicavideo.sh faz {{anterior:slug}} clipe --sim --sem-revisao --aprovar",
+          "max_tentativas": 2,
+          "pausa_apos": true,
           "espera": {
             "intervalo": 60,
             "timeout": 10800
+          },
+          "portao": {
+            "mostrar": [
+              "{{artefato:clipe}}"
+            ]
           }
         },
         {

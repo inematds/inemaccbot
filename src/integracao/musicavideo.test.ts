@@ -35,8 +35,8 @@ rodar('musicavideo: fluxo sem agente', () => {
     })).comando;
   }
 
-  it('nenhuma fase usa agente — as quatro são cli.rodar', () => {
-    expect(def.fases.map((f) => f.kind)).toEqual(['function', 'function', 'function', 'function']);
+  it('nenhuma fase usa agente — todas são cli.rodar', () => {
+    expect(def.fases.every((f) => f.kind === 'function')).toBe(true);
     expect(def.fases.every((f) => f.tarefa === 'cli.rodar')).toBe(true);
     // E nenhuma carrega prompt: não há mais o que um modelo pudesse ler errado.
     expect(def.fases.some((f) => f.prompt || f.prompt_texto)).toBe(false);
@@ -69,8 +69,14 @@ rodar('musicavideo: fluxo sem agente', () => {
     expect(comandoDe('musica', recibo)).toBe(
       `bash ${REPO_DOMINIO}/musicavideo.sh faz 'para-a-musica-2' musica --sim --sem-revisao --aprovar`,
     );
-    expect(comandoDe('capa-clipe', recibo)).toBe(
-      `bash ${REPO_DOMINIO}/musicavideo.sh faz 'para-a-musica-2' --sim --sem-revisao --aprovar`,
+    // CAPA e CLIPE são fases separadas desde 2026-08-22: a capa é o frame 0 no
+    // feed e sai em segundos; esperar o clipe (horas) para revisá-la era
+    // revisar tarde.
+    expect(comandoDe('capa', recibo)).toBe(
+      `bash ${REPO_DOMINIO}/musicavideo.sh faz 'para-a-musica-2' capa --sim --sem-revisao --aprovar`,
+    );
+    expect(comandoDe('clipe', recibo)).toBe(
+      `bash ${REPO_DOMINIO}/musicavideo.sh faz 'para-a-musica-2' clipe --sim --sem-revisao --aprovar`,
     );
     expect(comandoDe('entrega', recibo)).toBe(
       `bash ${REPO_DOMINIO}/musicavideo.sh pacote 'para-a-musica-2'`,
@@ -80,7 +86,7 @@ rodar('musicavideo: fluxo sem agente', () => {
   // `--sem-revisao --aprovar`: o portão humano é o do BOT, no chat. O portão
   // interno do domínio, invisível ali, travou o MVD#89 com a faixa já paga.
   it('as fases não deixam parte esperando revisão dentro do domínio', () => {
-    for (const id of ['musica', 'capa-clipe']) {
+    for (const id of ['musica', 'capa', 'clipe']) {
       const cmd = comandoDe(id);
       expect(cmd).toContain('--sem-revisao');
       expect(cmd).toContain('--aprovar');
@@ -90,5 +96,22 @@ rodar('musicavideo: fluxo sem agente', () => {
   it('o portão do plano mostra o PLANO.md que o recibo aponta', () => {
     expect(def.fases.find((f) => f.id === 'plano')!.portao?.mostrar)
       .toEqual(['{{artefato:plano}}']);
+  });
+
+  // A capa tem portão PRÓPRIO: aprovar a arte antes de gastar horas de render.
+  it('a capa para para ser aprovada, e mostra a imagem', () => {
+    const capa = def.fases.find((f) => f.id === 'capa')!;
+    expect(capa.pausa_apos).toBe(true);
+    expect(capa.portao?.mostrar).toEqual(['{{artefato:capa}}']);
+    // E ela roda na fila `io`, não em `render`: é uma chamada de API de
+    // segundos, e ficar atrás de um clipe de uma hora seria absurdo.
+    expect(capa.fila).toBe('io');
+  });
+
+  // O clipe é o trabalho longo: fila de render, poll, e o teto declarado.
+  it('o clipe roda destacado, com espera declarada', () => {
+    const clipe = def.fases.find((f) => f.id === 'clipe')!;
+    expect(clipe.fila).toBe('render');
+    expect(clipe.espera).toEqual({ intervalo: 60, timeout: 10800 });
   });
 });
