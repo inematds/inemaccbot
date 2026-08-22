@@ -414,6 +414,24 @@ describe('--alvo=x, a forma de bandeira', () => {
 // primeira palavra do ASSUNTO: no MVD#90 (2026-08-21) o texto que foi para o
 // planejador começava com "/musicavideo Para a música...", e o domínio planejou
 // uma música sobre isso.
+// `/status 90` era JOB, sempre. Só que o painel logo acima lista `MVD#90`, e
+// digitar o número que se acabou de ler é o reflexo: a resposta vinha sobre um
+// job antigo de mesmo id, e parecia que "o /status não mostra as fases".
+describe('/status <número>', () => {
+  it('número de fluxo existente mostra o FLUXO, e lembra do job', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    const r = await manda('/status 1');
+    expect(r).toContain('B#1');
+    expect(r).toContain('texto');
+    expect(r).toContain('/jobs 1');
+  });
+
+  it('número que não é fluxo continua indo para o tratador de job', async () => {
+    const r = await manda('/status 4242');
+    expect(r).not.toContain('B#');
+  });
+});
+
 describe('/<fluxo> com o comando ecoado no texto', () => {
   it('o eco do comando não vira parte do assunto', async () => {
     await manda('/brinquedo /brinquedo Lançamento de março | alvos=um');

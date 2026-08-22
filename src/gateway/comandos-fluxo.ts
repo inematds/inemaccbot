@@ -602,6 +602,22 @@ export function statusDoDominio(registrado: FluxoRegistrado, deps: DepsFluxo): s
 
 /** Tabela fase × alvo do `/status P#16`. */
 export function statusFluxo(ref: string, deps: DepsFluxo): string | undefined {
+  // NÚMERO PURO (`/status 90`): historicamente era job, e o comentário do
+  // roteamento diz isso. Só que o painel logo acima lista `MVD#90`, e digitar
+  // o número que se acabou de ler é o reflexo — a resposta vinha sobre um job
+  // antigo de mesmo id, e parecia que "o /status não mostra as fases".
+  //
+  // Se existe fluxo com aquele id, ele ganha: é o que estava na tela. O job
+  // continua alcançável por `/jobs`, e a resposta diz isso quando há os dois.
+  if (/^\d+$/.test(ref)) {
+    const id = Number(ref);
+    const fluxo = deps.fluxos.listarFluxos().find((f) => f.id === id);
+    if (!fluxo) return undefined;      // segue para o tratador de job, como antes
+    const visao = deps.fluxos.status(id);
+    if (!visao) return undefined;
+    return `${tabelaFluxo(visao, true, deps.progressoDe)}\n\n`
+      + `(era o job ${id} que você queria? /jobs ${id})`;
+  }
   const r = parseRef(ref);
   if (!r) return undefined;
   const visao = deps.fluxos.status(r.id);
