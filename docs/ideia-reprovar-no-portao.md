@@ -38,7 +38,11 @@ Para o texto/roteiro não há equivalente: é editar `<repo>/textos/<REF>/<alvo>
 à mão, o que só funciona para quem tem terminal — exatamente o atrito que o
 comando `capa:` existe para eliminar.
 
-## 3. A fase `musica` produz DUAS faixas e mostra UMA
+## 3. A fase `musica` produz DUAS faixas e mostra UMA — FEITO em 2026-08-22
+
+> Resolvido: o recibo passou a declarar `musica_alt:` e o `flow.json` mostra as
+> duas, com `?` no molde da alternativa. Fica pendente só **escolher** qual vale
+> (o `musica: <ref> 2` descrito no fim). O texto abaixo é o diagnóstico original.
 
 Achado no MVD#96 (2026-08-22). O `kie:suno-v4.5` devolve duas variações e as duas
 estão no disco:
