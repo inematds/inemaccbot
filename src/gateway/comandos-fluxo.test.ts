@@ -718,10 +718,14 @@ describe('/status P#N', () => {
     // O ✅ é AFIRMAÇÃO, não enfeite da contagem. Ele vinha colado sempre, e
     // `capa-clipe 00/01 ✅ · 01 ❌` dizia visto-e-erro na mesma linha: quem
     // varre o painel lê o verde primeiro e conclui que aquilo está pronto.
+    // Com DOIS alvos a contagem volta a fazer sentido — com um só, ela é ruído
+    // (ver "fluxo de um alvo só" mais abaixo).
     it('fase incompleta NÃO leva ✅ — só os números e o que está acontecendo', () => {
-      const r = tabelaFluxo(visaoCom([fase('render', 'um', 'falhou')]), false);
-      expect(r).toContain('00/01');
-      expect(r).not.toContain('00/01 ✅');
+      const r = tabelaFluxo(visaoCom([
+        fase('render', 'um', 'falhou'), fase('render', 'dois', 'falhou'),
+      ]), false);
+      expect(r).toContain('00/02');
+      expect(r).not.toContain('00/02 ✅');
       expect(r).toContain('❌');
     });
 
@@ -734,12 +738,35 @@ describe('/status P#N', () => {
       expect(r).toContain('▶️');
     });
 
+    // FLUXO DE UM ALVO SÓ: contagem é ruído. `capa-clipe 00/01 · 01 ❌` faz o
+    // leitor decodificar dois números para descobrir o que um ícone já diz — e
+    // o que ele veio buscar, POR QUE falhou, não estava em lugar nenhum da
+    // tela. Reclamação do dono em 2026-08-22, olhando três fluxos falhados.
+    it('com um alvo só, a linha é o estado — sem contagem', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', '', 'rodando')]), false);
+      expect(r).toContain('▶️');
+      expect(r).not.toContain('00/01');
+    });
+
+    it('e na falha, a CAUSA vem junto', () => {
+      const f = fase('render', '', 'falhou');
+      const r = tabelaFluxo(visaoCom([
+        { ...f, erro: 'o render não terminou em 180 min — alvo /art/fluxos/B1/render.txt' },
+      ]), false);
+      expect(r).toContain('❌');
+      expect(r).toContain('o render não terminou em 180 min');
+      // O caminho interno que o bot nomeou serve ao log, não ao painel: ocupa
+      // metade da linha e empurra a causa para fora do corte.
+      expect(r).not.toContain('/art/fluxos');
+    });
+
     // A coluna dos números alinha pelo NOME MAIS LONGO: com `capa-clipe` (10) e
     // largura fixa em 8, essa linha saía do prumo e a pilha deixava de ser
     // varrível de cima a baixo, que é a única coisa que o painel faz bem.
     it('a coluna alinha pelo nome de fase mais longo', () => {
       const r = tabelaFluxo(visaoCom([
-        fase('plano', '', 'feito'), fase('capa-clipe', '', 'rodando'),
+        fase('plano', 'um', 'feito'), fase('plano', 'dois', 'feito'),
+        fase('capa-clipe', 'um', 'rodando'), fase('capa-clipe', 'dois', 'rodando'),
       ]), false);
       const linhas = r.split('\n').filter((l) => /\d\d\/\d\d/.test(l));
       const colunas = linhas.map((l) => l.indexOf(l.match(/\d\d\/\d\d/)![0]));

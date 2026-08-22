@@ -671,6 +671,10 @@ export function causaDaFalha(erro: string | null, alvo: string): string {
   const alvoEscapado = alvo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   m = m.replace(new RegExp(`^\\w*-?${alvoEscapado}-v\\d+\\s*[—-]\\s*`, 'i'), '');
   m = m.replace(/^[A-Z]\d+-[\w-]+-v\d+\s*[—-]\s*/, '');
+  // `— alvo /home/.../MVD90/capa-clipe.txt`: caminho do arquivo interno que o
+  // bot nomeou. Serve ao log, não a quem lê o painel — e ocupa metade da linha,
+  // empurrando a causa de verdade para fora do corte.
+  m = m.replace(/\s*[—-]\s*alvo\s+\S+$/i, '');
   return m;
 }
 
@@ -774,6 +778,17 @@ function linhasDaFase(fase: string, lista: Fase[], detalhe: boolean, largura = L
   if (lista.length <= ALVOS_ANTES_DE_CONTAR && detalhe) {
     const alvos = lista.map((f) => `${ICONE[f.estado]} ${f.alvo || '(todos)'}`).join(' · ');
     return [`${rotulo} ${alvos}`];
+  }
+
+  // FLUXO DE UM ALVO SÓ: contagem é ruído. `capa-clipe 00/01 · 01 ❌` faz o
+  // leitor decodificar dois números para descobrir o que um ícone já diz, e o
+  // que ele veio buscar — POR QUE falhou — não está em lugar nenhum da tela.
+  // Com um alvo, a linha vira o estado e, na falha, a CAUSA.
+  if (lista.length === 1) {
+    const f = lista[0]!;
+    const linha = `${rotulo} ${ICONE[f.estado]}${detalhe ? ` ${NOME_ESTADO[f.estado]}` : ''}`;
+    if (f.estado !== 'falhou' || !f.erro) return [linha];
+    return [linha, `  ↳ ${causaDaFalha(f.erro, f.alvo || '').slice(0, CAUSA_MAX)}`];
   }
 
   const porEstado = new Map<Fase['estado'], Fase[]>();
