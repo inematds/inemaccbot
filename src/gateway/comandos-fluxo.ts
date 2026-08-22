@@ -666,9 +666,14 @@ export function tabelaFluxo(
     porFase.set(f.fase, lista);
   }
   const largura = Math.max(LARGURA_FASE, ...[...porFase.keys()].map((f) => f.length));
-  for (const [fase, lista] of porFase) {
-    linhas.push(...linhasDaFase(fase, lista, comandos, largura, fluxo.status,
-      (f) => progressoDe?.(fluxo, f)));
+  // O NÚMERO DO PASSO na frente de cada fase. Sem ele a pilha diz o que
+  // aconteceu, mas não ONDE o fluxo está: "capa-clipe ❌" não conta que isso é
+  // o passo 3 de 4, nem que sobrou um. O total aparece pelo próprio último
+  // número, e por isso ele não precisa se repetir em toda linha.
+  const nomes = [...porFase.keys()];
+  for (const [i, fase] of nomes.entries()) {
+    linhas.push(...linhasDaFase(fase, porFase.get(fase)!, comandos, largura, fluxo.status,
+      (f) => progressoDe?.(fluxo, f), `${i + 1}/${nomes.length}`));
   }
   // A legenda NÃO entra aqui. Ela entrava uma vez por fluxo, e com três fluxos
   // na tela viravam três legendas idênticas separando o que se quer comparar —
@@ -821,17 +826,22 @@ const LARGURA_FASE = 8;
 
 function linhasDaFase(
   fase: string, lista: Fase[], detalhe: boolean, largura = LARGURA_FASE, statusFluxo = '',
-  progresso?: (f: Fase) => string | undefined,
+  progresso?: (f: Fase) => string | undefined, passo = '',
 ): string[] {
-  const rotulo = fase.padEnd(largura);
+  const rotulo = `${passo ? `${passo} ` : ''}${fase.padEnd(largura)}`;
   // `pulado` significa duas coisas MUITO diferentes, e o mesmo ⏭️ contava as
   // duas: "não entrou neste fluxo" (fase opcional, `| de=`) e "não chegou a
   // rodar porque uma fase anterior quebrou". Num fluxo falhado, o segundo caso
   // é o que importa — e ⏭️ lido como "pulei de propósito" faz o painel parecer
   // mais saudável do que está.
-  const icone = (f: Fase): string => (
-    f.estado === 'pulado' && statusFluxo === 'falhou' ? '⛔' : ICONE[f.estado]
-  );
+  const icone = (f: Fase): string => {
+    if (f.estado === 'pulado' && statusFluxo === 'falhou') return '⛔';
+    // `pendente` tem ícone PRÓPRIO no painel (⏳): o dele é `·`, o mesmo
+    // separador da linha, e sozinho não significa nada. No detalhe a palavra
+    // vem junto e o `·` volta a servir.
+    if (!detalhe && f.estado === 'pendente') return '⏳';
+    return ICONE[f.estado];
+  };
   if (lista.length <= ALVOS_ANTES_DE_CONTAR && detalhe) {
     const alvos = lista.map((f) => `${icone(f)} ${f.alvo || '(todos)'}`).join(' · ');
     return [`${rotulo} ${alvos}`];

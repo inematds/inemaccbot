@@ -850,6 +850,25 @@ describe('/status P#N', () => {
       expect(r).not.toContain('/art/fluxos');
     });
 
+    // O NÚMERO DO PASSO. Sem ele a pilha diz o que aconteceu, mas não ONDE o
+    // fluxo está: "capa-clipe ❌" não conta que isso é o passo 3 de 4, nem que
+    // sobrou um (dono, 2026-08-22: "não aparece os números dos passos").
+    it('cada fase mostra a posição dela no fluxo', () => {
+      const r = tabelaFluxo(visaoCom([
+        fase('texto', '', 'feito'), fase('render', '', 'rodando'), fase('entregar', '', 'pendente'),
+      ]), false);
+      expect(r).toContain('1/3 texto');
+      expect(r).toContain('2/3 render');
+      expect(r).toContain('3/3 entregar');
+    });
+
+    // `pendente` sozinho era `·`, o mesmo caractere do separador da linha —
+    // não significava nada no painel.
+    it('fase que ainda vai rodar aparece como fila, não como ponto', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', '', 'pendente')]), false);
+      expect(r).toContain('⏳');
+    });
+
     // O rabo que aponta para arquivo INTERNO do bot sai — nas duas formas que
     // ele tem — e a sobra de corte também: um travessão pendurado no fim é o
     // cadáver do trecho que acabou de sair, e lê-se como frase interrompida.
