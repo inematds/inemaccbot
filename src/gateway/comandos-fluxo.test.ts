@@ -618,8 +618,8 @@ describe('/status P#N', () => {
   // (`pessoa-`/`comum-pro`). O que se lê de relance é a CONTAGEM; nome de alvo
   // só interessa quando é exceção — o que falhou e o que espera você.
   describe('fase com muitos alvos: conta, e nomeia só a exceção', () => {
-    const fase = (nome: string, alvo: string, estado: string) =>
-      ({ fase: nome, alvo, estado, erro: null } as never);
+    const fase = (nome: string, alvo: string, estado: string, erro: string | null = null) =>
+      ({ fase: nome, alvo, estado, erro } as never);
     const visaoCom = (fases: unknown[]) => ({
       fluxo: { prefixo: 'C', id: 15, tipo: 'promoavatar3', assunto: 'assunto', status: 'rodando', versao_def: 1 },
       fases,
@@ -738,6 +738,23 @@ describe('/status P#N', () => {
       expect(r).toContain('▶️');
     });
 
+    // De relance: rodando e falhado têm que se separar SEM ler a palavra. Com
+    // três fluxos na tela, "status: falhou" e "status: rodando" eram
+    // indistinguíveis, e a pilha de ícones logo abaixo puxava o olho antes.
+    it('o status do fluxo tem ícone, e ele vem primeiro', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', '', 'rodando')]), false);
+      expect(r).toContain('▶️ rodando');
+      expect(r).not.toContain('status: rodando');
+    });
+
+    // A legenda saiu daqui: com três fluxos, apareciam três legendas idênticas
+    // separando justamente o que se quer comparar. Ela vive uma vez só, no fim
+    // do painel inteiro.
+    it('a tabela de um fluxo NÃO carrega a legenda', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', '', 'feito')]), false);
+      expect(r).not.toContain('feito · ▶️ rodando');
+    });
+
     // FLUXO DE UM ALVO SÓ: contagem é ruído. `capa-clipe 00/01 · 01 ❌` faz o
     // leitor decodificar dois números para descobrir o que um ícone já diz — e
     // o que ele veio buscar, POR QUE falhou, não estava em lugar nenhum da
@@ -749,9 +766,9 @@ describe('/status P#N', () => {
     });
 
     it('e na falha, a CAUSA vem junto', () => {
-      const f = fase('render', '', 'falhou');
       const r = tabelaFluxo(visaoCom([
-        { ...f, erro: 'o render não terminou em 180 min — alvo /art/fluxos/B1/render.txt' },
+        fase('render', '', 'falhou',
+          'o render não terminou em 180 min — alvo /art/fluxos/B1/render.txt'),
       ]), false);
       expect(r).toContain('❌');
       expect(r).toContain('o render não terminou em 180 min');

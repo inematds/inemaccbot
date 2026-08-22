@@ -35,6 +35,13 @@ export interface DepsFluxo {
   jobsSoltos?: () => { id: number; tarefa: string; status: string }[];
 }
 
+/** O estado do FLUXO inteiro, em um caractere. `rodando` e `falhou` são os dois
+ *  que precisam se separar de relance no painel; os outros vêm junto para a
+ *  linha não ficar sem ícone e desalinhar a pilha. */
+const ICONE_FLUXO: Record<string, string> = {
+  rodando: '▶️', falhou: '❌', feito: '✅', cancelado: '🚫', pausado: '⏸️',
+};
+
 const ICONE: Record<Fase['estado'], string> = {
   pendente: '·', rodando: '▶️', feito: '✅', 'aguardando-ok': '⏸️',
   falhou: '❌', pulado: '⏭️',
@@ -617,7 +624,12 @@ export function tabelaFluxo(
   const linhas = [
     `${fluxo.prefixo}#${fluxo.id} — ${fluxo.tipo}`,
     `  ${resumoAssunto(fluxo.assunto, LARGURA_CHAT - 2)}`,
-    `status: ${fluxo.status} · def v${fluxo.versao_def}`,
+    // O status do FLUXO com ícone, e o ícone primeiro: com três fluxos na tela,
+    // "status: falhou" e "status: rodando" só se distinguem lendo a palavra —
+    // e a pilha de fases logo abaixo tem ícones que puxam o olho antes. Sem
+    // isto não dá para saber, de relance, se o que está ali está andando ou
+    // parado (reclamação do dono em 2026-08-22).
+    `${ICONE_FLUXO[fluxo.status] ?? '·'} ${fluxo.status} · def v${fluxo.versao_def}`,
   ];
   const porFase = new Map<string, Fase[]>();
   for (const f of fases) {
@@ -629,13 +641,10 @@ export function tabelaFluxo(
   for (const [fase, lista] of porFase) {
     linhas.push(...linhasDaFase(fase, lista, comandos, largura));
   }
-  // A legenda entra UMA vez, no fim do bloco, e só no painel — é o que paga a
-  // remoção da palavra de cada estado em cada linha de cada fluxo.
-  if (!comandos && fases.length) {
-    // Cabe na régua de 42: a legenda é a linha mais larga do painel, e se ela
-    // quebrar, quebra em todo fluxo listado.
-    linhas.push('  ✅ feito · ▶️ rodando · ⏸️ você · ⏳ fila');
-  }
+  // A legenda NÃO entra aqui. Ela entrava uma vez por fluxo, e com três fluxos
+  // na tela viravam três legendas idênticas separando o que se quer comparar —
+  // exatamente o ruído que ela existia para evitar. Agora sai uma só, no fim do
+  // painel inteiro (`painelFluxos`).
   const esperando = fases.filter((f) => f.estado === 'aguardando-ok');
   if (esperando.length) {
     linhas.push('', comandos
@@ -916,6 +925,10 @@ export function painelFluxos(deps: DepsFluxo): string {
   linhas.push(
     ...linhaSoltos(),
     '',
+    // UMA legenda para o painel todo, aqui embaixo: com três fluxos na tela ela
+    // aparecia três vezes, separando justamente o que se quer comparar de
+    // relance. Cabe na régua de 42 — é a linha mais larga do painel.
+    '✅ feito · ▶️ rodando · ⏸️ você · ⏳ fila · ❌ erro',
     `Detalhe de um: /status ${ref} · liberar: /aprovar ${ref} · retentar: /refazer ${ref}`,
     'Terminados: /completos · fila de jobs: /jobs',
   );
