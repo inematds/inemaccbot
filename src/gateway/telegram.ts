@@ -192,6 +192,9 @@ export function criarBot(
      *  Injetada porque o gateway não conhece disco — e porque o teste do
      *  pareamento não pode escrever no `.env` de ninguém. */
     persistirAllowlist?: (ids: number[]) => void;
+    /** Depois de responder — é onde os avisos que o COMANDO empilhou saem.
+     *  Sem isto, `/dados` anuncia a reentrega e o material nunca chega. */
+    aposResponder?: () => Promise<void>;
   },
 ): { bot: Bot; transporte: Transporte } {
   const bot = new Bot(cfg.botToken);
@@ -225,12 +228,24 @@ export function criarBot(
         return mensagemDePareamento(chatId);
       };
 
+  /** O dreno nunca derruba o handler: perder um aviso é ruim, ficar surdo é
+   *  pior — a mesma regra do §8 que vale no dreno do worker. */
+  const soltarPendentes = async (): Promise<void> => {
+    if (!deps.aposResponder) return;
+    try {
+      await deps.aposResponder();
+    } catch (erro) {
+      log(`gateway: dreno pós-resposta falhou: ${(erro as Error).message}`);
+    }
+  };
+
   bot.on('message:text', async (ctx) => {
     const pedacos = await rotear(
       { chatId: ctx.chat.id, texto: ctx.message.text },
       { permitido, aoComando: deps.aoComando, log, parear },
     );
     await enviarPedacos(async (pedaco) => { await ctx.reply(pedaco); }, pedacos);
+    await soltarPendentes();
   });
 
   // Documento, vídeo e áudio entram pelo MESMO caminho: o que interessa é o
@@ -249,6 +264,7 @@ export function criarBot(
         { permitido, baixar, aoComando: deps.aoComando, log },
       );
       await enviarPedacos(async (pedaco) => { await ctx.reply(pedaco); }, pedacos);
+      await soltarPendentes();
     });
   }
 

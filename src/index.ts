@@ -82,6 +82,17 @@ export interface DepsServico {
        * fica surdo: jobs rodam, nenhum comando entra, nenhuma notificação sai.
        * Chamar isto derruba o serviço para o systemd reiniciar. */
       aoFalhaFatal: (e: Error) => void;
+      /**
+       * Chamado DEPOIS de responder a um comando, para soltar o que o comando
+       * empilhou (o material do `/dados`).
+       *
+       * Existe porque o dreno dos avisos de fluxo estava pendurado só na
+       * notificação de JOB: `/dados` com a fila vazia dizia "reentregando 2
+       * fase(s)" e nada chegava — as mensagens ficavam no buffer até o próximo
+       * job terminar, que podia ser nunca. Depois de responder, e não antes,
+       * para o resumo chegar na frente do material.
+       */
+      aposResponder?: () => Promise<void>;
     },
   ) => TransporteServico;
   /** Como o PROCESSO morre depois de `parar()` numa falha fatal. Só `main`
@@ -196,6 +207,8 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
    * depois dela — ver `aoEvento` abaixo. */
   const eventosDeFluxo: { chatId: number; texto: string; anexo?: string }[] = [];
   let lacos: Promise<void>[] = [];
+  /** Dreno dos avisos de fluxo, apontado assim que ele existe (ver `aposResponder`). */
+  let soltarFluxo: () => Promise<void> = async (): Promise<void> => {};
 
   const timeouts = new Set<NodeJS.Timeout>();
   /** Resolvedores das esperas ociosas, para acordá-las no desligamento em vez
@@ -446,7 +459,12 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
       raizArtefatos,
       projetosDir: cfg.projetosDir,
     });
-    transp = deps.criarTransporte(cfg, { aoComando, log: deps.log, aoFalhaFatal: falhaFatal });
+    // Fechamento sobre a variável: `soltarEventosDeFluxo` só existe abaixo, e
+    // ler o valor aqui congelaria o no-op para sempre.
+    transp = deps.criarTransporte(cfg, {
+      aoComando, log: deps.log, aoFalhaFatal: falhaFatal,
+      aposResponder: () => soltarFluxo(),
+    });
     const transporte = transp.transporte;
     /** Drena os avisos de fluxo. Chamado depois do ack, nunca dentro dele. */
     const soltarEventosDeFluxo = async (): Promise<void> => {
@@ -501,6 +519,7 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
 
     // O notificador do worker faz as duas coisas: avisa sobre o JOB (quando ele
     // tem dono no chat) e solta os avisos de FLUXO que o avanço empilhou.
+    soltarFluxo = soltarEventosDeFluxo;
     notificar = async (job: Job): Promise<void> => {
       await notificarJob(job);
       await soltarEventosDeFluxo();

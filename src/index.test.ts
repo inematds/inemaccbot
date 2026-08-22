@@ -53,6 +53,9 @@ interface FakeTransporte {
   iniciados: number;
   parados: number;
   mensagens: { chatId: number; texto: string }[];
+  /** Faz o que o gateway real faz com um comando: responde e SÓ ENTÃO drena o
+   * que o comando empilhou. */
+  comandar?: (chatId: number, texto: string) => Promise<void>;
 }
 
 /** `atrasoMs` existe para o teste da CAUDA de notificação: no Telegram real o
@@ -69,11 +72,18 @@ function fakeTransporte(atrasoMs = 0): { registro: FakeTransporte; criar: DepsSe
   };
   return {
     registro,
-    criar: () => ({
-      async iniciar() { registro.iniciados += 1; },
-      async parar() { registro.parados += 1; },
-      transporte,
-    }),
+    criar: (_cfg, deps) => {
+      registro.comandar = async (chatId, texto): Promise<void> => {
+        const resposta = await deps.aoComando(chatId, texto);
+        await transporte.responder(chatId, resposta);
+        await deps.aposResponder?.();
+      };
+      return {
+        async iniciar() { registro.iniciados += 1; },
+        async parar() { registro.parados += 1; },
+        transporte,
+      };
+    },
   };
 }
 
@@ -425,6 +435,22 @@ describe('notificação', () => {
     // Sem esperar mais nada depois do `parar()` — é este o ponto.
     expect(registro.mensagens).toHaveLength(1);
     expect(registro.mensagens[0]?.texto).toMatch(/Job 1 conclu/);
+  });
+});
+
+describe('avisos que um COMANDO empilha', () => {
+  it('saem depois da resposta, sem depender de um job terminar', async () => {
+    // A regressão: `/dados` com a fila VAZIA respondia "reentregando N fase(s)"
+    // e o material ficava no buffer até o próximo job — que podia ser nunca.
+    const { svc, registro } = montar({});
+    await svc.iniciar();
+    // `comandar` só existe porque o serviço PASSOU `aposResponder` ao criar o
+    // transporte — era essa a ponta solta: o dreno estava pendurado apenas na
+    // notificação de job.
+    expect(registro.comandar).toBeDefined();
+    await registro.comandar!(42, '/ping');
+    await svc.parar();
+    expect(registro.mensagens.filter((m) => m.chatId === 42)).not.toHaveLength(0);
   });
 });
 

@@ -8,7 +8,7 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
-## 0.12.4 — 2026-08-22
+## 0.12.5 — 2026-08-22
 
 A capa virou arte, e a entrega ao canal virou pacote.
 
@@ -26,6 +26,11 @@ arquivo solto, nome = título.
 
 Falhar a entrega não derruba o fim do fluxo: o pacote continua no disco e o
 caminho vai na mensagem.
+
+**`/dados` voltou a entregar.** O dreno dos avisos de fluxo estava pendurado só
+na notificação de JOB: com a fila vazia, `/dados` anunciava a reentrega e o
+material ficava no buffer até o próximo job — que podia ser nunca. Agora o
+gateway drena depois de responder a qualquer comando.
 
 ## 0.11.4 — 2026-08-21
 
