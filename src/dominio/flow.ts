@@ -155,6 +155,20 @@ export interface FlowDef {
    */
   cta?: Record<string, string>;
   /**
+   * CONSULTAS de leitura que o chat pode rodar: `{ lista: "bash {{repo}}/x.sh
+   * lista 10" }` vira `/musicavideo lista`.
+   *
+   * O domínio já tinha `lista`, `busca` e afins no CLI dele; o que faltava era
+   * poder perguntar do celular sem abrir terminal. São LEITURA por contrato —
+   * não entram na fila, não geram artefato, e têm teto curto de tempo. Se uma
+   * consulta gastar dinheiro ou demorar, ela não é consulta: é fase.
+   *
+   * `{{repo}}` é obrigatório (mesma regra de `comando`); `{{input}}` é opcional
+   * e recebe, ASPADO, o resto da mensagem — é o que faz `/musicavideo busca
+   * rock` funcionar.
+   */
+  consultas?: Record<string, string>;
+  /**
    * LEGENDA do reel, resolvida no congelamento — não vem do `flow.json`.
    *
    * Só é gravada quando DESLIGADA (`| legenda=nao`): um fluxo normal fica com a
@@ -242,6 +256,10 @@ function texto(v: unknown, campo: string): string {
  * roda, faz outra coisa, e ninguém liga o efeito ao typo.
  */
 export const MARCADORES_DE_COMANDO = new Set(['repo', 'input', 'alvo', 'ref', 'saida']);
+
+/** Palavras que o chat já usa depois do nome do fluxo. Uma consulta com esse
+ *  nome nunca seria alcançada — e o silêncio seria pior que a recusa. */
+const RESERVADAS_DO_CHAT = new Set(['help', 'ajuda', 'status', 'situacao', 'andamento']);
 
 export const TAREFAS_DE_FASE = new Set([
   'fluxo-agente', 'fluxo-navegador', 'heygen.baixar', 'heygen.gerar',
@@ -526,8 +544,31 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
     if (pares.length) cta = Object.fromEntries(pares);
   }
 
+  // CONSULTAS: nome simples → comando de leitura. Validadas como o `comando` de
+  // fase, porque são a mesma coisa com outro gatilho — e um nome bobo aqui vira
+  // subcomando do chat, então ele não pode colidir com `help`/`status`.
+  let consultas: Record<string, string> | undefined;
+  if (d.consultas !== undefined) {
+    if (typeof d.consultas !== 'object' || d.consultas === null || Array.isArray(d.consultas)) {
+      erro('consultas', 'objeto no formato {nome: "comando"}');
+    }
+    const pares = Object.entries(d.consultas as Record<string, unknown>).map(([nome, bruto]) => {
+      if (!NOME_SIMPLES.test(nome)) erro(`consultas.${nome}`, 'nome em minúsculas, sem espaço');
+      if (RESERVADAS_DO_CHAT.has(nome)) {
+        erro(`consultas.${nome}`, `"${nome}" é palavra do chat (${[...RESERVADAS_DO_CHAT].join(', ')})`);
+      }
+      const cmd = texto(bruto, `consultas.${nome}`);
+      if (!cmd.includes('{{repo}}')) {
+        erro(`consultas.${nome}`, 'precisa citar {{repo}} — caminho fixo não sobrevive a outra máquina');
+      }
+      return [nome, cmd] as const;
+    });
+    if (pares.length) consultas = Object.fromEntries(pares);
+  }
+
   return {
     nome, prefixo, versao_def, alvos, fases,
+    ...(consultas ? { consultas } : {}),
     ...(cta ? { cta } : {}),
     ...(avatar_id ? { avatar_id } : {}),
     ...(voice_id ? { voice_id } : {}),

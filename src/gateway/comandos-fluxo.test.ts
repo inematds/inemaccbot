@@ -420,6 +420,26 @@ describe('--alvo=x, a forma de bandeira', () => {
 // A fila `render` tem UMA vaga: dois fluxos grandes se revezam por horas, e
 // escolher qual termina antes era impossível pelo chat. A única saída era
 // `/cancelar`, que mata e marca as fases como puladas, sem volta.
+// CONSULTAS: os domínios já sabiam responder (`lista`, `busca`, `estilos`
+// existem nos CLIs deles), e faltava poder perguntar do celular. Quem declara o
+// que dá para perguntar é o flow.json — não o bot.
+describe('/<fluxo> <consulta>', () => {
+  it('nome declarado roda o comando do domínio', async () => {
+    const flow = JSON.parse(readFileSync(join(repo, 'flow.json'), 'utf8')) as Record<string, unknown>;
+    flow.consultas = { lista: 'bash -c \'echo item-um; echo item-dois\' {{repo}}' };
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify(flow));
+    const r = await manda('/brinquedo lista');
+    expect(r).toContain('item-um');
+    // E NÃO criou fluxo nenhum: consulta é leitura.
+    expect(fila.listar()).toHaveLength(0);
+  });
+
+  it('nome NÃO declarado continua virando assunto de fluxo', async () => {
+    await manda('/brinquedo lista | alvos=um');
+    expect(fluxos.status(1)!.fluxo.assunto).toBe('lista');
+  });
+});
+
 describe('/pausar, /retomar e /prioridade', () => {
   it('pausar tira da fila o que não começou e não enfileira mais nada', async () => {
     await manda('/brinquedo Assunto | alvos=um');

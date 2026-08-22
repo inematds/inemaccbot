@@ -185,6 +185,12 @@ export function ajudaDoFluxo(
     ...(def.fases.some((f) => f.pausa_apos)
       ? ['  | sem-portao  não para para você aprovar'] : []),
     '',
+    // As CONSULTAS que o domínio declarou: elas só existem se ele as declarou, e
+    // ninguém as descobriria sozinho.
+    ...(Object.keys(def.consultas ?? {}).length
+      ? ['', `Consultas: ${Object.keys(def.consultas!).map((n) => `/${registrado.command} ${n}`).join(' · ')}`]
+      : []),
+    '',
     `Acompanhar: /status ${def.prefixo}#N · /refazer ${def.prefixo}#N [público] · /cancelar ${def.prefixo}#N`,
   ];
   if (def.fases.some((f) => f.pausa_apos)) {

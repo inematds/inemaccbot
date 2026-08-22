@@ -17,6 +17,9 @@ import type { SkillDef } from '../dominio/registry.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+
+import { resolverConsulta, rodarConsulta } from './consulta.js';
+import { carregarFlow } from '../dominio/flow.js';
 import type { Fluxos } from '../fluxos/runtime.js';
 import { humano } from '../dominio/espaco.js';
 import { planejarLimpeza } from '../dominio/limpeza.js';
@@ -304,6 +307,11 @@ export async function tratarMensagem(
   // Fluxos entram ANTES do parser de comandos de job: `/status P#16` e
   // `/status 12` são o mesmo verbo com argumentos de tipos diferentes, e quem
   // decide é o formato do argumento.
+  // CONSULTA de domínio (`/musicavideo lista`) roda um comando: precisa de
+  // await, e por isso vem antes do roteador síncrono de fluxo.
+  const consulta = acharConsulta(texto, deps);
+  if (consulta) return rodarConsulta(consulta.comando, consulta.cwd);
+
   const doFluxo = tratarComandoDeFluxo(chatId, texto, deps);
   if (doFluxo !== undefined) return doFluxo;
 
@@ -370,4 +378,35 @@ function ultimoProgresso(caminho: string): string | undefined {
   }
   // Uma linha de progresso pode ser longa; o painel tem régua de ~42.
   return achado?.slice(0, 32);
+}
+
+/**
+ * `/musicavideo lista` — a consulta que o DOMÍNIO declarou no `flow.json`.
+ *
+ * Lida do disco a cada pergunta, como a ajuda: consulta não afeta execução
+ * nenhuma, e uma lista desatualizada é pior que uma lista que muda. Nome que o
+ * domínio não declara não é consulta — segue para o roteamento normal e vira
+ * assunto de fluxo, como sempre foi.
+ */
+function acharConsulta(
+  texto: string, deps: DepsMensagem,
+): { comando: string; cwd: string } | undefined {
+  const [bruto, ...resto] = texto.trim().split(/\s+/);
+  const verbo = (bruto ?? '').toLowerCase();
+  const nome = (resto[0] ?? '').toLowerCase();
+  if (!nome) return undefined;
+  const registrado = (deps.fluxosRegistrados ?? []).find((f) => `/${f.command}` === verbo);
+  if (!registrado) return undefined;
+  let consultas: Record<string, string> | undefined;
+  try {
+    consultas = carregarFlow(registrado.repo, deps.defs.map((d) => d.command)).consultas;
+  } catch {
+    return undefined;   // flow inválido é problema de outro comando, não deste
+  }
+  const molde = consultas?.[nome];
+  if (!molde) return undefined;
+  return {
+    comando: resolverConsulta(molde, registrado.repo, resto.slice(1).join(' ')),
+    cwd: registrado.repo,
+  };
 }

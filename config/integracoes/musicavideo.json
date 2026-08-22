@@ -106,7 +106,13 @@
           "pausa_apos": false,
           "comando": "bash {{repo}}/musicavideo.sh pacote {{anterior:slug}}"
         }
-      ]
+      ],
+      "consultas": {
+        "lista": "bash {{repo}}/musicavideo.sh lista 10",
+        "busca": "bash {{repo}}/musicavideo.sh busca {{input}}",
+        "estilos": "python3 -c \"import json;d=json.load(open('{{repo}}/data/estilos.json'))['estilos'];print('\\n'.join(f\\\"{e['id']}  {', '.join(e.get('genero',[])[:2])}\\\" for e in d))\"",
+        "custo": "bash {{repo}}/musicavideo.sh custo {{input}}"
+      }
     },
     "prompts": {}
   },
