@@ -5,6 +5,7 @@ separado e é linkado — aqui é só o suficiente para o padrão aparecer.
 
 | data | o que quebrou | menor correção | prompt \| infra |
 |---|---|---|---|
+| 2026-08-22 | a correção do `/dados` não valeu em produção: `criarTransporteReal` não repassava `aposResponder` ao `criarBot`, e o teste passava porque o transporte FALSO chamava o hook direto (fronteira errada) | repassar, e tornar o campo OBRIGATÓRIO em `criarBot` para o compilador cobrar; teste no handler de verdade | prompt |
 | 2026-08-22 | portão do musicavideo abria MUDO desde sempre: a entrega iterava sobre os alvos do fluxo, e um fluxo cujas fases são TODAS de escopo `fluxo` não tem alvo nenhum — laço vazio, nem um aviso | quando a lista de alvos é vazia, entregar uma vez com alvo `''` | prompt |
 | 2026-08-22 | `{{artefato:musica}}` pegava a linha de PROGRESSO (`musica: pronto → faixa-1.mp3 (US$ 0.08)`) em vez do recibo do fim, e o portão dizia "não consegui ler" | o campo do recibo vale pela ÚLTIMA ocorrência, não pela primeira | prompt |
 | 2026-08-22 | `/dados mvd90` respondeu "reentregando 2 fase(s)" e nada chegou: o dreno dos avisos de fluxo só era chamado depois que um JOB terminava, e a fila estava vazia | `aposResponder` no gateway — depois de responder a um comando, drena o que o comando empilhou | prompt |

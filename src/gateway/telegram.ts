@@ -192,9 +192,15 @@ export function criarBot(
      *  Injetada porque o gateway não conhece disco — e porque o teste do
      *  pareamento não pode escrever no `.env` de ninguém. */
     persistirAllowlist?: (ids: number[]) => void;
-    /** Depois de responder — é onde os avisos que o COMANDO empilhou saem.
-     *  Sem isto, `/dados` anuncia a reentrega e o material nunca chega. */
-    aposResponder?: () => Promise<void>;
+    /**
+     * Depois de responder — é onde os avisos que o COMANDO empilhou saem.
+     *
+     * OBRIGATÓRIO de propósito. Como opcional, o adaptador real simplesmente
+     * não o repassou e `/dados` seguiu mudo, com o teste passando porque o
+     * transporte falso chamava o hook direto. Exigir o campo faz o compilador
+     * cobrar quem monta o bot; quem não tem o que drenar passa um no-op.
+     */
+    aposResponder: () => Promise<void>;
   },
 ): { bot: Bot; transporte: Transporte } {
   const bot = new Bot(cfg.botToken);
@@ -231,7 +237,6 @@ export function criarBot(
   /** O dreno nunca derruba o handler: perder um aviso é ruim, ficar surdo é
    *  pior — a mesma regra do §8 que vale no dreno do worker. */
   const soltarPendentes = async (): Promise<void> => {
-    if (!deps.aposResponder) return;
     try {
       await deps.aposResponder();
     } catch (erro) {

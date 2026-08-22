@@ -231,7 +231,7 @@ describe('criarBot', () => {
       projetosDir: '/tmp/projetos-inexistente',
       heygenEnvPath: '/tmp/heygen-inexistente.env', heygenCli: 'heygen', heygenPerfilChrome: '/tmp/perfil-heygen',
     };
-    const { bot, transporte } = criarBot(cfg, { aoComando: async () => 'ok' });
+    const { bot, transporte } = criarBot(cfg, { aoComando: async () => 'ok', aposResponder: async () => {} });
     expect(bot).toBeDefined();
     expect(typeof transporte.responder).toBe('function');
   });
@@ -260,7 +260,7 @@ describe('criarBot', () => {
     const linhas: string[] = [];
     const log = (m: string): void => { linhas.push(m); };
 
-    const { bot } = criarBot(cfg, { aoComando: async () => 'nao deveria ser chamado', log });
+    const { bot } = criarBot(cfg, { aoComando: async () => 'nao deveria ser chamado', log, aposResponder: async () => {} });
     bot.botInfo = {
       id: 1, is_bot: true, first_name: 'teste', username: 'teste_bot',
       can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false,
@@ -339,7 +339,7 @@ describe('criarBot', () => {
     const persistirAllowlist = vi.fn();
     const aoComando = vi.fn(async () => 'pong');
 
-    const { bot } = criarBot(cfg, { aoComando, log: vi.fn(), persistirAllowlist });
+    const { bot } = criarBot(cfg, { aoComando, log: vi.fn(), persistirAllowlist, aposResponder: async () => {} });
     const enviados = await simularTexto(bot, 4242, '/ping');
 
     expect(cfg.chatsPermitidos).toEqual([4242]);
@@ -354,16 +354,55 @@ describe('criarBot', () => {
     const cfg = cfgCom([0]);
     const aoComando = vi.fn(async () => 'pong');
 
-    const { bot } = criarBot(cfg, { aoComando, log: vi.fn(), persistirAllowlist: vi.fn() });
+    const { bot } = criarBot(cfg, { aoComando, log: vi.fn(), persistirAllowlist: vi.fn() , aposResponder: async () => {} });
     await simularTexto(bot, 4242, '/ping');
     await simularTexto(bot, 4242, '/fila');
 
     expect(aoComando).toHaveBeenCalledWith(4242, '/fila');
   });
 
+  it('drena o que o COMANDO empilhou — DEPOIS de responder', async () => {
+    // O buraco que ficou aberto: `index.ts` passava o dreno, mas o adaptador
+    // real não o repassava ao `criarBot`, e `/dados` seguia mudo. O teste
+    // antigo passava porque o transporte FALSO chamava o hook direto — testava
+    // o lado errado da fronteira. Este bate no handler de verdade.
+    const cfg = cfgCom([4242]);
+    const ordem: string[] = [];
+    const { bot } = criarBot(cfg, {
+      aoComando: async () => 'reentregando 2 fase(s)',
+      log: vi.fn(),
+      aposResponder: async () => { ordem.push('dreno'); },
+    });
+    bot.botInfo = {
+      id: 1, is_bot: true, first_name: 'teste', username: 'teste_bot',
+      can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false,
+      can_connect_to_business: false, has_main_web_app: false,
+      has_topics_enabled: false, allows_users_to_create_topics: false,
+      can_manage_bots: false, supports_join_request_queries: false,
+    };
+    // A ordem é registrada NO MOMENTO do envio, não depois do handler: é a
+    // única forma de provar que o resumo sai na frente do material.
+    bot.api.config.use(async (_prev, metodo, carga) => {
+      if (metodo === 'sendMessage') ordem.push(`resposta:${(carga as { text: string }).text}`);
+      return { ok: true, result: { message_id: 1 } } as never;
+    });
+    await bot.handleUpdate({
+      update_id: 1,
+      message: {
+        message_id: 1,
+        date: Date.now() / 1000,
+        chat: { id: 4242, type: 'private', first_name: 'x' },
+        from: { id: 4242, is_bot: false, first_name: 'x' },
+        text: '/dados mvd90',
+      },
+    } as never);
+
+    expect(ordem).toEqual(['resposta:reentregando 2 fase(s)', 'dreno']);
+  });
+
   it('depois de pareado, um segundo chat NÃO entra', async () => {
     const cfg = cfgCom([0]);
-    const { bot } = criarBot(cfg, { aoComando: vi.fn(async () => 'pong'), log: vi.fn(), persistirAllowlist: vi.fn() });
+    const { bot } = criarBot(cfg, { aoComando: vi.fn(async () => 'pong'), log: vi.fn(), persistirAllowlist: vi.fn(), aposResponder: async () => {} });
 
     await simularTexto(bot, 4242, '/ping');
     const enviados = await simularTexto(bot, 9999, '/ping');
@@ -379,6 +418,7 @@ describe('criarBot', () => {
 
     const { bot } = criarBot(cfg, {
       aoComando: vi.fn(async () => 'pong'),
+      aposResponder: async () => {},
       log: (m) => linhas.push(m),
       persistirAllowlist,
     });
@@ -392,7 +432,7 @@ describe('criarBot', () => {
     const cfg = cfgCom([123]);
     const persistirAllowlist = vi.fn();
 
-    const { bot } = criarBot(cfg, { aoComando: vi.fn(async () => 'pong'), log: vi.fn(), persistirAllowlist });
+    const { bot } = criarBot(cfg, { aoComando: vi.fn(async () => 'pong'), log: vi.fn(), persistirAllowlist, aposResponder: async () => {} });
     const enviados = await simularTexto(bot, 4242, '/ping');
 
     expect(enviados).toEqual([]);

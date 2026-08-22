@@ -8,6 +8,16 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.13.6 — 2026-08-22
+
+**O dreno do `/dados` agora chega em produção.** A 0.12.5 criou o `aposResponder`
+e a 0.13.5 destravou o portão, mas o adaptador real do Telegram não repassava o
+dreno ao `criarBot` — o comando seguia mudo. O teste passava porque o transporte
+falso chamava o hook direto, ou seja, testava o lado errado da fronteira. O
+campo virou OBRIGATÓRIO em `criarBot` (o compilador cobra quem monta o bot) e o
+teste novo bate no handler de verdade, provando que o dreno sai DEPOIS da
+resposta.
+
 ## 0.13.5 — 2026-08-22
 
 **O portão do musicavideo abria mudo — e ninguém sabia.** A entrega do que o

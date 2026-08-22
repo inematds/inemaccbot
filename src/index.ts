@@ -813,6 +813,7 @@ function criarTransporteReal(
     aoComando: (chatId: number, texto: string) => Promise<string>;
     log: (m: string) => void;
     aoFalhaFatal: (e: Error) => void;
+    aposResponder?: () => Promise<void>;
     /** O `.env` que `main` leu — destino do id quando o bot é pareado. */
     caminhoEnv: string;
   },
@@ -820,6 +821,10 @@ function criarTransporteReal(
   const { bot, transporte } = criarBot(cfg, {
     aoComando: deps.aoComando,
     log: deps.log,
+    // REPASSAR não é detalhe: o serviço passa o dreno aqui, e foi esquecê-lo
+    // neste ponto que manteve `/dados` mudo mesmo depois de o dreno existir.
+    // `criarBot` EXIGE o campo justamente para o compilador cobrar isto.
+    aposResponder: deps.aposResponder ?? (async (): Promise<void> => {}),
     persistirAllowlist: (ids: number[]): void => {
       persistirAllowlistNoEnv(deps.caminhoEnv, ids, ESCRITA_ENV_REAL);
     },
