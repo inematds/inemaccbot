@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { statSync } from 'node:fs';
 import { RenderFalhou, esperarArtefato, limparMarcadores, processoVivo, trabalhoEmCurso } from './render.js';
 
 let dir: string;
@@ -145,6 +146,31 @@ describe('trabalhoEmCurso', () => {
     writeFileSync(`${alvo}.log`, '');
     writeFileSync(`${alvo}.err`, '');
     expect(trabalhoEmCurso(alvo)).toBe(false);
+  });
+
+  // MVD#90 e MVD#91, 2026-08-22: `.log` de ontem, SEM `.pid` (o processo morreu
+  // sem deixar rastro), e a tentativa seguinte ADOTOU o morto — 180 min olhando
+  // um arquivo que ninguém escrevia, com a fila `render` (1 por vez) parada.
+  it('sem .pid e com .log PARADO, o trabalho não está em curso', () => {
+    writeFileSync(`${alvo}.log`, 'progresso: 33/47');
+    const mtime = statSync(`${alvo}.log`).mtimeMs;
+    expect(trabalhoEmCurso(alvo, () => mtime + 5 * 60_000)).toBe(true);    // 5 min: lento
+    expect(trabalhoEmCurso(alvo, () => mtime + 25 * 60_000)).toBe(false);  // 25 min: parado
+  });
+
+  it('.pid VIVO manda mais que o relógio do log', () => {
+    // Nunca declarar morto quem tem prova de vida: a geração já paga vale mais
+    // que a suspeita de lentidão.
+    writeFileSync(`${alvo}.log`, 'progresso: 33/47');
+    writeFileSync(`${alvo}.pid`, String(process.pid));
+    const mtime = statSync(`${alvo}.log`).mtimeMs;
+    expect(trabalhoEmCurso(alvo, () => mtime + 90 * 60_000)).toBe(true);
+  });
+
+  it('.pid MORTO encerra, mesmo com log recém-escrito', () => {
+    writeFileSync(`${alvo}.log`, 'progresso: 33/47');
+    writeFileSync(`${alvo}.pid`, '2147483646');   // pid que não existe
+    expect(trabalhoEmCurso(alvo, () => Date.now())).toBe(false);
   });
 });
 

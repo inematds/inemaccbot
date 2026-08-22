@@ -5,6 +5,8 @@ separado e é linkado — aqui é só o suficiente para o padrão aparecer.
 
 | data | o que quebrou | menor correção | prompt \| infra |
 |---|---|---|---|
+| 2026-08-22 | MVD#90/#91 queimaram 180 min duas vezes cada: `.log` de ontem sem `.pid`, `processoVivo` devolveu `null` ("não sei") e a adoção esperou por um processo morto, com a fila `render` (1 por vez) parada atrás | sem `.pid`, `.log` sem escrita há 20 min conta como parado — adotar exige prova de vida ou log fresco | infra |
+| 2026-08-22 | reiniciar o serviço com a fila VAZIA disparou render pago: o boot reenfileira fase órfã (`reenfileirarOrfas`), e conferir só `queued`/`running` não vê isso | conferir também fase `pendente` sem job antes de reiniciar (e o teto de custo por fluxo segue `None`) | prompt |
 | 2026-08-22 | a correção do `/dados` não valeu em produção: `criarTransporteReal` não repassava `aposResponder` ao `criarBot`, e o teste passava porque o transporte FALSO chamava o hook direto (fronteira errada) | repassar, e tornar o campo OBRIGATÓRIO em `criarBot` para o compilador cobrar; teste no handler de verdade | prompt |
 | 2026-08-22 | portão do musicavideo abria MUDO desde sempre: a entrega iterava sobre os alvos do fluxo, e um fluxo cujas fases são TODAS de escopo `fluxo` não tem alvo nenhum — laço vazio, nem um aviso | quando a lista de alvos é vazia, entregar uma vez com alvo `''` | prompt |
 | 2026-08-22 | `{{artefato:musica}}` pegava a linha de PROGRESSO (`musica: pronto → faixa-1.mp3 (US$ 0.08)`) em vez do recibo do fim, e o portão dizia "não consegui ler" | o campo do recibo vale pela ÚLTIMA ocorrência, não pela primeira | prompt |

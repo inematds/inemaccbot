@@ -86,7 +86,7 @@ export function limparMarcadores(alvo: string): void {
  * (CUDA sem memória, yt-dlp instável). Marcador de erro presente significa
  * tentativa anterior ENCERRADA: limpa e dispara de novo.
  */
-export function trabalhoEmCurso(alvo: string): boolean {
+export function trabalhoEmCurso(alvo: string, agoraMs: () => number = Date.now): boolean {
   if (existsSync(alvo)) return true; // pronto: adotar é o certo
   if (!existsSync(`${alvo}.log`) || existsSync(`${alvo}.err`)) return false;
   // Disparado E ainda vivo. O `.log` sozinho não prova vida: o processo pode ter
@@ -95,7 +95,31 @@ export function trabalhoEmCurso(alvo: string): boolean {
   // cgroup. Aconteceu em 2026-08-05 (A#25/40mais): a tentativa seguinte ADOTOU
   // um render morto e ficou 2h esperando, com a fila `render` (1 por vez)
   // parada atrás dela.
-  return processoVivo(alvo) !== false;
+  const vivo = processoVivo(alvo);
+  if (vivo !== null) return vivo;
+  // SEM `.pid` não há veredito pelo processo — e "sem prova de morte" não pode
+  // significar esperar 3h. O `.log` é a segunda prova: o domínio escreve nele a
+  // cada shot (`progresso: 33/47`), então um log PARADO há muito tempo é um
+  // trabalho que não está mais andando.
+  //
+  // Foi assim que MVD#90 e MVD#91 queimaram 180 min cada um, duas vezes: o
+  // `.log` ficou de ontem, sem `.pid`, e a tentativa seguinte ADOTOU o morto e
+  // ficou olhando um arquivo que ninguém mais escrevia — com a fila `render`
+  // (1 por vez) parada atrás.
+  return !logParado(alvo, agoraMs());
+}
+
+/** Quanto tempo sem escrever no `.log` já conta como trabalho parado. Folgado
+ *  de propósito: a Agnes espera 60s quando a fila dela enche, e um shot leva
+ *  minutos — declarar morto quem só está lento custaria a geração já paga. */
+export const LOG_PARADO_MS = 20 * 60_000;
+
+export function logParado(alvo: string, agoraMs: number, tetoMs = LOG_PARADO_MS): boolean {
+  try {
+    return agoraMs - statSync(`${alvo}.log`).mtimeMs > tetoMs;
+  } catch {
+    return false;   // sem log para medir, não afirmamos morte
+  }
 }
 
 /**

@@ -112,6 +112,9 @@ rodar('musicavideo: fluxo sem agente', () => {
   it('o clipe roda destacado, com espera declarada', () => {
     const clipe = def.fases.find((f) => f.id === 'clipe')!;
     expect(clipe.fila).toBe('render');
-    expect(clipe.espera).toEqual({ intervalo: 60, timeout: 10800 });
+    // 4h, não 3h: com vários clipes ao mesmo tempo eles disputam a fila
+    // `render` (1 por vez) e cada um demora mais — o teto estourava sem
+    // ninguém ter travado de verdade.
+    expect(clipe.espera).toEqual({ intervalo: 60, timeout: 14400 });
   });
 });

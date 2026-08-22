@@ -8,6 +8,18 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.14.6 — 2026-08-22
+
+**Adotar trabalho destacado agora exige prova de vida.** Sem `.pid`,
+`processoVivo` devolve `null` — e "não sei" estava valendo como "espere". Um
+`.log` de ontem bastava para a tentativa seguinte adotar um processo morto e
+ficar 180 min olhando um arquivo que ninguém escrevia, com a fila `render`
+(1 por vez) parada atrás. Foi o que matou MVD#90 e MVD#91, duas vezes cada.
+
+Agora o `.log` é a segunda prova: o domínio escreve nele a cada shot, então
+20 min sem escrita conta como parado. `.pid` vivo continua mandando mais que o
+relógio — declarar morto quem está só lento custaria a geração já paga.
+
 ## 0.13.6 — 2026-08-22
 
 **O dreno do `/dados` agora chega em produção.** A 0.12.5 criou o `aposResponder`
