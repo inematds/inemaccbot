@@ -604,6 +604,45 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
     rmSync(projetos, { recursive: true, force: true });
   });
 
+  it('fluxo SEM alvo nenhum ainda entrega o que o portão declara', () => {
+    // O musicavideo: todas as fases de escopo `fluxo`, nenhuma linha com alvo.
+    // `alvosDoFluxo` devolvia [] e o laço da entrega não rodava — portão mudo,
+    // sem nem um aviso de que algo faltou.
+    const eventos: { chatId: number; texto: string }[] = [];
+    const dom3 = join(dir, 'dominio3');
+    mkdirSync(join(dom3, 'prompts'), { recursive: true });
+    writeFileSync(join(dom3, 'prompts', 'p.md'), 'faça {{input}} em {{saida}}');
+    const plano = join(dir, 'PLANO-do-teste.md');
+    writeFileSync(plano, '# Chuva de Verão\n\nplano inteiro aqui.');
+    const recibo = join(dir, 'recibo-plano.txt');
+    // Duas linhas `plano:` de propósito: a narração no meio, o recibo no fim.
+    writeFileSync(recibo, `plano: gerando...\nplano: ${plano}\n`);
+    writeFileSync(join(dom3, 'flow.json'), JSON.stringify({
+      nome: 'semalvo', prefixo: 'S', versao_def: 1,
+      alvos: { unico: { gatilho: 'x' } },
+      fases: [
+        {
+          id: 'plano', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+          prompt: 'prompts/p.md', pausa_apos: true,
+          portao: { mostrar: ['{{artefato:plano}}'] },
+        },
+      ],
+    }));
+    const def3 = carregarFlow(dom3);
+    const f = new Fluxos({
+      fila, estado: new EstadoFluxos(db, () => t), agora: () => t,
+      aoEvento: (e) => eventos.push(e),
+    });
+    fluxos.criar({
+      tipo: 'semalvo', definicao: congelar(def3, dom3), hash: 'h3', assunto: 'A', chatId: 77,
+    });
+    const j = fila.listar().find((x) => x.flow_ref === 'S#1//plano')!;
+    reclamar(j.id);
+    fila.concluir(j.id, recibo, 'W', (job) => f.avancar(job));
+
+    expect(eventos.some((e) => e.texto.includes('plano inteiro aqui'))).toBe(true);
+  });
+
   it('fase sem pacote no recibo não inventa entrega ao canal', () => {
     const eventos: { chatId: number; texto: string }[] = [];
     const projetos = mkdtempSync(join(tmpdir(), 'projetos-'));

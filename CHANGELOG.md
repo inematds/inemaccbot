@@ -8,6 +8,22 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.13.5 — 2026-08-22
+
+**O portão do musicavideo abria mudo — e ninguém sabia.** A entrega do que o
+`portao.mostrar` declara iterava sobre os ALVOS do fluxo. Um fluxo cujas fases
+são todas de escopo `fluxo` (o musicavideo inteiro) não tem alvo nenhum: a
+lista vinha vazia, o laço não rodava, e o plano, a música e a capa nunca
+chegavam ao chat — sem nem o aviso de que algo faltou. Agora, lista vazia
+entrega uma vez, com alvo vazio. O promoavatar não muda: lá a fase de texto é
+de escopo fluxo mas usa `{{alvo}}` para achar o roteiro de cada público.
+
+**O campo do recibo vale pela ÚLTIMA ocorrência.** O domínio narra enquanto
+trabalha e imprime o bloco `campo: valor` no fim. O musicavideo escreve
+`musica: pronto → faixa-1.mp3 (US$ 0.08)` no meio e o caminho real no fim —
+pegar a primeira ocorrência entregava a frase de progresso como se fosse
+arquivo. Vale para `{{artefato:campo}}` e `{{anterior:campo}}`.
+
 ## 0.12.5 — 2026-08-22
 
 A capa virou arte, e a entrega ao canal virou pacote.

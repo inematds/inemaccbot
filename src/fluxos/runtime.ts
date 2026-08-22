@@ -453,7 +453,18 @@ export class Fluxos {
    */
   private entregarDeclarado(fluxo: Fluxo, faseDef: FaseDef): void {
     const repo = this.repoDe(fluxo.tipo) ?? '';
-    for (const alvo of this.alvosDoFluxo(fluxo)) {
+    // FLUXO SEM ALVO entrega uma vez, com alvo vazio.
+    //
+    // `alvosDoFluxo` descarta o alvo `''`, e no musicavideo TODAS as fases são
+    // de escopo fluxo — a lista vinha vazia, o laço não rodava, e o portão
+    // abria mudo: o plano, a música e a capa nunca chegavam ao chat, sem um
+    // aviso sequer. Era isto que o `/dados` também não conseguia reentregar.
+    //
+    // A lista continua mandando quando existe: no promoavatar, a fase de texto
+    // é de escopo fluxo mas o `mostrar` usa `{{alvo}}` para achar o roteiro de
+    // cada público — trocar por `['']` ali mataria as 12 mensagens.
+    const alvos = this.alvosDoFluxo(fluxo);
+    for (const alvo of alvos.length ? alvos : ['']) {
       const fase = this.estado.fases(fluxo.id)
         .find((f) => f.fase === faseDef.id && (f.alvo === alvo || f.alvo === ''));
       const artefato = fase?.job_id == null ? '' : (this.fila.obter(fase.job_id)?.resultado?.trim() ?? '');
@@ -1067,6 +1078,22 @@ export class Fluxos {
 }
 
 /**
+ * O valor de `campo:` no recibo — a ÚLTIMA ocorrência, que é o recibo de fato.
+ *
+ * O domínio narra enquanto trabalha e só no fim imprime o bloco `campo: valor`
+ * com os caminhos reais. O musicavideo imprime `musica: pronto → faixa-1.mp3
+ * (US$ 0.0800)` no meio e `musica: /caminho/faixa-1.mp3` no fim: pegar a
+ * primeira ocorrência entregava a frase de progresso como se fosse um arquivo,
+ * e o portão respondia "não consegui ler".
+ */
+export function ultimoCampo(texto: string, campo: string): string | null {
+  const re = new RegExp(`^[ \\t]*${campo}[ \\t]*:[ \\t]*(.+)$`, 'gim');
+  let achado: string | null = null;
+  for (const m of texto.matchAll(re)) achado = m[1]!;
+  return achado;
+}
+
+/**
  * Resolve um molde de `portao.mostrar` num caminho.
  *
  * `{{artefato:campo}}` lê `campo: valor` DENTRO do artefato — é o que permite a
@@ -1093,9 +1120,7 @@ export function resolverMostrar(
         faltou = true;
         return '';
       }
-      const m = new RegExp(`^\\s*${campo}\\s*:\\s*(.+)$`, 'im').exec(texto);
-      if (!m) { faltou = true; return ''; }
-      const valor = sanearValorDeRecibo(m[1]!);
+      const valor = sanearValorDeRecibo(ultimoCampo(texto, campo) ?? '');
       if (!valor) { faltou = true; return ''; }
       return valor;
     }

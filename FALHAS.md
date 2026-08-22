@@ -5,6 +5,8 @@ separado e é linkado — aqui é só o suficiente para o padrão aparecer.
 
 | data | o que quebrou | menor correção | prompt \| infra |
 |---|---|---|---|
+| 2026-08-22 | portão do musicavideo abria MUDO desde sempre: a entrega iterava sobre os alvos do fluxo, e um fluxo cujas fases são TODAS de escopo `fluxo` não tem alvo nenhum — laço vazio, nem um aviso | quando a lista de alvos é vazia, entregar uma vez com alvo `''` | prompt |
+| 2026-08-22 | `{{artefato:musica}}` pegava a linha de PROGRESSO (`musica: pronto → faixa-1.mp3 (US$ 0.08)`) em vez do recibo do fim, e o portão dizia "não consegui ler" | o campo do recibo vale pela ÚLTIMA ocorrência, não pela primeira | prompt |
 | 2026-08-22 | `/dados mvd90` respondeu "reentregando 2 fase(s)" e nada chegou: o dreno dos avisos de fluxo só era chamado depois que um JOB terminava, e a fila estava vazia | `aposResponder` no gateway — depois de responder a um comando, drena o que o comando empilhou | prompt |
 | 2026-08-21 | análise morreu com `503` do Gemini, mas o chat disse "o comando falhou: comprimindo pra analise..." — a cauda do log pegou linha de PROGRESSO do yt-dlp em vez do erro | a `cauda()` filtra progresso e prefere a linha que anuncia erro; e o analisevideo passou a esperar 20s–2min no 503, em vez de 30s no total | infra |
 | 2026-08-21 | fase `musica` virou `done` com o recibo declarando erro; o portão abriu e a fase seguinte entrou na fila de render sobre uma faixa que não existia (MVD#89) | guarda: recibo com `ERRO:` em início de linha reprova o job, como já valia no resgate pelo arquivo (`a2795f9`) | prompt |
