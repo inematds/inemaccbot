@@ -98,9 +98,18 @@ slug do musicavideo é derivado do texto e desambiguado com `-2`, então o camin
 do produto só o domínio sabe montar. Ele escreve `plano: <caminho>` no recibo, e
 o portão vai buscar ali.
 
+Um `?` no FIM do molde o torna **opcional**: se não resolver, segue calado em
+vez de avisar. É para material que às vezes existe — o Suno entrega duas faixas
+e o `--faixa-pronta` entrega uma, e a segunda não pode virar aviso de erro no
+fluxo em que ela legitimamente não existe:
+
+```json
+{ "portao": { "mostrar": ["{{artefato:musica}}", "{{artefato:musica_alt}}?"] } }
+```
+
 Regras: `portao` só é aceito em fase com `pausa_apos` (declarar o que mostrar
-numa fase que não para seria pedido nunca atendido); molde que não resolve vira
-**aviso nomeando o molde**, nunca portão calado; e quem declara não recebe
+numa fase que não para seria pedido nunca atendido); molde SEM `?` que não
+resolve vira **aviso nomeando o molde**, nunca portão calado; e quem declara não recebe
 nenhuma heurística por cima — sem declaração, vale o comportamento de sempre
 (roteiros, e o artefato como rede quando não há roteiro nenhum).
 

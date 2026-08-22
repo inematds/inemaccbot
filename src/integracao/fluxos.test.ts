@@ -643,6 +643,62 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
     expect(eventos.some((e) => e.texto.includes('plano inteiro aqui'))).toBe(true);
   });
 
+  // `{{molde}}?` — OPCIONAL. O Suno entrega DUAS faixas e o musicavideo só
+  // declarava uma: a segunda ficava no disco, paga no mesmo custo e nunca
+  // ouvida (MVD#96). Mas `--faixa-pronta` produz UMA, e um molde obrigatório
+  // para a segunda avisaria "não consegui resolver" justamente aí.
+  function fluxoComOpcional(recibo: string): { chatId: number; texto: string }[] {
+    const eventos: { chatId: number; texto: string }[] = [];
+    const dom = join(dir, `dom-opc-${recibo.length}`);
+    mkdirSync(join(dom, 'prompts'), { recursive: true });
+    writeFileSync(join(dom, 'prompts', 'p.md'), 'faça {{input}} em {{saida}}');
+    writeFileSync(join(dom, 'flow.json'), JSON.stringify({
+      nome: 'opcional', prefixo: 'O', versao_def: 1,
+      alvos: { unico: { gatilho: 'x' } },
+      fases: [{
+        id: 'musica', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+        prompt: 'prompts/p.md', pausa_apos: true,
+        portao: { mostrar: ['{{artefato:musica}}', '{{artefato:musica_alt}}?'] },
+      }],
+    }));
+    const d = carregarFlow(dom);
+    const f = new Fluxos({
+      fila, estado: new EstadoFluxos(db, () => t), agora: () => t,
+      aoEvento: (e) => eventos.push(e),
+    });
+    fluxos.criar({ tipo: 'opcional', definicao: congelar(d, dom), hash: `h-${recibo.length}`, assunto: 'A', chatId: 77 });
+    const j = fila.listar().find((x) => x.flow_ref === 'O#1//musica')
+      ?? fila.listar().reverse().find((x) => x.flow_ref?.endsWith('//musica'))!;
+    reclamar(j.id);
+    fila.concluir(j.id, recibo, 'W', (job) => f.avancar(job));
+    return eventos;
+  }
+
+  it('molde OPCIONAL que resolve entrega as duas faixas', () => {
+    const f1 = join(dir, 'faixa-1.mp3');
+    const f2 = join(dir, 'faixa-2.mp3');
+    writeFileSync(f1, 'audio1');
+    writeFileSync(f2, 'audio2');
+    const recibo = join(dir, 'recibo-2-faixas.txt');
+    writeFileSync(recibo, `musica: ${f1}\nmusica_alt: ${f2}\n`);
+    const eventos = fluxoComOpcional(recibo);
+    expect(eventos.some((e) => e.texto.includes('faixa-1.mp3'))).toBe(true);
+    // `📎` e não só o nome: sem tirar o `?` o caminho vira `...mp3?`, que não
+    // é reconhecido como mídia e só apareceria dentro de um aviso de erro.
+    expect(eventos.some((e) => e.texto.includes('📎 faixa-2.mp3')), 'a segunda faixa também').toBe(true);
+  });
+
+  it('molde OPCIONAL que não resolve fica CALADO (não vira aviso)', () => {
+    const f1 = join(dir, 'so-uma.mp3');
+    writeFileSync(f1, 'audio1');
+    const recibo = join(dir, 'recibo-1-faixa.txt');
+    writeFileSync(recibo, `musica: ${f1}\n`);
+    const eventos = fluxoComOpcional(recibo);
+    expect(eventos.some((e) => e.texto.includes('so-uma.mp3'))).toBe(true);
+    expect(eventos.some((e) => e.texto.includes('não consegui resolver')),
+      'faixa que não existe não é erro').toBe(false);
+  });
+
   it('fase sem pacote no recibo não inventa entrega ao canal', () => {
     const eventos: { chatId: number; texto: string }[] = [];
     const projetos = mkdtempSync(join(tmpdir(), 'projetos-'));

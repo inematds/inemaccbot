@@ -468,9 +468,21 @@ export class Fluxos {
       const fase = this.estado.fases(fluxo.id)
         .find((f) => f.fase === faseDef.id && (f.alvo === alvo || f.alvo === ''));
       const artefato = fase?.job_id == null ? '' : (this.fila.obter(fase.job_id)?.resultado?.trim() ?? '');
-      for (const molde of faseDef.portao?.mostrar ?? []) {
+      for (const declarado of faseDef.portao?.mostrar ?? []) {
+        // `?` no fim = OPCIONAL: material que às vezes existe e às vezes não.
+        //
+        // O caso que pediu isto: o Suno entrega DUAS faixas e o musicavideo só
+        // declarava uma — a segunda ficava no disco, paga no mesmo custo e
+        // nunca ouvida (MVD#96, 2026-08-22). Mas `--faixa-pronta` produz UMA
+        // faixa, e aí um molde obrigatório para a segunda avisaria "não
+        // consegui resolver" justamente no fluxo em que a pessoa trouxe a
+        // música dela. Opcional que não resolve é silêncio; sem o `?`, o aviso
+        // continua — portão que abre mudo é o defeito que isto conserta.
+        const opcional = declarado.endsWith('?');
+        const molde = opcional ? declarado.slice(0, -1) : declarado;
         const caminho = resolverMostrar(molde, { repo, ref: `${fluxo.prefixo}${fluxo.id}`, alvo, artefato });
         if (!caminho) {
+          if (opcional) continue;
           this.avisar(fluxo, `⚠️ ${fluxo.prefixo}#${fluxo.id} — o portão pede "${molde}" e não consegui resolver.`);
           continue;
         }

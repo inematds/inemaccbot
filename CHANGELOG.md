@@ -8,6 +8,25 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.16.6 — 2026-08-22
+
+**`{{molde}}?` no `portao.mostrar`: material que às vezes existe.** O Suno
+entrega DUAS faixas e o musicavideo declarava uma só — a segunda ficava no
+disco, paga no mesmo US$ 0,08, e nunca era ouvida (MVD#96). Declarar a segunda
+como molde obrigatório resolveria isso e criaria outro defeito: com
+`--faixa-pronta` existe UMA faixa, e o portão avisaria "não consegui resolver"
+justamente no fluxo em que a pessoa trouxe a música dela. Com o `?`, molde que
+não resolve segue calado; sem ele, o aviso continua — portão mudo continua sendo
+defeito.
+
+Campo PRÓPRIO (`musica_alt:`) e não uma segunda linha `musica:`: quem lê o
+recibo pega a ÚLTIMA ocorrência do campo (é assim que a linha de progresso
+`musica: pronto → …` não vira caminho), e repetir o nome trocaria a faixa
+escolhida pela alternativa.
+
+Vale para o que vier: fluxo já criado carrega a definição CONGELADA, então o
+MVD#96 não passa a entregar a faixa-2 — o recibo dele já está escrito.
+
 ## 0.15.6 — 2026-08-22
 
 **A tentativa 2 de uma fase destacada nascia vencida.** O guard do `cli.rodar`
