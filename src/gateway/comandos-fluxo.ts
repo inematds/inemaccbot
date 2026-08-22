@@ -33,6 +33,17 @@ export interface DepsFluxo {
    * já apontava `/jobs`; uma linha aqui evita a viagem.
    */
   jobsSoltos?: () => { id: number; tarefa: string; status: string }[];
+  /**
+   * O progresso DENTRO de uma fase em curso (`23/47 shots`), quando o domínio
+   * o declara.
+   *
+   * Uma fase de uma hora aparecia como `▶️ rodando` do começo ao fim: não dava
+   * para saber se tinha avançado 2 ou 40 shots, nem se estava viva. O contrato
+   * é o mesmo do recibo — o domínio IMPRIME `progresso: 23/47 shots` e o bot lê
+   * a última linha dessas do log da fase. Domínio que não imprime não mostra
+   * nada, e nada quebra.
+   */
+  progressoDe?: (fluxo: Fluxo, fase: Fase) => string | undefined;
 }
 
 /** O estado do FLUXO inteiro, em um caractere. `rodando` e `falhou` são os dois
@@ -600,7 +611,7 @@ export function statusFluxo(ref: string, deps: DepsFluxo): string | undefined {
     return `${ref} não existe neste bot.`;
   }
 
-  return tabelaFluxo(visao, true);
+  return tabelaFluxo(visao, true, deps.progressoDe);
 }
 
 /**
@@ -614,6 +625,7 @@ export function statusFluxo(ref: string, deps: DepsFluxo): string | undefined {
 export function tabelaFluxo(
   visao: { fluxo: Fluxo; fases: Fase[] },
   comandos: boolean,
+  progressoDe?: (fluxo: Fluxo, fase: Fase) => string | undefined,
 ): string {
   const { fluxo, fases } = visao;
   // Três linhas curtas em vez de duas longas: o celular quebra por volta de 40
@@ -639,7 +651,8 @@ export function tabelaFluxo(
   }
   const largura = Math.max(LARGURA_FASE, ...[...porFase.keys()].map((f) => f.length));
   for (const [fase, lista] of porFase) {
-    linhas.push(...linhasDaFase(fase, lista, comandos, largura, fluxo.status));
+    linhas.push(...linhasDaFase(fase, lista, comandos, largura, fluxo.status,
+      (f) => progressoDe?.(fluxo, f)));
   }
   // A legenda NÃO entra aqui. Ela entrava uma vez por fluxo, e com três fluxos
   // na tela viravam três legendas idênticas separando o que se quer comparar —
@@ -784,6 +797,7 @@ const LARGURA_FASE = 8;
 
 function linhasDaFase(
   fase: string, lista: Fase[], detalhe: boolean, largura = LARGURA_FASE, statusFluxo = '',
+  progresso?: (f: Fase) => string | undefined,
 ): string[] {
   const rotulo = fase.padEnd(largura);
   // `pulado` significa duas coisas MUITO diferentes, e o mesmo ⏭️ contava as
@@ -806,7 +820,11 @@ function linhasDaFase(
   if (lista.length === 1) {
     const f = lista[0]!;
     const nome = f.estado === 'pulado' && statusFluxo === 'falhou' ? 'bloqueada' : NOME_ESTADO[f.estado];
-    const linha = `${rotulo} ${icone(f)}${detalhe ? ` ${nome}` : ''}`;
+    // O progresso só faz sentido no que está EM CURSO: numa fase feita ele
+    // seria o número final repetido, e numa falhada, o ponto onde parou — que
+    // já vem na causa.
+    const quanto = f.estado === 'rodando' ? progresso?.(f) : undefined;
+    const linha = `${rotulo} ${icone(f)}${detalhe ? ` ${nome}` : ''}${quanto ? ` ${quanto}` : ''}`;
     if (f.estado !== 'falhou' || !f.erro) return [linha];
     return [linha, `  ↳ ${causaDaFalha(f.erro, f.alvo || '').slice(0, CAUSA_MAX)}`];
   }
@@ -924,7 +942,7 @@ export function painelFluxos(deps: DepsFluxo): string {
     linhas.push(`  ${v.fluxo.prefixo}#${v.fluxo.id} · ${situacao(v)} — ${resumoAssunto(v.fluxo.assunto)}`);
   }
   for (const v of visoes) {
-    linhas.push('', tabelaFluxo(v, false));
+    linhas.push('', tabelaFluxo(v, false, deps.progressoDe));
   }
   // O ref do rodapé é o REAL, nunca um número de exemplo: `C#12` cravado no
   // código mandava agir num fluxo que podia nem estar aberto (visto em

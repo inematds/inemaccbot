@@ -738,6 +738,33 @@ describe('/status P#N', () => {
       expect(r).toContain('▶️');
     });
 
+    // PROGRESSO DENTRO DA FASE. Uma fase de uma hora aparecia como "▶️ rodando"
+    // do começo ao fim: não dava para saber se tinha avançado 2 ou 40 shots,
+    // nem se estava viva (dono, 2026-08-22: "poderia ter os clips 23/40").
+    it('fase em curso mostra o progresso que o domínio declarou', () => {
+      const r = tabelaFluxo(
+        visaoCom([fase('render', '', 'rodando')]), false,
+        () => '23/47 shots',
+      );
+      expect(r).toContain('▶️ 23/47 shots');
+    });
+
+    // Só no que está EM CURSO: numa fase feita seria o número final repetido, e
+    // numa falhada, o ponto onde parou — que já vem na causa.
+    it('fase feita ou falhada não mostra progresso', () => {
+      const feita = tabelaFluxo(visaoCom([fase('render', '', 'feito')]), false, () => '47/47 shots');
+      expect(feita).not.toContain('47/47 shots');
+      const falha = tabelaFluxo(
+        visaoCom([fase('render', '', 'falhou', 'estourou')]), false, () => '23/47 shots',
+      );
+      expect(falha).not.toContain('23/47 shots');
+    });
+
+    it('domínio que não declara progresso não muda nada', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', '', 'rodando')]), false, () => undefined);
+      expect(r).toContain('▶️');
+    });
+
     // `pulado` significava duas coisas e o mesmo ⏭️ contava as duas: "não entrou
     // neste fluxo" (fase opcional, `| de=`) e "não chegou a rodar porque a
     // anterior quebrou". Num fluxo FALHADO o segundo é o que importa, e ⏭️ lido

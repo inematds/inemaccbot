@@ -15,7 +15,8 @@ import type { Runner } from '../fila/runner.js';
 import type { Agora, Job, Perfil } from '../fila/types.js';
 import type { SkillDef } from '../dominio/registry.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Fluxos } from '../fluxos/runtime.js';
 import { humano } from '../dominio/espaco.js';
 import { planejarLimpeza } from '../dominio/limpeza.js';
@@ -73,6 +74,16 @@ function tratarComandoDeFluxo(
     // Jobs de skill vivos: sem fluxo, eles não apareciam em lugar nenhum do
     // painel — e quem digita `/status` está perguntando o que o bot está
     // fazendo, não "quais fluxos existem".
+    // O progresso que o DOMÍNIO declara no log da fase (`progresso: 23/47
+    // shots`). O caminho do log é o mesmo que o `cli.rodar` monta; sem arquivo
+    // ou sem a linha, não mostra nada.
+    progressoDe: (fluxo: { prefixo: string; id: number }, fase: { fase: string; alvo: string }) => {
+      const base = join(
+        deps.raizArtefatos ?? '', 'fluxos', `${fluxo.prefixo}${fluxo.id}`,
+        `${fase.fase}${fase.alvo ? `-${fase.alvo}` : ''}.txt.log`,
+      );
+      return ultimoProgresso(base);
+    },
     jobsSoltos: () => [
       ...deps.fila.listar({ status: 'running' }),
       ...deps.fila.listar({ status: 'queued' }),
@@ -314,4 +325,28 @@ export async function tratarMensagem(
   );
   if (interpretacao.ignorado) respostas.push(`não vou fazer: ${interpretacao.ignorado}`);
   return respostas.join('\n');
+}
+
+/**
+ * A última linha `progresso: <o que for>` de um log de fase.
+ *
+ * Contrato mínimo de propósito: o domínio escolhe a unidade (shots, imagens,
+ * páginas) e o bot só repete. Tentar interpretar o número obrigaria o bot a
+ * conhecer o domínio, que é o acoplamento que este sistema passa o dia
+ * evitando.
+ */
+function ultimoProgresso(caminho: string): string | undefined {
+  let texto: string;
+  try {
+    texto = readFileSync(caminho, 'utf8');
+  } catch {
+    return undefined;
+  }
+  let achado: string | undefined;
+  for (const linha of texto.split('\n')) {
+    const m = /^\s*progresso:\s*(.+?)\s*$/i.exec(linha);
+    if (m) achado = m[1];
+  }
+  // Uma linha de progresso pode ser longa; o painel tem régua de ~42.
+  return achado?.slice(0, 24);
 }
