@@ -20,8 +20,8 @@ enfileiramento — fila cheia não consome mais o prazo de trabalho.
 
 **E o `cli.rodar` não gravava `.pid`.** O `reel.montar` grava desde sempre; esta
 rota não, então `processoVivo` devolvia sempre `null` e a decisão caía no log
-parado da 0.14.6. O `analisevideo` passou ~16 min calado numa chamada do
-Gemini, foi declarado morto — e terminou BEM 50 min depois, com o job já
+parado da 0.14.6. O `analisevideo` ficou mais de 20 min sem escrever no
+`.log` durante a análise, foi declarado morto — e terminou BEM 50 min depois, com o job já
 `failed` e a análise no disco sem entrega (jobs 5121/5122, 2026-08-22). Com o
 `.pid`, o veredito volta a ser o processo; e sem ele o teto maior acima
 re-dispararia comando caro por cima de um vivo.
