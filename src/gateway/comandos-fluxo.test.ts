@@ -738,6 +738,34 @@ describe('/status P#N', () => {
       expect(r).toContain('▶️');
     });
 
+    // `pulado` significava duas coisas e o mesmo ⏭️ contava as duas: "não entrou
+    // neste fluxo" (fase opcional, `| de=`) e "não chegou a rodar porque a
+    // anterior quebrou". Num fluxo FALHADO o segundo é o que importa, e ⏭️ lido
+    // como "pulei de propósito" fazia o painel parecer mais saudável do que
+    // estava (dono, 2026-08-22: "se falhou e parou, as fases posteriores...").
+    it('em fluxo falhado, fase posterior aparece BLOQUEADA, não pulada', () => {
+      const visao = visaoCom([fase('render', '', 'falhou', 'estourou o teto')]);
+      const comFalha = {
+        ...(visao as unknown as Record<string, unknown>),
+        fluxo: { prefixo: 'C', id: 15, tipo: 'x', assunto: 'a', status: 'falhou', versao_def: 1 },
+        fases: [
+          fase('render', '', 'falhou', 'estourou o teto'),
+          fase('entregar', '', 'pulado'),
+        ],
+      } as never;
+      const r = tabelaFluxo(comFalha, false);
+      expect(r).toContain('⛔');
+      expect(r).not.toContain('⏭️');
+    });
+
+    // E num fluxo que NÃO falhou, `pulado` continua sendo ⏭️: ali ele é escolha
+    // (fase opcional que não entrou), não consequência.
+    it('em fluxo saudável, pulado continua sendo ⏭️', () => {
+      const r = tabelaFluxo(visaoCom([fase('gerar', '', 'pulado')]), false);
+      expect(r).toContain('⏭️');
+      expect(r).not.toContain('⛔');
+    });
+
     // De relance: rodando e falhado têm que se separar SEM ler a palavra. Com
     // três fluxos na tela, "status: falhou" e "status: rodando" eram
     // indistinguíveis, e a pilha de ícones logo abaixo puxava o olho antes.

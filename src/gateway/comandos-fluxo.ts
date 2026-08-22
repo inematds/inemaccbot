@@ -639,7 +639,7 @@ export function tabelaFluxo(
   }
   const largura = Math.max(LARGURA_FASE, ...[...porFase.keys()].map((f) => f.length));
   for (const [fase, lista] of porFase) {
-    linhas.push(...linhasDaFase(fase, lista, comandos, largura));
+    linhas.push(...linhasDaFase(fase, lista, comandos, largura, fluxo.status));
   }
   // A legenda NÃO entra aqui. Ela entrava uma vez por fluxo, e com três fluxos
   // na tela viravam três legendas idênticas separando o que se quer comparar —
@@ -782,10 +782,20 @@ function n2(n: number): string {
  *  mantém a coluna, e fixar em 8 fazia justamente essa linha sair do prumo. */
 const LARGURA_FASE = 8;
 
-function linhasDaFase(fase: string, lista: Fase[], detalhe: boolean, largura = LARGURA_FASE): string[] {
+function linhasDaFase(
+  fase: string, lista: Fase[], detalhe: boolean, largura = LARGURA_FASE, statusFluxo = '',
+): string[] {
   const rotulo = fase.padEnd(largura);
+  // `pulado` significa duas coisas MUITO diferentes, e o mesmo ⏭️ contava as
+  // duas: "não entrou neste fluxo" (fase opcional, `| de=`) e "não chegou a
+  // rodar porque uma fase anterior quebrou". Num fluxo falhado, o segundo caso
+  // é o que importa — e ⏭️ lido como "pulei de propósito" faz o painel parecer
+  // mais saudável do que está.
+  const icone = (f: Fase): string => (
+    f.estado === 'pulado' && statusFluxo === 'falhou' ? '⛔' : ICONE[f.estado]
+  );
   if (lista.length <= ALVOS_ANTES_DE_CONTAR && detalhe) {
-    const alvos = lista.map((f) => `${ICONE[f.estado]} ${f.alvo || '(todos)'}`).join(' · ');
+    const alvos = lista.map((f) => `${icone(f)} ${f.alvo || '(todos)'}`).join(' · ');
     return [`${rotulo} ${alvos}`];
   }
 
@@ -795,7 +805,8 @@ function linhasDaFase(fase: string, lista: Fase[], detalhe: boolean, largura = L
   // Com um alvo, a linha vira o estado e, na falha, a CAUSA.
   if (lista.length === 1) {
     const f = lista[0]!;
-    const linha = `${rotulo} ${ICONE[f.estado]}${detalhe ? ` ${NOME_ESTADO[f.estado]}` : ''}`;
+    const nome = f.estado === 'pulado' && statusFluxo === 'falhou' ? 'bloqueada' : NOME_ESTADO[f.estado];
+    const linha = `${rotulo} ${icone(f)}${detalhe ? ` ${nome}` : ''}`;
     if (f.estado !== 'falhou' || !f.erro) return [linha];
     return [linha, `  ↳ ${causaDaFalha(f.erro, f.alvo || '').slice(0, CAUSA_MAX)}`];
   }
@@ -818,7 +829,8 @@ function linhasDaFase(fase: string, lista: Fase[], detalhe: boolean, largura = L
     // `pendente` tem ícone PRÓPRIO no painel: o dele é `·`, o mesmo separador
     // da linha, e sem a palavra ao lado "29 ·" deixa de significar coisa
     // alguma. No detalhe a palavra volta e o `·` original serve.
-    const icone = !detalhe && estado === 'pendente' ? '⏳' : ICONE[estado];
+    const icone = !detalhe && estado === 'pendente' ? '⏳' : (
+      estado === 'pulado' && statusFluxo === 'falhou' ? '⛔' : ICONE[estado]);
     partes.push(detalhe
       ? `${n2(fs.length)} ${icone} ${NOME_ESTADO[estado]}`
       : `${n2(fs.length)} ${icone}`);
@@ -928,7 +940,7 @@ export function painelFluxos(deps: DepsFluxo): string {
     // UMA legenda para o painel todo, aqui embaixo: com três fluxos na tela ela
     // aparecia três vezes, separando justamente o que se quer comparar de
     // relance. Cabe na régua de 42 — é a linha mais larga do painel.
-    '✅ feito · ▶️ rodando · ⏸️ você · ⏳ fila · ❌ erro',
+    '✅ feito · ▶️ rodando · ⏸️ você · ⏳ fila · ❌ erro · ⛔ bloqueada',
     `Detalhe de um: /status ${ref} · liberar: /aprovar ${ref} · retentar: /refazer ${ref}`,
     'Terminados: /completos · fila de jobs: /jobs',
   );
