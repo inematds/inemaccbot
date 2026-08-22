@@ -14,14 +14,24 @@ let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'inemaccbot-cli-')); });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-function ctx(entrada: unknown, sinal = new AbortController().signal): ContextoTarefa {
+function ctx(
+  entrada: unknown,
+  opts: { sinal?: AbortSignal; agora?: number; max_tentativas?: number } = {},
+): ContextoTarefa {
   return {
-    // `criado_em` e `agora` importam no modo destacado: é deles que sai o prazo
-    // do "não ficou pronto em N min", contado do PRIMEIRO enfileiramento.
-    job: { id: 7, input: JSON.stringify(entrada), criado_em: 1_000 },
-    agora: () => 1_000,
+    // `iniciado_em` e `agora` importam no modo destacado: deles sai o prazo do
+    // "não ficou pronto em N min", que é o ORÇAMENTO do job inteiro
+    // (`espera.timeout × max_tentativas`), não o prazo de uma tentativa.
+    job: {
+      id: 7,
+      input: JSON.stringify(entrada),
+      criado_em: 1_000,
+      iniciado_em: 1_000,
+      max_tentativas: opts.max_tentativas ?? 2,
+    },
+    agora: () => opts.agora ?? 1_000,
     log: () => {},
-    sinal,
+    sinal: opts.sinal ?? new AbortController().signal,
   } as unknown as ContextoTarefa;
 }
 
@@ -91,7 +101,7 @@ describe('cli.rodar', () => {
   it('abortado antes de começar: nem gasta um spawn', async () => {
     await expect(criarCliRodar()(ctx(
       { comando: 'echo nao-deveria', cwd: dir, saida: join(dir, 'r.txt') },
-      AbortSignal.abort(new Error('serviço encerrando')),
+      { sinal: AbortSignal.abort(new Error('serviço encerrando')) },
     ))).rejects.toThrow(/abortado pelo worker/i);
   });
 
@@ -99,7 +109,7 @@ describe('cli.rodar', () => {
     const ctrl = new AbortController();
     const t0 = Date.now();
     const p = criarCliRodar()(ctx(
-      { comando: 'sleep 30', cwd: dir, saida: join(dir, 'r.txt') }, ctrl.signal,
+      { comando: 'sleep 30', cwd: dir, saida: join(dir, 'r.txt') }, { sinal: ctrl.signal },
     ));
     setTimeout(() => ctrl.abort(new Error('serviço encerrando')), 20);
     await expect(p).rejects.toThrow(/abortado pelo worker/i);
@@ -110,11 +120,14 @@ describe('cli.rodar', () => {
   // Inline, o clipe de 43 shots morre no teto e ainda prende a vaga o tempo
   // todo; destacado, ele sobrevive ao restart e a tentativa seguinte o adota.
   describe('com `espera`: destacado e vigiado', () => {
-    function ctxEspera(over: Record<string, unknown> = {}) {
+    function ctxEspera(
+      over: Record<string, unknown> = {},
+      opts: { agora?: number; max_tentativas?: number } = {},
+    ) {
       return ctx({
         comando: 'echo pronto', cwd: dir, saida: join(dir, 'recibo.txt'),
         espera: { intervalo: 1, timeout: 60 }, ...over,
-      });
+      }, opts);
     }
 
     it('recibo JÁ pronto é a resposta — não dispara de novo', async () => {
@@ -183,6 +196,74 @@ describe('cli.rodar', () => {
       expect(comando).toContain(`echo $c > '${saida}.rc'`);
       expect(comando).toContain(`cp '${saida}.log' '${saida}'`);
       expect(comando).toContain(`|| touch '${saida}.err'`);
+    });
+
+    // As três falhas do 2026-08-22 (jobs 5121/5122), uma por teste.
+    //
+    // 1. O PRAZO é do job, não da tentativa. A vigília da tentativa 1 gasta o
+    //    `espera.timeout` inteiro; se o guard medir contra esse mesmo número, a
+    //    tentativa 2 nasce vencida e falha em segundos sem disparar nada.
+    it('tentativa 2 ainda DISPARA: o prazo é o orçamento do job', async () => {
+      const saida = join(dir, 'recibo.txt');
+      let disparos = 0;
+      // 61s depois do início: a tentativa 1 já queimou os 60s de vigília dela.
+      const p = criarCliRodar({
+        vigia: { intervaloMs: 5, estavelMs: 5 },
+        disparar: () => { disparos += 1; writeFileSync(saida, 'slug: x\n'); },
+      })(ctxEspera({}, { agora: 1_061, max_tentativas: 2 }));
+      await expect(p).resolves.toBe(saida);
+      expect(disparos, 'tentativa 2 tem prazo próprio').toBe(1);
+    });
+
+    it('gasto o orçamento INTEIRO (2× o prazo), aí sim falha', async () => {
+      await expect(criarCliRodar({ disparar: () => {} })(
+        ctxEspera({}, { agora: 1_121, max_tentativas: 2 }),
+      )).rejects.toThrow(/não ficou pronto em 2 min/);
+    });
+
+    // 2. Sem `.pid` não há prova de vida: `trabalhoEmCurso` cai no log parado e
+    //    declara morto um trabalho que só está calado. Foi o que matou o 5121,
+    //    que terminou BEM 50 min depois de o bot desistir dele.
+    it('o comando destacado grava o `.pid` — prova de vida da adoção', async () => {
+      const saida = join(dir, 'recibo.txt');
+      let comando = '';
+      const p = criarCliRodar({
+        vigia: { intervaloMs: 5, estavelMs: 5 },
+        disparar: (d) => {
+          comando = d.comando;
+          writeFileSync(`${saida}.log`, 'slug: x\n');
+          writeFileSync(saida, 'slug: x\n');
+        },
+      })(ctxEspera());
+      await expect(p).resolves.toBe(saida);
+      expect(comando.startsWith(`echo $$ > '${saida}.pid'`)).toBe(true);
+    });
+
+    it('processo VIVO é adotado, não re-disparado', async () => {
+      const saida = join(dir, 'recibo.txt');
+      // Log velho (parado há muito) + `.pid` de um processo vivo: quem manda é
+      // o processo. Este teste é o 5121 ao contrário.
+      writeFileSync(`${saida}.log`, '[analisevideo] analisando com Gemini...\n');
+      writeFileSync(`${saida}.pid`, `${process.pid}\n`);
+      let disparos = 0;
+      const p = criarCliRodar({
+        vigia: { intervaloMs: 5, estavelMs: 5 },
+        disparar: () => { disparos += 1; },
+      })(ctxEspera());
+      setTimeout(() => writeFileSync(saida, 'slug: x\n'), 20);
+      await expect(p).resolves.toBe(saida);
+      expect(disparos, 'havia um vivo — adotar').toBe(0);
+    });
+
+    // 3. Recibo que chegou depois da desistência: trabalho feito e pago. Vale
+    //    mais que o prazo.
+    it('recibo pronto vence o prazo vencido', async () => {
+      const saida = join(dir, 'recibo.txt');
+      writeFileSync(saida, 'slug: x\n');
+      const r = await criarCliRodar({ disparar: () => {} })(
+        ctxEspera({}, { agora: 9_999, max_tentativas: 2 }),
+      );
+      expect(r).toBe(saida);
     });
   });
 

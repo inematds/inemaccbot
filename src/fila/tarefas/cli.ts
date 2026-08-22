@@ -259,8 +259,27 @@ async function destacado(
   }
 
   if (!trabalhoEmCurso(e.saida)) {
-    if (ctx.agora() - ctx.job.criado_em > e.espera!.timeout) {
-      throw new Error(`não ficou pronto em ${Math.round(e.espera!.timeout / 60)} min`);
+    // Recibo que chegou ATRASADO — entre a desistência da vigília e agora. O
+    // trabalho está feito e pago; falhar aqui seria jogá-lo fora.
+    if (existsSync(e.saida) && statSync(e.saida).size > 0) return e.saida;
+
+    // O ORÇAMENTO do job, não o prazo de UMA tentativa.
+    //
+    // Este guard media `agora - criado_em` contra `espera.timeout` — o mesmo
+    // número que a vigília da tentativa 1 já tinha gasto INTEIRO. Resultado: a
+    // tentativa 2 nascia vencida e falhava em segundos sem disparar nada, e o
+    // `max_tentativas: 2` era ficção em toda fase destacada. Foi assim que os
+    // jobs 5121 e 5122 morreram em 2026-08-22, o 5121 com a análise a caminho.
+    //
+    // O relógio é o PRIMEIRO início (`iniciado_em` não é reescrito por
+    // tentativa, e é isso que se quer aqui): tempo parado na fila não é tempo
+    // de trabalho e não pode consumir o prazo.
+    const tentativas = Math.max(1, ctx.job.max_tentativas || 1);
+    const teto = e.espera!.timeout * tentativas;
+    const inicio = ctx.job.iniciado_em ?? ctx.job.criado_em;
+    if (ctx.agora() - inicio > teto) {
+      throw new Error(`não ficou pronto em ${Math.round(teto / 60)} min`
+        + ` (${tentativas}× ${Math.round(e.espera!.timeout / 60)} min)`);
     }
     limparMarcadores(e.saida);
     // `&&` e não `;`: só o sucesso vira recibo. Sem isso um comando que morre
@@ -269,7 +288,15 @@ async function destacado(
     // O `.rc` guarda o código de saída REAL — é o que distingue "falhou" de
     // "foi morto". Sem ele, um restart vira falha permanente na retentativa.
     disparar({
-      comando: `${e.comando}; c=$?; echo $c > ${aspas(`${e.saida}.rc`)}; `
+      // O `.pid` PRIMEIRO — é a única prova de vida que a tentativa seguinte
+      // tem. Sem ele `processoVivo` devolve `null` e `trabalhoEmCurso` cai no
+      // log parado (20 min), que declarou MORTA a análise do job 5121 enquanto
+      // ela esperava 954s calada pelo Gemini — e ela terminou bem 50 min
+      // depois. O `reel.montar` grava o `.pid` desde sempre; esta rota não
+      // gravava. Sem esta linha, o teto maior acima re-dispararia comando caro
+      // por cima de um vivo.
+      comando: `echo $$ > ${aspas(`${e.saida}.pid`)}; `
+        + `${e.comando}; c=$?; echo $c > ${aspas(`${e.saida}.rc`)}; `
         + `[ "$c" = 0 ] && cp ${aspas(`${e.saida}.log`)} ${aspas(e.saida)} `
         + `|| touch ${aspas(`${e.saida}.err`)}`,
       saida: e.saida,

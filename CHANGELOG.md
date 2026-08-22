@@ -8,6 +8,31 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.15.6 — 2026-08-22
+
+**A tentativa 2 de uma fase destacada nascia vencida.** O guard do `cli.rodar`
+media `agora - criado_em` contra `espera.timeout` — o mesmo número que a
+vigília da tentativa 1 já tinha gasto INTEIRO. Toda tentativa 2 falhava em
+segundos sem disparar nada, e o `max_tentativas: 2` era decoração em qualquer
+skill com `aguarda_artefato`. Agora o prazo é o ORÇAMENTO do job
+(`espera.timeout × max_tentativas`), contado do primeiro início e não do
+enfileiramento — fila cheia não consome mais o prazo de trabalho.
+
+**E o `cli.rodar` não gravava `.pid`.** O `reel.montar` grava desde sempre; esta
+rota não, então `processoVivo` devolvia sempre `null` e a decisão caía no log
+parado da 0.14.6. O `analisevideo` passou ~16 min calado numa chamada do
+Gemini, foi declarado morto — e terminou BEM 50 min depois, com o job já
+`failed` e a análise no disco sem entrega (jobs 5121/5122, 2026-08-22). Com o
+`.pid`, o veredito volta a ser o processo; e sem ele o teto maior acima
+re-dispararia comando caro por cima de um vivo.
+
+Também: recibo que chega ATRASADO vence o prazo vencido — trabalho feito e pago
+não se joga fora.
+
+Fica de fora, de propósito: recibo órfão de job já `failed` continua sem
+entrega automática (o 5121 foi entregue à mão), e a fase `texto/transcrever` do
+job 5120 tem causa própria, não mexida aqui.
+
 ## 0.14.6 — 2026-08-22
 
 **Adotar trabalho destacado agora exige prova de vida.** Sem `.pid`,
