@@ -356,5 +356,5 @@ function ultimoProgresso(caminho: string): string | undefined {
     if (m) achado = m[1];
   }
   // Uma linha de progresso pode ser longa; o painel tem régua de ~42.
-  return achado?.slice(0, 24);
+  return achado?.slice(0, 32);
 }
