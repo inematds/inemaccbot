@@ -709,16 +709,24 @@ export function causaDaFalha(erro: string | null, alvo: string): string {
   const alvoEscapado = alvo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   m = m.replace(new RegExp(`^\\w*-?${alvoEscapado}-v\\d+\\s*[—-]\\s*`, 'i'), '');
   m = m.replace(/^[A-Z]\d+-[\w-]+-v\d+\s*[—-]\s*/, '');
-  // `— alvo /home/.../MVD90/capa-clipe.txt`: caminho do arquivo interno que o
-  // bot nomeou. Serve ao log, não a quem lê o painel — e ocupa metade da linha,
-  // empurrando a causa de verdade para fora do corte.
+  // O RABO QUE APONTA PARA ARQUIVO INTERNO. Duas formas, as duas do próprio
+  // bot: `— alvo /home/.../capa-clipe.txt` e `— saída do agente em
+  // ~/.../4652-t2.log`. Servem ao log; no painel ocupam metade da linha e
+  // empurram a causa de verdade para fora do corte.
   m = m.replace(/\s*[—-]\s*alvo\s+\S+$/i, '');
-  return m;
+  m = m.replace(/\s*[—-]\s*sa[íi]da do agente em\s+\S+$/i, '');
+  // Sobra de corte: um travessão ou vírgula pendurados no fim são o cadáver do
+  // trecho que acabou de sair, e leem-se como frase interrompida.
+  return m.replace(/[\s—,;:-]+$/, '');
 }
 
 /** Teto do texto da causa. Acima disto o Telegram quebra a linha e a lista
  *  deixa de ser varrível; o log tem a mensagem inteira. */
 const CAUSA_MAX = 90;
+
+/** Teto da causa NO PAINEL, onde ela divide espaço com outros fluxos: uma linha
+ *  no celular, com a reticência avisando que há mais no `/status <ref>`. */
+const CAUSA_NO_PAINEL = 58;
 
 /**
  * As falhas agrupadas: por fase, e dentro dela por CAUSA.
@@ -842,7 +850,13 @@ function linhasDaFase(
     const quanto = f.estado === 'rodando' ? progresso?.(f) : undefined;
     const linha = `${rotulo} ${icone(f)}${detalhe ? ` ${nome}` : ''}${quanto ? ` ${quanto}` : ''}`;
     if (f.estado !== 'falhou' || !f.erro) return [linha];
-    return [linha, `  ↳ ${causaDaFalha(f.erro, f.alvo || '').slice(0, CAUSA_MAX)}`];
+    // No PAINEL a causa é uma linha só: o teto de 90 do detalhe quebra em duas
+    // no celular e desalinha a pilha. Cortada, ganha reticência — some no meio
+    // é o que faz alguém achar que a mensagem acabou ali.
+    const bruta = causaDaFalha(f.erro, f.alvo || '');
+    const teto = detalhe ? CAUSA_MAX : CAUSA_NO_PAINEL;
+    const causa = bruta.length > teto ? `${bruta.slice(0, teto - 1).trimEnd()}…` : bruta;
+    return [linha, `  ↳ ${causa}`];
   }
 
   const porEstado = new Map<Fase['estado'], Fase[]>();

@@ -850,6 +850,31 @@ describe('/status P#N', () => {
       expect(r).not.toContain('/art/fluxos');
     });
 
+    // O rabo que aponta para arquivo INTERNO do bot sai — nas duas formas que
+    // ele tem — e a sobra de corte também: um travessão pendurado no fim é o
+    // cadáver do trecho que acabou de sair, e lê-se como frase interrompida.
+    it('a causa não termina em travessão órfão', () => {
+      const r = tabelaFluxo(visaoCom([
+        fase('render', '', 'falhou',
+          'o agente terminou sem declarar RESULT — saída do agente em ~/state/saidas/1-t2.log'),
+      ]), false);
+      expect(r).toContain('o agente terminou sem declarar RESULT');
+      expect(r).not.toContain('saidas/1-t2.log');
+      expect(r).not.toMatch(/—\s*$/m);
+    });
+
+    // Causa longa vira UMA linha com reticência: o teto do detalhe quebra em
+    // duas no celular e desalinha a pilha. Sumir no meio, sem aviso, é o que
+    // faz alguém achar que a mensagem acabou ali.
+    it('causa longa é cortada com reticência no painel', () => {
+      const longa = `${'x'.repeat(120)} FIM`;
+      const r = tabelaFluxo(visaoCom([fase('render', '', 'falhou', longa)]), false);
+      expect(r).toContain('…');
+      expect(r).not.toContain('FIM');
+      const linhaCausa = r.split('\n').find((l) => l.includes('↳'))!;
+      expect(linhaCausa.length).toBeLessThan(70);
+    });
+
     // A coluna dos números alinha pelo NOME MAIS LONGO: com `capa-clipe` (10) e
     // largura fixa em 8, essa linha saía do prumo e a pilha deixava de ser
     // varrível de cima a baixo, que é a única coisa que o painel faz bem.
