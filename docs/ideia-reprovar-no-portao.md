@@ -118,3 +118,33 @@ evita render errado, que é o prejuízo de verdade.
 
 Nota: (c) é a mesma peça do item 1 deste documento (reprovar no portão) vista de
 outro ângulo — em ambos, o portão precisa aceitar uma RESPOSTA além do sim.
+
+
+## 5. Corrigir a música — ou mandar a sua (pedido de 2026-08-22)
+
+Mesmo pedido do item 1, na fase onde ele aparece primeiro. As duas metades já
+existem **dentro do domínio**; o que falta é o comando no chat.
+
+**Corrigir e refazer.** `musicavideo ajusta <slug> musica "<instrução>" [--refaz]`
+(`planner.ajustar_parte`) reescreve a seção `musica` do plano com a instrução,
+valida contra o registry e — com `--refaz` — regera a faixa. Já respeita a regra
+que importa: letra marcada `final_usuario` é IMUTÁVEL e o ajuste falha se o
+modelo tentar mudá-la. No chat, no molde do `capa:`:
+
+    musica: <ref> | correcao=mais lenta, sem bateria eletronica
+
+**Mandar a faixa pronta.** Existe `--faixa-pronta arq.mp3`, que copia o arquivo
+para dentro do slug, marca `musica` como `pronto` com custo zero e não altera o
+original. Mas ele é opção do `plano` — só vale na CRIAÇÃO. Mandar a sua música
+DEPOIS, no portão, com o áudio anexado no Telegram (o caminho que o
+`gateway/midia.ts` já monta para o `capa:`), é o que falta:
+
+    musica: <ref>   + áudio anexado
+
+Isso exige uma entrada nova no domínio (algo como `aprova <slug> musica
+--arquivo <path>`), porque hoje a única porta para faixa de fora é a criação do
+plano. É a diferença entre os dois pedidos: a correção é comando que já existe;
+a faixa pronta no meio do fluxo é peça nova, pequena, no domínio.
+
+Ordem dentro do item: correção primeiro (só chat), faixa pronta depois (chat +
+domínio). Os dois têm que gravar a escolha ANTES de a fase `clipe` ler a faixa.
