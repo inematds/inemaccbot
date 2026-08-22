@@ -8,6 +8,25 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.12.4 — 2026-08-22
+
+A capa virou arte, e a entrega ao canal virou pacote.
+
+**Arte da capa (musicavideo).** A imagem do gerador passou a ser o FUNDO: o
+título é composto por cima por função, e cada template de capa declara a sua
+tipografia. A crua fica guardada, então recompor não custa nada.
+
+**Entrega ao canal.** O `canal` declarado nos alvos do `flow.json` deixou de ser
+decorativo. Quando uma fase de escopo `fluxo` escreve `publicacao: <pasta>` no
+recibo, o fim do fluxo leva essa pasta para `imports/<lote>/` do projeto do
+canal — um lote próprio, IRMÃO do `videos` que o reel usa, nunca dentro dele.
+O pacote leva vídeo, título, descrição e capa 16:9 com `manifest.json`: o
+destino não precisa refazer nada disso. O caminho do reel segue como estava —
+arquivo solto, nome = título.
+
+Falhar a entrega não derruba o fim do fluxo: o pacote continua no disco e o
+caminho vai na mensagem.
+
 ## 0.11.4 — 2026-08-21
 
 O dia em que o agente saiu das fases onde ele não pensava — e o contrato entre

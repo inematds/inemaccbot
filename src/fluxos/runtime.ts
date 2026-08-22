@@ -15,6 +15,7 @@ import { resolverPerfil } from '../dominio/perfil.js';
 import { EstadoFluxos, type Fase, type Fluxo, type StatusFluxo } from './estado.js';
 import { montarInput, pastaTextos, tituloEstudio } from './entrada-fase.js';
 import type { Publicacao } from './publicar.js';
+import { entregarPacote, pacoteNoRecibo } from './entregar-canal.js';
 
 /** Arquivo ausente é resposta legítima ("este público não saiu"), não erro de
  * execução — o portão a transforma em linha de falta no chat. */
@@ -648,6 +649,46 @@ export class Fluxos {
       + ` — ${feitas} fase(s) feita(s)${falhas ? `, ${falhas} falhada(s)` : ''}.`,
     );
     this.entregarVideos(fluxo, fases);
+    this.entregarAoCanal(fluxo, fases);
+  }
+
+  /**
+   * O PACOTE de publicação (vídeo + título + descrição + capa) na pasta que o
+   * projeto do canal importa.
+   *
+   * Só para fase de escopo `fluxo`: `entregarVideos` cobre as fases com alvo, e
+   * elas entregam link, não pacote. É isto que tira o `canal` do musicavideo do
+   * decorativo — antes ele estava declarado no `flow.json` e ninguém lia.
+   *
+   * Falhar aqui NÃO derruba o fim do fluxo: o pacote continua no disco, com o
+   * caminho dito na mensagem. Perder o aviso de conclusão porque o repo do
+   * canal sumiu seria trocar um problema pequeno por um grande.
+   */
+  private entregarAoCanal(fluxo: Fluxo, fases: Fase[]): void {
+    const def = this.estado.definicaoDe(fluxo);
+    if (!def) return;
+    const canais = [...new Set(
+      Object.values(def.alvos ?? {}).map((a) => a?.canal).filter((c): c is string => !!c),
+    )];
+    if (!canais.length) return;
+    for (const fase of fases) {
+      if (fase.alvo || fase.estado !== 'feito' || !fase.dados) continue;
+      const pacote = pacoteNoRecibo(fase.dados);
+      if (!pacote) continue;
+      for (const canal of canais) {
+        try {
+          const ok = entregarPacote(pacote, canal, this.projetosDir);
+          if (ok) {
+            this.log(`entrega: ${fluxo.prefixo}#${fluxo.id} → ${ok.destino}`);
+            this.avisar(fluxo, `📤 ${ok.lote} entregue em ${canal} — vídeo, título, descrição e capa.`);
+          } else {
+            this.avisar(fluxo, `⚠️ canal '${canal}' não existe no disco — o pacote ficou em ${pacote}`);
+          }
+        } catch (erro) {
+          this.avisar(fluxo, `⚠️ não deu para entregar em ${canal} (${(erro as Error).message}) — o pacote ficou em ${pacote}`);
+        }
+      }
+    }
   }
 
   /**

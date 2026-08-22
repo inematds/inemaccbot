@@ -4,7 +4,7 @@
 // É aqui que as propriedades da etapa 5 são provadas: avanço independente por
 // alvo, falha isolada, definição congelada, atomicidade, `/refazer` seletivo e
 // export/import.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -520,6 +520,63 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
     ack('B#1/mulheres/entregar');
     // `some` e não `at(-1)`: depois do aviso de fim vem o link do vídeo final.
     expect(eventos.some((e) => e.texto.includes('terminou: feito'))).toBe(true);
+  });
+
+  it('o PACOTE que a fase de fluxo declarou vai para o lote do canal', () => {
+    // Isto é o `canal` do alvo deixando de ser decorativo: a fase de escopo
+    // `fluxo` escreve `publicacao: <pasta>` no recibo, e o fim do fluxo leva a
+    // pasta para `imports/<lote>` do projeto do canal.
+    const eventos: { chatId: number; texto: string }[] = [];
+    const projetos = mkdtempSync(join(tmpdir(), 'projetos-'));
+    mkdirSync(join(projetos, 'yt-pub-lives21', 'imports', 'videos'), { recursive: true });
+    const pacote = join(dir, 'chuva-de-verao', 'publicacao');
+    mkdirSync(pacote, { recursive: true });
+    writeFileSync(join(pacote, 'manifest.json'), '{"clips":[{"title":"Chuva de Verão"}]}');
+    const recibo = join(dir, 'recibo-entrega.txt');
+    writeFileSync(recibo, `slug: chuva-de-verao\npublicacao: ${pacote}\n`);
+
+    const f = new Fluxos({
+      fila, estado: new EstadoFluxos(db, () => t), agora: () => t,
+      aoEvento: (e) => eventos.push(e), projetosDir: projetos,
+    });
+    fluxos.criar({
+      tipo: 'brinquedo', definicao: congelar(def, dominio), hash: 'h',
+      assunto: 'A', alvos: ['mulheres'], chatId: 77,
+    });
+    const ack = (ref: string, dados: string): void => {
+      const j = fila.listar().find((x) => x.flow_ref === ref)!;
+      reclamar(j.id);
+      fila.concluir(j.id, dados, 'W', (job) => f.avancar(job));
+    };
+    ack('B#1//texto', recibo);
+    ack('B#1/mulheres/render', 'ok');
+    ack('B#1/mulheres/entregar', 'ok');
+
+    const lote = join(projetos, 'yt-pub-lives21', 'imports', 'chuva-de-verao');
+    expect(readFileSync(join(lote, 'manifest.json'), 'utf8')).toContain('Chuva de Verão');
+    expect(eventos.some((e) => e.texto.includes('entregue em lives21'))).toBe(true);
+    rmSync(projetos, { recursive: true, force: true });
+  });
+
+  it('fase sem pacote no recibo não inventa entrega ao canal', () => {
+    const eventos: { chatId: number; texto: string }[] = [];
+    const projetos = mkdtempSync(join(tmpdir(), 'projetos-'));
+    mkdirSync(join(projetos, 'yt-pub-lives21', 'imports'), { recursive: true });
+    const f = new Fluxos({
+      fila, estado: new EstadoFluxos(db, () => t), agora: () => t,
+      aoEvento: (e) => eventos.push(e), projetosDir: projetos,
+    });
+    fluxos.criar({
+      tipo: 'brinquedo', definicao: congelar(def, dominio), hash: 'h',
+      assunto: 'A', alvos: ['mulheres'], chatId: 77,
+    });
+    for (const ref of ['B#1//texto', 'B#1/mulheres/render', 'B#1/mulheres/entregar']) {
+      const j = fila.listar().find((x) => x.flow_ref === ref)!;
+      reclamar(j.id);
+      fila.concluir(j.id, 'ok', 'W', (job) => f.avancar(job));
+    }
+    expect(eventos.some((e) => e.texto.includes('entregue em'))).toBe(false);
+    rmSync(projetos, { recursive: true, force: true });
   });
 
   it('fluxo sem chat_id não gera evento nenhum', () => {
