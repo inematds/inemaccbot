@@ -61,3 +61,38 @@ Duas metades:
 
 A ordem importa: o `clipe` do MVD#96 já começou com a faixa-1. Escolher depois
 do clipe montado não adianta.
+
+
+## 4. Duas faixas, e o clipe? (pedido de 2026-08-22)
+
+Entregar as duas resolveu ver; não resolveu **o que renderizar**. Hoje o `clipe`
+lê a faixa escolhida (`faixa_aprovada` no `executor.py`) e ignora a outra. Três
+saídas, e elas não são exclusivas:
+
+**a) Dois clipes, um por faixa.** O domínio já sabe fazer isso: `_capas_por_versao`
+marca `capa-v1.png`/`capa-v2.png` justamente porque "o Suno entrega duas, e as
+duas viram clipe", e `aprova <slug> musica --faixa N` já reaponta para um
+`clipe-N.mp4` existente **sem re-render**. Falta o fluxo do bot pedir os dois.
+Custo: dobra a fase mais cara do fluxo (render de horas, fila `render` de uma
+vaga só). Não pode ser o default.
+
+**b) O mesmo clipe para as duas faixas.** Barato: um render, duas trilhas
+trocadas por `ffmpeg -c:v copy`. Serve quando o visual não foi feito para a
+letra — e é o caso comum de um clipe gerado do plano, não da faixa. É a opção
+com melhor relação custo/entrega das três.
+
+**c) Escolher no portão qual vira clipe.** O que o pedido literalmente diz. No
+molde do `capa:`, algo como:
+
+    musica: <ref> 2        # a faixa 2 é a que vale; o clipe usa ela
+
+Grava a escolha ANTES de a fase `clipe` ler a faixa — depois do clipe montado
+não adianta. Por baixo é o `aprova <slug> musica --faixa N` que já existe; falta
+o comando no chat e a ordem no portão.
+
+Ordem sugerida: **(c) primeiro** — é a mais barata de implementar e a que evita
+render errado. Depois **(b)** como opção explícita (`| dois-clipes` seria (a),
+e (a) só sob pedido, nunca por default).
+
+Nota: (c) é a mesma peça do item 1 deste documento (reprovar no portão) vista de
+outro ângulo — em ambos, o portão precisa aceitar uma RESPOSTA além do sim.
