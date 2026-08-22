@@ -767,15 +767,21 @@ describe('/status P#N', () => {
       expect(r).toContain('▶️ 23/47 shots');
     });
 
-    // Só no que está EM CURSO: numa fase feita seria o número final repetido, e
-    // numa falhada, o ponto onde parou — que já vem na causa.
-    it('fase feita ou falhada não mostra progresso', () => {
+    // A FALHADA é onde o número mais importa: a causa diz "não terminou em 180
+    // min" e não diz que 11 dos 47 clipes ficaram prontos — que é o dado para
+    // decidir se vale retomar. Excluí-la foi erro, corrigido em 2026-08-22.
+    it('fase falhada mostra ONDE parou', () => {
+      const r = tabelaFluxo(
+        visaoCom([fase('render', '', 'falhou', 'estourou o teto')]), false, () => '11/47 shots',
+      );
+      expect(r).toContain('❌ 11/47 shots');
+      expect(r).toContain('estourou o teto');
+    });
+
+    // A feita não mostra: ali o número seria o total repetido.
+    it('fase feita não repete o total', () => {
       const feita = tabelaFluxo(visaoCom([fase('render', '', 'feito')]), false, () => '47/47 shots');
       expect(feita).not.toContain('47/47 shots');
-      const falha = tabelaFluxo(
-        visaoCom([fase('render', '', 'falhou', 'estourou')]), false, () => '23/47 shots',
-      );
-      expect(falha).not.toContain('23/47 shots');
     });
 
     it('domínio que não declara progresso não muda nada', () => {

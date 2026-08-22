@@ -854,10 +854,12 @@ function linhasDaFase(
   if (lista.length === 1) {
     const f = lista[0]!;
     const nome = f.estado === 'pulado' && statusFluxo === 'falhou' ? 'bloqueada' : NOME_ESTADO[f.estado];
-    // O progresso só faz sentido no que está EM CURSO: numa fase feita ele
-    // seria o número final repetido, e numa falhada, o ponto onde parou — que
-    // já vem na causa.
-    const quanto = f.estado === 'rodando' ? progresso?.(f) : undefined;
+    // Progresso em curso E em falha. Excluir a falhada foi erro meu: "o ponto
+    // onde parou já vem na causa" não é verdade — a causa diz "o render não
+    // terminou em 180 min" e não diz que 11 dos 47 clipes ficaram prontos, que
+    // é o número de que se precisa para decidir se vale retomar.
+    // Fase FEITA não mostra: ali o número seria o total repetido.
+    const quanto = f.estado === 'rodando' || f.estado === 'falhou' ? progresso?.(f) : undefined;
     const linha = `${rotulo} ${icone(f)}${detalhe ? ` ${nome}` : ''}${quanto ? ` ${quanto}` : ''}`;
     if (f.estado !== 'falhou' || !f.erro) return [linha];
     // No PAINEL a causa é uma linha só: o teto de 90 do detalhe quebra em duas
@@ -1052,6 +1054,36 @@ export function refazerFluxo(ref: string, alvo: string | undefined, deps: DepsFl
     ...itens.map((i) => `  ▶️ ${i.fase}${i.alvo ? ` (${i.alvo})` : ''} — job ${i.jobId}`),
     'Não precisa aprovar: o portão já foi passado. Eu aviso quando terminar.',
   ].join('\n');
+}
+
+/**
+ * `/dados <ref>` — reentrega o que o fluxo já produziu.
+ *
+ * Complementa o `/status`, que responde "em que pé está" e nunca "me dá o que
+ * saiu". Não regera nada: relê o que cada fase feita declarou em
+ * `portao.mostrar`.
+ */
+export function dadosDoFluxo(ref: string, deps: DepsFluxo): string | undefined {
+  const r = parseRef(ref) ?? (/^\d+$/.test(ref) ? { id: Number(ref), prefixo: '' } : null);
+  if (!r) return undefined;
+  const visao = deps.fluxos.status(r.id);
+  if (!visao || (r.prefixo && visao.fluxo.prefixo !== r.prefixo)) return `${ref} não existe neste bot.`;
+
+  const { fases, semDeclaracao } = deps.fluxos.reentregar(r.id);
+  if (!fases.length && !semDeclaracao.length) {
+    return `${ref} ainda não terminou nenhuma fase — nada a entregar.`;
+  }
+  const linhas = fases.length
+    ? [`${ref}: reentregando ${fases.length} fase(s) — ${fases.join(', ')}.`]
+    : [`${ref}: nenhuma fase declara o que entrega.`];
+  // Fase feita e MUDA é falta de `portao.mostrar` no flow.json do domínio, não
+  // ausência de material: dizer isso poupa a caçada na pasta de saída.
+  if (semDeclaracao.length) {
+    linhas.push(
+      `Sem declaração de entrega (o domínio não diz o que mostrar): ${semDeclaracao.join(', ')}.`,
+    );
+  }
+  return linhas.join('\n');
 }
 
 export function cancelarFluxo(ref: string, alvo: string | undefined, deps: DepsFluxo): string | undefined {

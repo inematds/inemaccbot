@@ -847,6 +847,39 @@ export class Fluxos {
    * `pulado`. O que já foi criado FORA (um render no HeyGen) não é desfeito —
    * a mensagem tem que dizer o que ficou lá, para decisão humana (§3.7).
    */
+  /**
+   * REENTREGA o que o fluxo já produziu — o `/dados <ref>`.
+   *
+   * O material só chegava no instante em que cada portão abria. Se o fluxo
+   * falhou depois, ou se a mensagem já rolou no chat, não havia como pedir de
+   * novo: o `/status` mostra estado e causa, nunca conteúdo, e os arquivos
+   * ficam numa pasta de saída alcançável só por `ls` na máquina.
+   *
+   * O caso que doeu: o MVD#89 tem faixa, capa e clipe INTEIROS no disco (US$
+   * 0,08 pagos) e ficou preso atrás de um fluxo marcado como falho, por um
+   * defeito de contrato que nem existe mais.
+   *
+   * Nada é regerado: isto só relê o que as fases declararam em `portao.mostrar`
+   * e manda de novo. Fase que não declarou não entrega nada — e dizer isso vale
+   * mais que silêncio, porque o vazio aqui é sempre falta de declaração.
+   */
+  reentregar(fluxoId: number): { fases: string[]; semDeclaracao: string[] } {
+    const fluxo = this.estado.obter(fluxoId);
+    if (!fluxo) throw new Error('fluxo não existe');
+    const def = this.estado.definicaoDe(fluxo);
+    const fases: string[] = [];
+    const semDeclaracao: string[] = [];
+    for (const faseDef of def.fases) {
+      const linhas = this.estado.fases(fluxoId).filter((f) => f.fase === faseDef.id);
+      if (!linhas.some((f) => f.estado === 'feito')) continue;
+      if (!faseDef.portao) { semDeclaracao.push(faseDef.id); continue; }
+      this.avisar(fluxo, `📦 ${fluxo.prefixo}#${fluxo.id} — ${faseDef.id}:`);
+      this.entregarDeclarado(fluxo, faseDef);
+      fases.push(faseDef.id);
+    }
+    return { fases, semDeclaracao };
+  }
+
   cancelar(fluxoId: number, alvo?: string): { cancelados: number } {
     const fluxo = this.estado.obter(fluxoId);
     if (!fluxo) throw new Error('fluxo não existe');

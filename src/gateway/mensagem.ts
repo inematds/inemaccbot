@@ -24,7 +24,7 @@ import { ajudaDaSkill } from './ajuda-dominio.js';
 import { AJUDA_COMPLETA, executar, parseComando } from './comandos.js';
 import {
   ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, definirCapaFluxo, fluxosCompletos,
-  painelFluxos, parseCapa, refazerFluxo, statusDoDominio, statusFluxo, textoFluxos,
+  dadosDoFluxo, painelFluxos, parseCapa, refazerFluxo, statusDoDominio, statusFluxo, textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
 import { interpretar } from './interpret.js';
@@ -162,6 +162,14 @@ function tratarComandoDeFluxo(
 
   if (verbo === '/completos') {
     return fluxosCompletos(depsFluxo);
+  }
+
+  // `/dados <ref>` — o material que o fluxo já produziu, de volta no chat. O
+  // `/status` diz em que pé está; este diz o que saiu.
+  if (verbo === '/dados' || verbo === '/entregar') {
+    const [ref] = resto;
+    if (!ref) return `qual fluxo? ex.: ${verbo} A#9`;
+    return dadosDoFluxo(ref, depsFluxo) ?? `não entendi "${ref}" — use ${verbo} A#9`;
   }
 
   if (verbo === '/status' || verbo === '/refazer' || verbo === '/cancelar') {
