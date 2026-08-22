@@ -24,7 +24,8 @@ import { ajudaDaSkill } from './ajuda-dominio.js';
 import { AJUDA_COMPLETA, executar, parseComando } from './comandos.js';
 import {
   ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, definirCapaFluxo, fluxosCompletos,
-  dadosDoFluxo, painelFluxos, parseCapa, refazerFluxo, statusDoDominio, statusFluxo, textoFluxos,
+  dadosDoFluxo, painelFluxos, parseCapa, pausarFluxo, priorizarFluxo, refazerFluxo,
+  retomarFluxo, statusDoDominio, statusFluxo, textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
 import { interpretar } from './interpret.js';
@@ -162,6 +163,18 @@ function tratarComandoDeFluxo(
 
   if (verbo === '/completos') {
     return fluxosCompletos(depsFluxo);
+  }
+
+  // Pausa, retomada e prioridade. A fila `render` tem UMA vaga: sem estes três,
+  // escolher qual fluxo termina antes era impossível pelo chat, e a única saída
+  // era `/cancelar`, que não tem volta.
+  if (verbo === '/pausar' || verbo === '/retomar' || verbo === '/prioridade') {
+    const [ref] = resto;
+    if (!ref) return `qual fluxo? ex.: ${verbo} A#9`;
+    const r = verbo === '/pausar' ? pausarFluxo(ref, depsFluxo)
+      : verbo === '/retomar' ? retomarFluxo(ref, depsFluxo)
+        : priorizarFluxo(ref, depsFluxo);
+    return r ?? `não entendi "${ref}" — use ${verbo} A#9`;
   }
 
   // `/dados <ref>` — o material que o fluxo já produziu, de volta no chat. O

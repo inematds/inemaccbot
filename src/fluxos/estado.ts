@@ -13,7 +13,13 @@ export type EstadoFase =
   | 'aguardando-ok'
   | 'falhou'
   | 'pulado';
-export type StatusFluxo = 'rodando' | 'feito' | 'falhou' | 'cancelado';
+/**
+ * `pausado` é ABERTO e voluntário: o fluxo não terminou e não falhou — alguém
+ * pediu para ele esperar. Ele existe porque a única saída era `/cancelar`, que
+ * mata e marca as fases como puladas, sem volta: quem só queria dar passagem a
+ * outro fluxo na fila perdia o trabalho.
+ */
+export type StatusFluxo = 'rodando' | 'feito' | 'falhou' | 'cancelado' | 'pausado';
 
 export interface Fluxo {
   id: number;
@@ -139,6 +145,11 @@ export class EstadoFluxos {
    * dizer que é esconderia o alvo que precisa de `/refazer`.
    */
   recalcularStatus(fluxoId: number): StatusFluxo {
+    // PAUSADO não se recalcula. O estado das fases não sabe que alguém pediu
+    // pausa — sem esta guarda, o primeiro ack devolveria o fluxo para `rodando`
+    // e a pausa duraria até o próximo evento.
+    const atual = this.obter(fluxoId);
+    if (atual?.status === 'pausado') return 'pausado';
     const fases = this.fases(fluxoId);
     // `aguardando-ok` conta como ABERTO: o fluxo não terminou, está esperando
     // uma pessoa. Tratá-lo como terminal faria o bot anunciar "feito" no meio.

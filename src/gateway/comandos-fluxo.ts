@@ -1056,6 +1056,53 @@ export function refazerFluxo(ref: string, alvo: string | undefined, deps: DepsFl
   ].join('\n');
 }
 
+/** `/pausar <ref>` · `/retomar <ref>` · `/prioridade <ref>`. */
+export function pausarFluxo(ref: string, deps: DepsFluxo): string | undefined {
+  const r = refDe(ref);
+  if (!r) return undefined;
+  const visao = deps.fluxos.status(r.id);
+  if (!visao || (r.prefixo && visao.fluxo.prefixo !== r.prefixo)) return `${ref} não existe neste bot.`;
+  const { tirados, emCurso } = deps.fluxos.pausar(r.id);
+  return [
+    `⏸️ ${ref} pausado — ${tirados} job(s) tirado(s) da fila.`,
+    // O que está rodando NÃO é morto: dizer isso evita a interpretação de que
+    // a pausa desfez o trabalho em curso.
+    ...(emCurso ? [`A fase em curso continua até terminar (${emCurso}); a próxima espera.`] : []),
+    `Retomar: /retomar ${ref}`,
+  ].join('\n');
+}
+
+export function retomarFluxo(ref: string, deps: DepsFluxo): string | undefined {
+  const r = refDe(ref);
+  if (!r) return undefined;
+  const visao = deps.fluxos.status(r.id);
+  if (!visao || (r.prefixo && visao.fluxo.prefixo !== r.prefixo)) return `${ref} não existe neste bot.`;
+  const { enfileirados } = deps.fluxos.retomar(r.id);
+  return enfileirados
+    ? `▶️ ${ref} retomado — ${enfileirados} fase(s) na fila.`
+    : `${ref} retomado, mas não havia fase liberada para enfileirar. Veja /status ${ref}.`;
+}
+
+export function priorizarFluxo(ref: string, deps: DepsFluxo): string | undefined {
+  const r = refDe(ref);
+  if (!r) return undefined;
+  const visao = deps.fluxos.status(r.id);
+  if (!visao || (r.prefixo && visao.fluxo.prefixo !== r.prefixo)) return `${ref} não existe neste bot.`;
+  const { furados } = deps.fluxos.priorizar(r.id);
+  return furados
+    ? `⏫ ${ref} furou a fila — ${furados} job(s) passam na frente.`
+    // Job `running` já saiu da fila: dizer isso é o que impede alguém de repetir
+    // o comando achando que não pegou.
+    : `${ref} não tem job ESPERANDO na fila (o que está rodando já saiu dela).`;
+}
+
+/** `A#9`, `a9` ou o número puro — a mesma tolerância do `/status`. */
+function refDe(ref: string): { id: number; prefixo: string } | null {
+  const r = parseRef(ref);
+  if (r) return r;
+  return /^\d+$/.test(ref) ? { id: Number(ref), prefixo: '' } : null;
+}
+
 /**
  * `/dados <ref>` — reentrega o que o fluxo já produziu.
  *

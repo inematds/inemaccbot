@@ -417,6 +417,53 @@ describe('--alvo=x, a forma de bandeira', () => {
 // `/status 90` era JOB, sempre. Só que o painel logo acima lista `MVD#90`, e
 // digitar o número que se acabou de ler é o reflexo: a resposta vinha sobre um
 // job antigo de mesmo id, e parecia que "o /status não mostra as fases".
+// A fila `render` tem UMA vaga: dois fluxos grandes se revezam por horas, e
+// escolher qual termina antes era impossível pelo chat. A única saída era
+// `/cancelar`, que mata e marca as fases como puladas, sem volta.
+describe('/pausar, /retomar e /prioridade', () => {
+  it('pausar tira da fila o que não começou e não enfileira mais nada', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    const antes = fila.listar().filter((j) => j.status === 'queued').length;
+    const r = await manda('/pausar B#1');
+    expect(r).toContain('pausado');
+    expect(fila.listar().filter((j) => j.status === 'queued').length).toBeLessThan(antes + 1);
+    expect(fluxos.status(1)!.fluxo.status).toBe('pausado');
+  });
+
+  it('retomar devolve as fases liberadas à fila', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    await manda('/pausar B#1');
+    const r = await manda('/retomar B#1');
+    expect(r).toContain('retomado');
+    expect(fluxos.status(1)!.fluxo.status).toBe('rodando');
+    expect(fila.listar().some((j) => j.status === 'queued')).toBe(true);
+  });
+
+  // PAUSADO não se recalcula: sem a guarda, o primeiro ack devolveria o fluxo
+  // para `rodando` e a pausa duraria até o próximo evento.
+  it('a pausa sobrevive ao término da fase em curso', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    await manda('/pausar B#1');
+    const job = fila.listar().find((j) => j.flow_ref?.includes('texto'));
+    if (job) {
+      if (job.status !== 'running') fila.pegar(job.fila, 600, 'W');
+      fila.concluir(job.id, '/tmp/x.txt', 'W', (j) => fluxos.avancar(j));
+    }
+    expect(fluxos.status(1)!.fluxo.status).toBe('pausado');
+  });
+
+  it('prioridade avisa quando não há job ESPERANDO', async () => {
+    await manda('/brinquedo Assunto | alvos=um');
+    const job = fila.listar()[0]!;
+    fila.pegar(job.fila, 600, 'W');           // sai da fila: vira running
+    expect(await manda('/prioridade B#1')).toContain('não tem job ESPERANDO');
+  });
+
+  it('ref inexistente é recusada, e não em silêncio', async () => {
+    expect(await manda('/pausar B#99')).toContain('não existe');
+  });
+});
+
 describe('/status <número>', () => {
   it('número de fluxo existente mostra o FLUXO, e lembra do job', async () => {
     await manda('/brinquedo Assunto | alvos=um');

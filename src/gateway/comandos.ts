@@ -151,6 +151,7 @@ const AJUDA_SECOES: Array<{ titulo: string; linhas: Array<{ uso: string; descric
       { uso: '/status', descricao: 'os fluxos abertos' },
       { uso: '/status <ref>', descricao: 'um job ou um fluxo' },
       { uso: '/completos', descricao: 'os fluxos terminados' },
+      { uso: '/dados <ref>', descricao: 'o material que o fluxo já produziu' },
       { uso: '/jobs', descricao: 'a fila de jobs' },
       { uso: '/fila', descricao: 'saúde das filas' },
       { uso: '/ping', descricao: 'o bot está vivo?' },
@@ -159,6 +160,9 @@ const AJUDA_SECOES: Array<{ titulo: string; linhas: Array<{ uso: string; descric
   {
     titulo: 'Agir',
     linhas: [
+      { uso: '/pausar <ref>', descricao: 'para de enfileirar; o que roda termina' },
+      { uso: '/retomar <ref>', descricao: 'volta a enfileirar' },
+      { uso: '/prioridade <ref>', descricao: 'fura a fila' },
       { uso: '/pronto [ref]', descricao: 'libera o portão' },
       { uso: '/refazer <ref>', descricao: 'retenta o que falhou' },
       { uso: '/cancelar <ref>', descricao: 'cancela job ou fluxo' },

@@ -402,6 +402,15 @@ export class Fluxos {
       this.entregarDeclarado(fluxo, faseDef);
     }
 
+    // PAUSADO não enfileira a próxima. O que já estava rodando termina (matar
+    // render pago para "pausar" seria pior), mas a fase seguinte espera o
+    // `/retomar` — que é o sentido inteiro da pausa.
+    if (this.estado.obter(fluxo.id)?.status === 'pausado') {
+      this.avisar(fluxo, `⏸️ ${fluxo.prefixo}#${fluxo.id} — fase ${fase.fase} terminou, e o fluxo está PAUSADO.`
+        + ` Retome com /retomar ${fluxo.prefixo}#${fluxo.id}`);
+      return;
+    }
+
     const proxima = this.proximaFase(def, fase);
     if (proxima) {
       // Fase de escopo `fluxo` alimenta TODOS os alvos; fase de alvo alimenta só
@@ -847,6 +856,77 @@ export class Fluxos {
    * `pulado`. O que já foi criado FORA (um render no HeyGen) não é desfeito —
    * a mensagem tem que dizer o que ficou lá, para decisão humana (§3.7).
    */
+  /**
+   * PAUSA o fluxo: tira da fila o que ainda não começou e não enfileira mais
+   * nada até `/retomar`.
+   *
+   * A única saída antes disto era `/cancelar`, que mata e marca as fases como
+   * puladas, sem volta. Quem só queria dar passagem a outro fluxo na fila
+   * (`render` é uma vaga só) perdia o trabalho.
+   *
+   * O que está RODANDO continua até o fim, de propósito: matar um render de uma
+   * hora para "pausar" é perder trabalho pago — e ele não vai enfileirar a fase
+   * seguinte, porque a pausa é conferida no avanço.
+   */
+  pausar(fluxoId: number): { tirados: number; emCurso: number } {
+    const fluxo = this.estado.obter(fluxoId);
+    if (!fluxo) throw new Error('fluxo não existe');
+    let tirados = 0;
+    let emCurso = 0;
+    for (const fase of this.estado.fases(fluxoId)) {
+      if (fase.estado !== 'pendente' || fase.job_id === null) {
+        if (fase.estado === 'rodando') emCurso += 1;
+        continue;
+      }
+      // Job que ainda não começou volta a ser fase pendente SEM job: é assim
+      // que o `/retomar` (e o reenfileirador do boot) sabe o que reenfileirar.
+      if (this.fila.cancelar(fase.job_id)) tirados += 1;
+      this.estado.atualizarFase(fluxoId, fase.fase, fase.alvo, { job_id: null });
+    }
+    this.estado.marcarStatus(fluxoId, 'pausado');
+    return { tirados, emCurso };
+  }
+
+  /** RETOMA: volta a `rodando` e reenfileira o que estava liberado. */
+  retomar(fluxoId: number): { enfileirados: number } {
+    const fluxo = this.estado.obter(fluxoId);
+    if (!fluxo) throw new Error('fluxo não existe');
+    this.estado.marcarStatus(fluxoId, 'rodando');
+    const def = this.estado.definicaoDe(fluxo);
+    const todas = this.estado.fases(fluxoId);
+    let enfileirados = 0;
+    for (const fase of todas) {
+      if (fase.estado !== 'pendente' || fase.job_id !== null) continue;
+      if (!this.liberada(def, todas, fase)) continue;
+      const faseDef = def.fases.find((f) => f.id === fase.fase);
+      if (!faseDef) continue;
+      this.enfileirarFase(fluxo, faseDef, fase.alvo);
+      enfileirados += 1;
+    }
+    // Sem nada a enfileirar, o status volta a ser o que as fases dizem: um
+    // fluxo que já tinha terminado não pode ficar "rodando" por ter sido
+    // retomado.
+    if (!enfileirados) this.estado.recalcularStatus(fluxoId);
+    return { enfileirados };
+  }
+
+  /**
+   * PRIORIZA: os jobs enfileirados deste fluxo saem primeiro.
+   *
+   * A fila `render` tem uma vaga (é a GPU), então dois fluxos grandes se
+   * revezam por horas. Escolher qual termina antes era impossível pelo chat.
+   * Só alcança job `queued`: um `running` já saiu da fila, e mudar prioridade
+   * nele seria mexer num número morto.
+   */
+  priorizar(fluxoId: number, prioridade = 10): { furados: number } {
+    let furados = 0;
+    for (const fase of this.estado.fases(fluxoId)) {
+      if (fase.job_id === null) continue;
+      if (this.fila.priorizar(fase.job_id, prioridade)) furados += 1;
+    }
+    return { furados };
+  }
+
   /**
    * REENTREGA o que o fluxo já produziu — o `/dados <ref>`.
    *
