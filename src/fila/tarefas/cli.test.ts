@@ -38,6 +38,34 @@ describe('cli.rodar', () => {
     expect(readFileSync(saida, 'utf8')).toContain('plano: /out/PLANO.md');
   });
 
+  // A CAUSA, não a última linha. O yt-dlp e o ffmpeg despejam centenas de
+  // linhas de barra de progresso, e a cauda crua pegava justamente elas: no job
+  // 4775 o chat disse "falhou: comprimindo pra analise..." quando a causa era um
+  // HTTP 503 do Gemini (2026-08-22).
+  it('a mensagem de falha pula o progresso e pega o erro', async () => {
+    writeFileSync(join(dir, 'ruidoso.sh'), [
+      '#!/bin/bash',
+      'echo "[download]   0.0% of 21.86MiB at 142.86KiB/s ETA 02:36"',
+      'echo "[download] 100% of 21.86MiB"',
+      'echo "{\\"erro\\": \\"HTTPError: HTTP Error 503: Service Unavailable\\"}"',
+      'echo "[analisevideo] comprimindo pra analise..."',
+      'exit 1',
+    ].join('\n'));
+    await expect(criarCliRodar()(ctx({
+      comando: `bash ${join(dir, 'ruidoso.sh')}`, cwd: dir, saida: join(dir, 'r.txt'),
+    }))).rejects.toThrow(/503/);
+  });
+
+  // Se só havia ruído, ainda assim diz alguma coisa: mensagem ruim é melhor que
+  // silêncio.
+  it('saída só com progresso não vira mensagem vazia', async () => {
+    writeFileSync(join(dir, 'so-ruido.sh'),
+      '#!/bin/bash\necho "[download] 50% of 10MiB ETA 00:10"\nexit 2\n');
+    await expect(criarCliRodar()(ctx({
+      comando: `bash ${join(dir, 'so-ruido.sh')}`, cwd: dir, saida: join(dir, 'r.txt'),
+    }))).rejects.toThrow(/download/);
+  });
+
   it('exit != 0 é falha, com a CAUDA da saída na mensagem', async () => {
     await expect(criarCliRodar()(ctx({
       comando: 'echo "linha boba"; echo "erro: slug já existe" >&2; exit 3',

@@ -66,9 +66,38 @@ function erroDeAbort(sinal: AbortSignal): Error {
   return new Error(`abortado pelo worker${razao ? `: ${razao}` : ''}`);
 }
 
-/** Últimas linhas não vazias — o que serve numa mensagem de erro de chat. */
+/**
+ * Linhas de PROGRESSO, que não explicam falha nenhuma.
+ *
+ * O `yt-dlp` e o `ffmpeg` despejam centenas de linhas de barra; a cauda pegava
+ * as últimas e o erro real ficava soterrado. No job 4775 o chat disse "o comando
+ * falhou: [analisevideo] arquivo grande, comprimindo pra analise..." quando a
+ * causa era um `HTTP 503` do Gemini — a mensagem apontava para o lugar errado, e
+ * quem lê conclui que o problema é a compressão.
+ */
+const RUIDO = /^\s*(\[download\]|\[info\]|frame=|size=|progresso:)|ETA\s|\d+% of |\bit\/s\b/i;
+
+/** Uma linha que anuncia erro — é ela que a mensagem de chat quer. */
+const PARECE_ERRO = /\b(erro|error|failed|falhou|traceback|exception|recusou|http \d{3}|\d{3}:)\b/i;
+
+/**
+ * Últimas linhas ÚTEIS — o que serve numa mensagem de erro de chat.
+ *
+ * Ordem: tira o ruído; se sobrar alguma que anuncia erro, ela e o que veio
+ * depois (o traceback costuma ter a causa na última linha); senão, a cauda do
+ * que restou. Nunca devolve vazio se havia texto: uma mensagem ruim é melhor
+ * que nenhuma.
+ */
 function cauda(texto: string, linhas = 4): string {
-  return texto.split('\n').filter((l) => l.trim()).slice(-linhas).join('\n').slice(0, 800);
+  const uteis = texto.split('\n').map((l) => l.trimEnd())
+    .filter((l) => l.trim() && !RUIDO.test(l));
+  const iErro = uteis.findIndex((l) => PARECE_ERRO.test(l));
+  const escolhidas = iErro >= 0 ? uteis.slice(iErro, iErro + linhas) : uteis.slice(-linhas);
+  const saida = escolhidas.join('\n').slice(0, 800);
+  if (saida.trim()) return saida;
+  // Só havia ruído: melhor a última linha crua do que silêncio.
+  const cru = texto.split('\n').filter((l) => l.trim());
+  return cru.slice(-1).join('\n').slice(0, 800);
 }
 
 /**
