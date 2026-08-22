@@ -90,9 +90,31 @@ Grava a escolha ANTES de a fase `clipe` ler a faixa — depois do clipe montado
 não adianta. Por baixo é o `aprova <slug> musica --faixa N` que já existe; falta
 o comando no chat e a ordem no portão.
 
-Ordem sugerida: **(c) primeiro** — é a mais barata de implementar e a que evita
-render errado. Depois **(b)** como opção explícita (`| dois-clipes` seria (a),
-e (a) só sob pedido, nunca por default).
+### A forma que o dono pediu (2026-08-22)
+
+Uma resposta só no portão da música, com três valores:
+
+| resposta | o que acontece |
+|---|---|
+| `a` | a faixa **1** é a principal — UM render |
+| `b` | a faixa **2** é a principal — UM render |
+| `2` | **dois clipes diferentes**, um por faixa — dois renders |
+
+Ou seja: (a) e (b) são a MESMA operação com escolha diferente, e só `2` paga o
+render dobrado. A decisão cara fica explícita e é do dono, que é o ponto — o
+default nunca dobra a fase mais cara do fluxo.
+
+**A confirmar antes de implementar:** em `a`/`b`, a outra faixa recebe o mesmo
+vídeo (dois `.mp4` com a mesma imagem e trilhas diferentes, via `ffmpeg -c:v
+copy`, custo zero), ou fica só o clipe da escolhida e a outra faixa continua
+existindo apenas como `.mp3`? As duas leituras cabem no que foi pedido e mudam o
+que sai do fluxo.
+
+Nomear `a`/`b` e não `1`/`2` é de propósito: `2` já significa "dois clipes", e
+`musica: <ref> 2` seria ambíguo entre "a faixa 2" e "dois clipes".
+
+Ordem sugerida: esta forma primeiro — é a mais barata de implementar e a que
+evita render errado, que é o prejuízo de verdade.
 
 Nota: (c) é a mesma peça do item 1 deste documento (reprovar no portão) vista de
 outro ângulo — em ambos, o portão precisa aceitar uma RESPOSTA além do sim.
