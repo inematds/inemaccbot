@@ -8,6 +8,16 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.17.8 — 2026-08-23
+
+**O log da tentativa anterior deixou de ser apagado.** `limparMarcadores` sumia
+com o `.log` na hora de re-disparar — e com ele, o único registro de ONDE o
+trabalho parou. O `/status` de uma fase FALHADA ficava sem número nenhum, que é
+justamente onde ele mais serve: a causa diz "cota diária da Agnes" e não diz que
+6 dos 42 shots ficaram prontos. Agora vira `.log.anterior` (um nível só,
+sobrescrito a cada tentativa) e o progresso cai nele quando o log atual não
+existe. Foi o MVD#100, hoje.
+
 ## 0.17.7 — 2026-08-23
 
 **O `/status` de um fluxo não mostrava o progresso da fase.** O mecanismo existia

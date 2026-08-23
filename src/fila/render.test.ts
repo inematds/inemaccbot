@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -271,5 +271,29 @@ describe('processo destacado morto sem marcador', () => {
     await expect(esperarArtefato(alvo, {
       timeoutMs: 60_000, sinal: semSinal, ...relogio(),
     })).resolves.toBe(alvo);
+  });
+});
+
+// O `.log` é a única memória de ONDE a tentativa anterior parou. Apagá-lo na
+// hora de re-disparar matava o número exatamente quando ele mais serve: o
+// `/status` de uma fase que falhou. MVD#100, 2026-08-23 — o clipe morreu no
+// shot 6 de 42 por cota da Agnes, a tentativa seguinte limpou o log, e o chat
+// não tinha número nenhum para mostrar.
+describe('limparMarcadores guarda o log da tentativa anterior', () => {
+  it('renomeia o `.log` em vez de apagar', () => {
+    const alvo = join(dir, 'clipe.mp4');
+    writeFileSync(`${alvo}.log`, 'progresso: 6/42 · faltam 36\n');
+    writeFileSync(`${alvo}.err`, '');
+    writeFileSync(`${alvo}.pid`, '123\n');
+    limparMarcadores(alvo);
+    expect(existsSync(`${alvo}.log`), 'a tentativa nova começa com log limpo').toBe(false);
+    expect(existsSync(`${alvo}.err`)).toBe(false);
+    expect(readFileSync(`${alvo}.log.anterior`, 'utf8')).toContain('6/42');
+  });
+
+  it('sem log anterior, não inventa arquivo', () => {
+    const alvo = join(dir, 'sem-log.mp4');
+    limparMarcadores(alvo);
+    expect(existsSync(`${alvo}.log.anterior`)).toBe(false);
   });
 });

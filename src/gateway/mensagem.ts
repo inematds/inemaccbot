@@ -385,7 +385,14 @@ function ultimoProgresso(caminho: string): string | undefined {
   try {
     texto = readFileSync(caminho, 'utf8');
   } catch {
-    return undefined;
+    // A tentativa em curso ainda não escreveu (ou a anterior falhou e este log
+    // já foi guardado). `\`.log.anterior\`` é onde está o número da última vez —
+    // e numa fase FALHADA é o único que existe.
+    try {
+      texto = readFileSync(`${caminho}.anterior`, 'utf8');
+    } catch {
+      return undefined;
+    }
   }
   let achado: string | undefined;
   for (const linha of texto.split('\n')) {

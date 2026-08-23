@@ -19,7 +19,7 @@
 // O que NÃO foi portado é a passividade do v1: aqui quem espera detém um lease,
 // renovado pelo heartbeat do worker, e obedece ao `sinal` (encerramento do
 // serviço ou lease perdido).
-import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, statSync, unlinkSync } from 'node:fs';
 
 /** Encerra o trabalho destacado a partir do `.pid` que o prompt gravou.
  * Usado SÓ no `/cancelar`: no desligamento e na perda de lease o processo tem
@@ -70,6 +70,17 @@ const INTERVALO_PADRAO_MS = 5_000;
  * qualquer marcador visto durante a vigília é verdadeiro.
  */
 export function limparMarcadores(alvo: string): void {
+  // O `.log` é GUARDADO, não apagado. Ele é a única memória de onde a tentativa
+  // anterior parou (`progresso: 6/42`), e apagá-lo aqui matava o número
+  // exatamente quando ele mais serve: no `/status` de uma fase que falhou. Foi
+  // o MVD#100 em 2026-08-23 — o clipe morreu no shot 6 de 42 por cota da Agnes,
+  // a tentativa seguinte limpou o log e o chat passou a não ter número nenhum
+  // para mostrar.
+  //
+  // Um nível só de história: `.log.anterior` é sobrescrito a cada tentativa.
+  // Guardar N gerações encheria o disco com o log de renders que ninguém vai
+  // ler — o que se quer é "onde parou da última vez".
+  try { renameSync(`${alvo}.log`, `${alvo}.log.anterior`); } catch { /* não existia */ }
   for (const f of [`${alvo}.err`, `${alvo}.log`, `${alvo}.pid`]) {
     try { unlinkSync(f); } catch { /* não existia */ }
   }

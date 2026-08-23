@@ -5,6 +5,7 @@ separado e é linkado — aqui é só o suficiente para o padrão aparecer.
 
 | data | o que quebrou | menor correção | prompt \| infra |
 |---|---|---|---|
+| 2026-08-23 | `/status` de fase falhada sem progresso: o `.log` com `progresso: 6/42` era APAGADO por `limparMarcadores` ao re-disparar, e a falha do MVD#100 (cota da Agnes) ficou sem dizer onde parou | guardar como `.log.anterior` em vez de apagar; o progresso cai nele | infra |
 | 2026-08-23 | `/status MVD#96` não mostrava `23/47 shots` durante 4h de render — o mecanismo existia e só valia no painel; no detalhe, o ramo de "até 6 alvos" devolvia a linha antes de olhar o progresso | ramo de um alvo passa a valer também no detalhe (`lista.length > 1` no ramo de cima) | prompt |
 | 2026-08-22 | jobs 5121/5122: tentativa 2 de fase destacada falhou em 14s sem disparar nada — o guard media `agora - criado_em` contra o prazo de UMA tentativa, que a vigília da tentativa 1 já tinha gasto inteiro | prazo vira orçamento do job (`timeout × max_tentativas`), contado de `iniciado_em` | infra |
 | 2026-08-22 | job 5121: `analisevideo` vivo declarado MORTO por log parado (>20 min sem escrita durante a análise); terminou bem 50 min depois, com o job já `failed` e a análise no disco sem entrega | `cli.rodar` grava `.pid` no comando destacado (o `reel.montar` já gravava) — prova de vida antes do log | infra |
