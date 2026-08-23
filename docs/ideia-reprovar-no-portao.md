@@ -28,15 +28,20 @@ do portão: bump minor.
 
 ## 2. A capa tem correção; o resto não
 
-Para a capa já existe saída sem refazer nada — e é o modelo do que falta:
+No PROMOAVATAR já existe saída sem refazer nada — e é o modelo do que falta:
 
     capa: <ref> <público> <n> [cover]        # outra imagem do roteiro visual
     capa: <ref> <público>  + foto anexada    # a imagem que a pessoa mandou
     capa: <ref> * ...                        # todos os públicos de uma vez
 
-Para o texto/roteiro não há equivalente: é editar `<repo>/textos/<REF>/<alvo>.md`
-à mão, o que só funciona para quem tem terminal — exatamente o atrito que o
-comando `capa:` existe para eliminar.
+**CORREÇÃO (2026-08-23): isso NÃO vale para o musicavideo.** O `capa:` escreve
+`arquivo:` dentro de `textos/<REF>/<alvo>.md` — o roteiro por público do
+promoavatar. O musicavideo não tem `textos/` nem públicos, então o comando não
+alcança a capa dele. Serve como molde de SINTAXE, não como caminho pronto.
+
+Para o texto/roteiro do promoavatar não há equivalente: é editar
+`<repo>/textos/<REF>/<alvo>.md` à mão, o que só funciona para quem tem terminal
+— exatamente o atrito que o comando `capa:` existe para eliminar.
 
 ## 3. A fase `musica` produz DUAS faixas e mostra UMA — FEITO em 2026-08-22
 
@@ -148,3 +153,50 @@ a faixa pronta no meio do fluxo é peça nova, pequena, no domínio.
 
 Ordem dentro do item: correção primeiro (só chat), faixa pronta depois (chat +
 domínio). Os dois têm que gravar a escolha ANTES de a fase `clipe` ler a faixa.
+
+
+## 6. Aprovar os SHOTS antes de montar o clipe (pedido de 2026-08-23)
+
+> "quando vir os clipes quero aprovar antes dele montar; os que eu reprovar tem
+> que refazer e me apresentar até aprovar"
+
+O domínio já tem as três peças. O que falta é o chat — e uma inversão de ordem.
+
+**O que existe:**
+
+- `revisao.folha_de_contato(w)` — grade numerada com um frame de cada shot, com o
+  número **desenhado por cima**; o comentário no código diz o porquê: *"é por ele
+  que você reprova"*. É UMA imagem, ou seja, cabe numa mensagem de Telegram.
+- `reprova <slug> clipe "4,17,23"` (aceita `4-7,12`) — apaga só esses shots. O
+  `faz` seguinte **regenera só eles**, não o clipe inteiro.
+- `revisa <slug> clipe` — lista o que está parado no portão, com o arquivo.
+
+**O que está no caminho, e é o achado:** hoje o clipe é **montado ANTES** de você
+revisar. No `executor.py`, `_montar_com_a_faixa` roda logo depois da geração dos
+shots, e só então o estado vai para `revisar` e a folha de contato é impressa.
+Então "aprovar antes de montar" não existe nem dentro do domínio.
+
+Isso importa menos do que parece pelo custo — montar é `ffmpeg`, custa segundos e
+zero dólar; o caro são os shots (4h) e regerar cada um deles. Mas o pedido é
+literal e a inversão é pequena: mover o portão para antes do `_montar_com_a_faixa`
+quando o modo for "revisar".
+
+**E há um portão a mais no caminho:** a fase `clipe` do `flow.json` roda com
+`--sim --sem-revisao --aprovar`. O `--sem-revisao` DESLIGA exatamente esse portão
+interno — de propósito, porque ele travou o MVD#89 com a faixa já paga e
+invisível no chat. O pedido é trazer esse portão de volta, mas para o CHAT, onde
+o dono enxerga.
+
+**Forma:**
+
+    (portão do clipe abre com a FOLHA DE CONTATO anexada)
+    clipe: <ref> reprova 4,17,23     → apaga esses, regera só eles, reapresenta
+    clipe: <ref> reprova 4-7 | correcao=menos zoom
+    /aprovar <ref>                   → monta e segue
+
+O laço "refaz e me apresenta até aprovar" é o mesmo portão reabrindo: a fase
+volta a `aguardando-ok` depois de regerar. Isso pede que o portão saiba REABRIR
+— hoje ele é passagem de mão única (item 1). Mais uma vez: a mesma peça.
+
+Custo a dizer no chat junto com a folha: regerar N shots custa N × o preço do
+shot, e a montagem é de graça. Sem esse número, reprovar vira aposta.
