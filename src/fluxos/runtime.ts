@@ -5,7 +5,7 @@
 // lê isso e escolhe a próxima fase é este arquivo — e faz isso DENTRO da
 // transação do ack, para que "fase feita" e "próxima fase enfileirada" nunca
 // existam separadas (foi assim que o v1 produziu dispatch duplicado).
-import { readFileSync } from 'node:fs';
+import { readFileSync, unlinkSync } from 'node:fs';
 import { basename } from 'node:path';
 import { flowRef, type FaseDef, type FlowDef } from '../dominio/flow.js';
 import { primeiraFala } from '../dominio/roteiro.js';
@@ -13,7 +13,7 @@ import type { FilaSqlite } from '../fila/store.js';
 import type { Agora, Job, Perfil } from '../fila/types.js';
 import { resolverPerfil } from '../dominio/perfil.js';
 import { EstadoFluxos, type Fase, type Fluxo, type StatusFluxo } from './estado.js';
-import { montarInput, pastaTextos, tituloEstudio } from './entrada-fase.js';
+import { caminhoRecibo, montarInput, pastaTextos, resolverComando, tituloEstudio } from './entrada-fase.js';
 import type { Publicacao } from './publicar.js';
 import { entregarPacote, pacoteNoRecibo } from './entregar-canal.js';
 
@@ -129,6 +129,10 @@ function slugificar(texto: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 60) || 'fluxo';
 }
+
+/** Separa o job de RESPOSTA do job de FASE no `flow_ref`. `#` não aparece em
+ *  nome de fase nem de alvo, então a marca não colide com um ref legítimo. */
+const MARCA_RESPOSTA = '#resposta:';
 
 export class Fluxos {
   private readonly estado: EstadoFluxos;
@@ -325,6 +329,11 @@ export class Fluxos {
    * ainda espera o render (§3.5). Não há barreira entre fases.
    */
   avancar(job: Job): void {
+    // JOB DE RESPOSTA a um portão (`clipe: MVD#97 reprova 4,17`). Ele não é uma
+    // fase — é o comando que o domínio declarou para "não, assim não". Terminou
+    // bem: a fase REABRE (o material velho sai, ela roda de novo, o portão
+    // mostra o novo). Terminou mal: o portão continua aberto, com o motivo.
+    if (job.flow_ref?.includes(MARCA_RESPOSTA)) { this.concluirResposta(job); return; }
     const fase = this.estado.faseDoJob(job.id);
     if (!fase) return; // job solto, não é fase de fluxo
     const fluxo = this.estado.obter(fase.fluxo_id);
@@ -379,7 +388,14 @@ export class Fluxos {
           + (peloBot
             ? 'Revise os textos abaixo — os avatares quem gera é o BOT, e isso gasta da carteira.\n'
             : '')
-          + `Quando estiver pronto: /aprovar ${fluxo.prefixo}#${fluxo.id}`,
+          + `Quando estiver pronto: /aprovar ${fluxo.prefixo}#${fluxo.id}`
+          // O que se pode responder ALÉM de sim. Portão que não diz o que
+          // aceita é tão mudo quanto o que não mostra nada: as palavras são do
+          // `flow.json` do domínio, e ninguém as adivinha.
+          + (faseDef.portao?.respostas
+            ? `\nNão gostou? ${Object.keys(faseDef.portao.respostas)
+              .map((pal) => `\`${fase.fase}: ${fluxo.prefixo}#${fluxo.id} ${pal} …\``).join(' · ')}`
+            : ''),
         );
         this.entregarRoteiros(fluxo, faseDef);
       }
@@ -849,6 +865,139 @@ export class Fluxos {
   private proximaFase(def: FlowDef, fase: Fase): FaseDef | undefined {
     const i = def.fases.findIndex((f) => f.id === fase.fase);
     return i >= 0 ? def.fases[i + 1] : undefined;
+  }
+
+
+  /**
+   * RESPONDER ao portão — o que não fosse "sim" não existia.
+   *
+   * `/aprovar` liberava e pronto. Corrigir uma capa custava `/cancelar`, que
+   * mata o fluxo inteiro: para trocar uma imagem, perdia-se o plano, a música e
+   * o clipe. E `/refazer` não servia, porque só pega fase em `falhou` — a que
+   * espera no portão está em `aguardando-ok`.
+   *
+   * O BOT não sabe o que "corrigir uma capa" quer dizer, e não deve saber: quem
+   * sabe é o domínio, que já tem `reprova`, `ajusta` e afins. Ele DECLARA em
+   * `portao.respostas`, e aqui só se executa e reabre.
+   */
+  responder(
+    fluxoId: number, faseId: string, palavra: string, resposta: string,
+  ): { erro: string } | { fase: string; palavra: string; jobId: number } {
+    const fluxo = this.estado.obter(fluxoId);
+    if (!fluxo) return { erro: 'fluxo não existe' };
+    const def = this.estado.definicaoDe(fluxo);
+    const faseDef = def.fases.find((f) => f.id === faseId);
+    if (!faseDef) return { erro: `${fluxo.prefixo}#${fluxo.id} não tem fase "${faseId}".` };
+
+    const respostas = faseDef.portao?.respostas;
+    if (!respostas || !Object.keys(respostas).length) {
+      return { erro: `a fase "${faseId}" não declara respostas — aqui só vale /aprovar.` };
+    }
+    const molde = respostas[palavra];
+    if (!molde) {
+      return {
+        erro: `"${palavra}" não é resposta de "${faseId}" — aceito: ${Object.keys(respostas).join(' · ')}.`,
+      };
+    }
+    // SÓ no portão. Fase `feito` já liberou as seguintes: refazê-la deixaria o
+    // material posterior falando de um material que não existe mais. No portão
+    // não há posterior nenhuma rodando, e é por isso que aqui é seguro.
+    const esperando = this.estado.fases(fluxoId)
+      .filter((f) => f.fase === faseId && f.estado === 'aguardando-ok');
+    if (!esperando.length) {
+      return { erro: `a fase "${faseId}" de ${fluxo.prefixo}#${fluxo.id} não está esperando no portão.` };
+    }
+
+    const fase = esperando[0]!;
+    const anterior = this.dadosDaAnterior(fluxo, def, faseDef, fase.alvo);
+    const ref = `${fluxo.prefixo}${fluxo.id}`;
+    const saida = `${this.raizArtefatos}/fluxos/${ref}/${faseId}-resposta.txt`;
+    // O recibo da resposta ANTERIOR sai da frente: `cli.rodar` responde com o
+    // recibo pronto se ele existir, e a segunda reprovação não rodaria.
+    this.limparRecibo(saida);
+    const job = this.fila.enfileirar({
+      fila: 'io',   // resposta é mudança de ESTADO (apagar shot, reescrever plano):
+      kind: 'function',   // segundos. O caro é a fase, que roda depois, na fila dela.
+      tarefa: 'cli.rodar',
+      input: JSON.stringify({
+        comando: resolverComando(molde, {
+          repo: this.repoDe(fluxo.tipo) ?? '',
+          input: fluxo.assunto,
+          alvo: fase.alvo,
+          ref,
+          saida,
+          anterior: anterior ?? '',
+          resposta,
+        }),
+        cwd: this.repoDe(fluxo.tipo) ?? '',
+        saida,
+      }),
+      max_tentativas: 1,
+      flow_ref: `${flowRef(fluxo.prefixo, fluxo.id, fase.alvo, faseId)}${MARCA_RESPOSTA}${palavra}`,
+      chat_id: null,
+    });
+    this.log(`${ref}/${fase.alvo || '-'}/${faseId} RESPOSTA "${palavra}" — job ${job.id}`);
+    return { fase: faseId, palavra, jobId: job.id };
+  }
+
+  /** O job de resposta terminou. Sucesso REABRE a fase; falha deixa o portão como estava. */
+  private concluirResposta(job: Job): void {
+    const [refAlvoFase, palavra] = String(job.flow_ref).split(MARCA_RESPOSTA);
+    const [ref, alvo, faseId] = String(refAlvoFase).split('/');
+    const id = Number(String(ref).replace(/^\D+/, ''));
+    const fluxo = this.estado.obter(id);
+    if (!fluxo || !faseId) return;
+
+    if (job.status === 'failed') {
+      this.avisar(
+        fluxo,
+        `❌ ${fluxo.prefixo}#${fluxo.id} — "${palavra}" em ${faseId} não pegou:\n`
+        + `${(job.erro ?? '').slice(0, 300)}\n`
+        + 'O portão continua aberto — nada foi refeito.',
+      );
+      return;
+    }
+    this.reabrirFase(fluxo, faseId, alvo ?? '', palavra ?? '');
+  }
+
+  /**
+   * REABRE a fase: o material velho sai e ela roda de novo.
+   *
+   * Apagar o recibo é o passo que não pode faltar. `cli.rodar` começa por
+   * "recibo pronto é a resposta" — uma fase reaberta com o recibo velho no
+   * disco terminaria em zero segundo e o portão reabriria mostrando exatamente
+   * o que a pessoa acabou de reprovar, para sempre.
+   */
+  private reabrirFase(fluxo: Fluxo, faseId: string, alvo: string, palavra: string): void {
+    const def = this.estado.definicaoDe(fluxo);
+    const faseDef = def.fases.find((f) => f.id === faseId);
+    if (!faseDef) return;
+    this.limparRecibo(caminhoRecibo(this.raizArtefatos, fluxo, faseId, alvo));
+    this.estado.atualizarFase(fluxo.id, faseId, alvo, {
+      estado: 'pendente', job_id: null, erro: null, tentativas: 0,
+    });
+    const job = this.enfileirarFase(fluxo, faseDef, alvo);
+    this.estado.recalcularStatus(fluxo.id);
+    this.avisar(
+      fluxo,
+      `🔁 ${fluxo.prefixo}#${fluxo.id} — "${palavra}" aplicado em ${faseId}. `
+      + `Refazendo (job ${job.id}); eu abro o portão de novo com o material novo.`,
+    );
+  }
+
+  /** O recibo e os marcadores do trabalho destacado — tudo que faria a fase se
+   *  dar por pronta sem rodar. */
+  private limparRecibo(saida: string): void {
+    for (const f of [saida, `${saida}.log`, `${saida}.err`, `${saida}.pid`, `${saida}.rc`]) {
+      try { unlinkSync(f); } catch { /* não existia */ }
+    }
+  }
+
+  /** A definição CONGELADA de um fluxo. Quem roteia a resposta ao portão
+   *  precisa saber o que a fase declara — e a definição é do fluxo, não do
+   *  `flow.json` de hoje: o domínio pode ter mudado desde que ele foi criado. */
+  definicaoDe(fluxo: Fluxo): FlowDef {
+    return this.estado.definicaoDe(fluxo);
   }
 
   /** Visão de `/status P#16`: fase × alvo × estado. */

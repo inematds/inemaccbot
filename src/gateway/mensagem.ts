@@ -27,7 +27,8 @@ import { ajudaDaSkill } from './ajuda-dominio.js';
 import { AJUDA_COMPLETA, executar, parseComando } from './comandos.js';
 import {
   ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, definirCapaFluxo, fluxosCompletos,
-  dadosDoFluxo, painelFluxos, parseCapa, pausarFluxo, priorizarFluxo, refazerFluxo,
+  aceitaResposta, dadosDoFluxo, painelFluxos, parseCapa, parseResposta, pausarFluxo,
+  priorizarFluxo, refazerFluxo, responderPortao,
   retomarFluxo, statusDoDominio, statusFluxo, textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
@@ -111,6 +112,21 @@ function tratarComandoDeFluxo(
   // chat não fazia nada. O momento natural de usar é o PORTÃO da fase de texto:
   // ali nenhum avatar foi gerado e nenhuma imagem foi paga, então trocar a capa
   // ainda é de graça.
+  // RESPONDER a um portão: `clipe: MVD#97 reprova 4,17,23`.
+  //
+  // Vem ANTES do `capa:` do promoavatar de propósito, e sem atropelá-lo: só
+  // pega quando a fase daquele fluxo DECLARA a palavra em `portao.respostas` e
+  // está parada no portão. `capa: A#25 jovens` continua caindo no tratador de
+  // baixo, que é o do roteiro por público — ali não há resposta declarada
+  // nenhuma, então este `if` nem se interessa.
+  {
+    const p = parseResposta(t);
+    if (p.fase && p.ref && p.palavra && aceitaResposta(p.ref, p.fase, p.palavra, depsFluxo)) {
+      return responderPortao(p.ref, p.fase, p.palavra, p.resto, depsFluxo)
+        ?? `não entendi "${p.ref}".`;
+    }
+  }
+
   if (verbo === 'capa:' || verbo === 'capa' || verbo === '/capa') {
     const { ref, alvo, n, arquivo, modo } = parseCapa(t);
     if (!ref) return 'use: `capa: A#25 <publico>` COM a imagem anexada (ou `*` para todos).';

@@ -4,9 +4,9 @@
 // É aqui que as propriedades da etapa 5 são provadas: avanço independente por
 // alvo, falha isolada, definição congelada, atomicidade, `/refazer` seletivo e
 // export/import.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { abrirDb } from '../db/abrir.js';
@@ -686,6 +686,139 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
     // `📎` e não só o nome: sem tirar o `?` o caminho vira `...mp3?`, que não
     // é reconhecido como mídia e só apareceria dentro de um aviso de erro.
     expect(eventos.some((e) => e.texto.includes('📎 faixa-2.mp3')), 'a segunda faixa também').toBe(true);
+  });
+
+  // RESPONDER ao portão: o que não fosse "sim" não existia. O domínio declara o
+  // que se pode responder (`portao.respostas`), o bot executa e a fase REABRE.
+  describe('responder ao portão', () => {
+    function montarFluxoComRespostas(): {
+      f: Fluxos; eventos: { chatId: number; texto: string }[]; recibo: string; art: string;
+    } {
+      const eventos: { chatId: number; texto: string }[] = [];
+      const dom = join(dir, 'dom-resp');
+      mkdirSync(join(dom, 'prompts'), { recursive: true });
+      writeFileSync(join(dom, 'prompts', 'p.md'), 'faça {{input}} em {{saida}}');
+      writeFileSync(join(dom, 'flow.json'), JSON.stringify({
+        nome: 'comresposta', prefixo: 'R', versao_def: 1,
+        alvos: { unico: { gatilho: 'x' } },
+        fases: [{
+          id: 'clipe', escopo: 'fluxo', fila: 'io', kind: 'function', tarefa: 'cli.rodar',
+          comando: 'bash {{repo}}/x.sh faz {{ref}} clipe', pausa_apos: true,
+          portao: {
+            mostrar: ['{{artefato:clipe}}'],
+            respostas: {
+              reprova: 'bash {{repo}}/x.sh reprova {{ref}} clipe {{resposta}}',
+              ritmo: 'bash {{repo}}/x.sh recorta {{ref}} --ritmo {{resposta}}',
+            },
+          },
+        }],
+      }));
+      const d = carregarFlow(dom);
+      const art = join(dir, 'artefatos-resp');
+      const f = new Fluxos({
+        fila, estado: new EstadoFluxos(db, () => t), agora: () => t,
+        aoEvento: (e) => eventos.push(e), raizArtefatos: art,
+      });
+      fluxos.criar({ tipo: 'comresposta', definicao: congelar(d, dom), hash: 'h-resp', assunto: 'A', chatId: 77 });
+      const recibo = join(dir, 'recibo-clipe.txt');
+      writeFileSync(recibo, 'clipe: /out/clipe.mp4\n');
+      return { f, eventos, recibo, art };
+    }
+
+    /** Leva a fase até o portão. */
+    function ateOPortao(f: Fluxos, recibo: string): number {
+      const j = fila.listar().find((x) => x.flow_ref?.startsWith('R#') && !x.flow_ref.includes('#resposta'))!;
+      reclamar(j.id);
+      fila.concluir(j.id, recibo, 'W', (job) => f.avancar(job));
+      return j.id;
+    }
+
+    it('a resposta declarada vira job, e o portão continua aberto até ela terminar', () => {
+      const { f, recibo } = montarFluxoComRespostas();
+      ateOPortao(f, recibo);
+      const r = f.responder(1, 'clipe', 'reprova', '4,17,23');
+      expect('erro' in r).toBe(false);
+      const resp = fila.listar().find((x) => x.flow_ref?.includes('#resposta:reprova'))!;
+      // O comando é o do DOMÍNIO, com o texto da pessoa num argumento só e aspado.
+      expect(JSON.parse(resp.input).comando).toContain("clipe '4,17,23'");
+      // Enquanto a resposta roda, a fase NÃO mente: continua no portão.
+      expect(f.status(1)!.fases[0]!.estado).toBe('aguardando-ok');
+    });
+
+    it('resposta OK REABRE a fase — e ela roda de verdade, não adota o recibo velho', () => {
+      const { f, recibo, art } = montarFluxoComRespostas();
+      ateOPortao(f, recibo);
+      // O recibo da fase existe no disco, como na produção: é ele que faria a
+      // fase reaberta terminar em zero segundo mostrando o material reprovado.
+      const reciboDaFase = join(art, 'fluxos', 'R1', 'clipe.txt');
+      mkdirSync(dirname(reciboDaFase), { recursive: true });
+      writeFileSync(reciboDaFase, 'clipe: /out/VELHO.mp4\n');
+
+      f.responder(1, 'clipe', 'reprova', '4');
+      const resp = fila.listar().find((x) => x.flow_ref?.includes('#resposta:reprova'))!;
+      reclamar(resp.id);
+      fila.concluir(resp.id, 'ok', 'W', (job) => f.avancar(job));
+
+      expect(existsSync(reciboDaFase), 'o recibo velho tem que sair da frente').toBe(false);
+      const fase = f.status(1)!.fases.find((x) => x.fase === 'clipe')!;
+      expect(fase.estado).toBe('rodando');
+      // E é um job NOVO da fase, não o de resposta.
+      const novo = fila.listar().find((x) => x.id === fase.job_id)!;
+      expect(novo.flow_ref).toBe('R#1//clipe');
+    });
+
+    it('o portão REABRE com o material novo depois do refazer', () => {
+      const { f, eventos, recibo } = montarFluxoComRespostas();
+      ateOPortao(f, recibo);
+      f.responder(1, 'clipe', 'reprova', '4');
+      const resp = fila.listar().find((x) => x.flow_ref?.includes('#resposta:'))!;
+      reclamar(resp.id);
+      fila.concluir(resp.id, 'ok', 'W', (job) => f.avancar(job));
+
+      const novoJob = fila.listar().find((x) => x.flow_ref === 'R#1//clipe' && x.status !== 'done')!;
+      const novoRecibo = join(dir, 'recibo-clipe-2.txt');
+      writeFileSync(novoRecibo, 'clipe: /out/NOVO.mp4\n');
+      reclamar(novoJob.id);
+      fila.concluir(novoJob.id, novoRecibo, 'W', (job) => f.avancar(job));
+
+      expect(f.status(1)!.fases[0]!.estado, 'o portão reabre').toBe('aguardando-ok');
+      expect(eventos.some((e) => e.texto.includes('NOVO.mp4'))).toBe(true);
+    });
+
+    it('resposta que FALHA deixa o portão como estava, e diz', () => {
+      const { f, eventos, recibo } = montarFluxoComRespostas();
+      ateOPortao(f, recibo);
+      f.responder(1, 'clipe', 'reprova', '99');
+      const resp = fila.listar().find((x) => x.flow_ref?.includes('#resposta:'))!;
+      fila.pegar('io', 60, 'W');
+      fila.falhar(resp.id, 'shot 99 não existe', 'W', 1, (job) => f.avancar(job));
+      expect(f.status(1)!.fases[0]!.estado).toBe('aguardando-ok');
+      expect(eventos.some((e) => e.texto.includes('não pegou'))).toBe(true);
+      expect(eventos.some((e) => e.texto.includes('nada foi refeito'))).toBe(true);
+    });
+
+    it('o portão DIZ o que aceita como resposta', () => {
+      const { f, eventos, recibo } = montarFluxoComRespostas();
+      ateOPortao(f, recibo);
+      const portao = eventos.find((e) => e.texto.includes('AGUARDANDO você'))!;
+      expect(portao.texto).toContain('/aprovar R#1');
+      expect(portao.texto).toContain('clipe: R#1 reprova');
+      expect(portao.texto).toContain('clipe: R#1 ritmo');
+    });
+
+    it('palavra não declarada diz QUAIS valem', () => {
+      const { f, recibo } = montarFluxoComRespostas();
+      ateOPortao(f, recibo);
+      const r = f.responder(1, 'clipe', 'apaga-tudo', '');
+      expect('erro' in r && r.erro).toContain('reprova');
+      expect('erro' in r && r.erro).toContain('ritmo');
+    });
+
+    it('fora do portão, não responde', () => {
+      const { f } = montarFluxoComRespostas();
+      const r = f.responder(1, 'clipe', 'reprova', '4');
+      expect('erro' in r && r.erro).toContain('não está esperando no portão');
+    });
   });
 
   it('molde OPCIONAL que não resolve fica CALADO (não vira aviso)', () => {

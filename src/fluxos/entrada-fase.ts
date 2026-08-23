@@ -80,8 +80,7 @@ export function montarInput(ctx: ContextoEntrada): string {
   // tarefa só executa. Ver o cabeçalho de `fila/tarefas/cli.ts` para o que isso
   // deixou de custar.
   if (fase.tarefa === 'cli.rodar') {
-    const saida = `${ctx.raizArtefatos}/fluxos/${fluxo.prefixo}${fluxo.id}`
-      + `/${fase.id}${alvo ? `-${alvo}` : ''}.txt`;
+    const saida = caminhoRecibo(ctx.raizArtefatos, fluxo, fase.id, alvo);
     return JSON.stringify({
       ...base,
       comando: resolverComando(fase.comando ?? '', {
@@ -309,10 +308,28 @@ function falaDoAlvo(repo: string | undefined, fluxo: Fluxo, alvo: string): strin
  * Marcador sem valor vira string vazia ASPADA (`''`), nunca o marcador cru: um
  * `{{alvo}}` sobrando na linha de comando seria interpretado pelo shell.
  */
+/**
+ * O RECIBO de uma fase `cli.rodar` — determinístico por fluxo/fase/alvo.
+ *
+ * Exportado porque quem REABRE um portão precisa apagar exatamente este
+ * arquivo: `cli.rodar` começa por "recibo pronto é a resposta", então uma fase
+ * reaberta com o recibo velho no disco devolveria o material antigo em zero
+ * segundo — o portão reabriria mostrando o que a pessoa acabou de reprovar.
+ */
+export function caminhoRecibo(
+  raizArtefatos: string, fluxo: { prefixo: string; id: number }, fase: string, alvo: string,
+): string {
+  return `${raizArtefatos}/fluxos/${fluxo.prefixo}${fluxo.id}/${fase}${alvo ? `-${alvo}` : ''}.txt`;
+}
+
 export function resolverComando(
   molde: string,
   campos: {
     repo: string; input: string; alvo: string; ref: string; saida: string; anterior?: string;
+    /** O resto da linha que a pessoa digitou ao responder um portão. Um
+     *  argumento só, aspado — quem interpreta é o domínio (o mesmo contrato do
+     *  `--bruto`: o bot não conhece as flags de ninguém). */
+    resposta?: string;
   },
   ler: (caminho: string) => string = (c) => readFileSync(c, 'utf8'),
 ): string {

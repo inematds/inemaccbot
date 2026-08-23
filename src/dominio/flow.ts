@@ -105,7 +105,29 @@ export interface FaseDef {
    * Sem declaração, vale o comportamento de sempre: os roteiros, e o artefato
    * como rede quando não há roteiro nenhum.
    */
-  portao?: { mostrar: string[] };
+  portao?: {
+    mostrar: string[];
+    /**
+     * O que se pode RESPONDER ao portão além de "sim".
+     *
+     * `{ "reprova": "bash {{repo}}/x.sh reprova {{anterior:slug}} clipe {{resposta}}" }`
+     *
+     * O portão nasceu de mão única: `/aprovar` liberava e não havia o
+     * contrário. Corrigir uma capa custava `/cancelar` — o fluxo inteiro. Mas o
+     * BOT não pode saber o que "corrigir uma capa" significa: quem sabe é o
+     * domínio, que já tem `reprova`, `ajusta` e afins. Então ele DECLARA, do
+     * mesmo jeito que declara o que mostrar.
+     *
+     * `{{resposta}}` é o resto da linha que a pessoa digitou, num argumento só
+     * e aspado — a mesma filosofia do `--bruto`: quem interpreta é o domínio.
+     * Os demais marcadores são os do `comando` (`{{repo}}`, `{{anterior:campo}}`).
+     *
+     * Depois que a resposta roda, a fase REABRE: o recibo velho é apagado, ela
+     * volta para a fila e o portão mostra o material novo. É o "refaz e me
+     * apresenta até eu aprovar".
+     */
+    respostas?: Record<string, string>;
+  };
   /**
    * O COMANDO da fase, quando `tarefa: "cli.rodar"` — o domínio declara, o bot
    * executa. Sem agente no meio.
@@ -447,7 +469,41 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
         erro(`fases[${i}].portao.mostrar`, 'lista não vazia de caminhos (com {{marcadores}})');
       }
       if (f.pausa_apos !== true) erro(`fases[${i}].portao`, 'só faz sentido em fase com pausa_apos');
-      portao = { mostrar: (lista as string[]).map((x) => x.trim()) };
+      // `respostas`: palavra → comando do domínio. Conferido aqui pelo mesmo
+      // motivo que o `comando` da fase é: erro de digitação em `flow.json` tem
+      // que aparecer no carregamento, não no primeiro portão às três da manhã.
+      let respostas: Record<string, string> | undefined;
+      if (p?.respostas !== undefined) {
+        const r = p.respostas as Record<string, unknown>;
+        const nomes = r && typeof r === 'object' && !Array.isArray(r) ? Object.keys(r) : null;
+        if (!nomes || !nomes.length) {
+          erro(`fases[${i}].portao.respostas`, 'objeto não vazio { palavra: comando }');
+        } else {
+          respostas = {};
+          for (const nome of nomes) {
+            const cmd = r[nome];
+            // A palavra é digitada no chat: sem espaço, sem maiúscula, para a
+            // comparação não depender de como a mão veio.
+            if (!/^[a-z0-9-]+$/.test(nome)) {
+              erro(`fases[${i}].portao.respostas["${nome}"]`, 'palavra em minúsculas, sem espaço');
+              continue;
+            }
+            if (typeof cmd !== 'string' || !cmd.trim()) {
+              erro(`fases[${i}].portao.respostas.${nome}`, 'linha de comando não vazia');
+              continue;
+            }
+            if (!cmd.includes('{{repo}}')) {
+              erro(`fases[${i}].portao.respostas.${nome}`, 'comando com {{repo}} — caminho absoluto não viaja de máquina');
+              continue;
+            }
+            respostas[nome] = cmd.trim();
+          }
+        }
+      }
+      portao = {
+        mostrar: (lista as string[]).map((x) => x.trim()),
+        ...(respostas && Object.keys(respostas).length ? { respostas } : {}),
+      };
     }
 
     // `cli.rodar` — o comando é do DOMÍNIO, e é conferido aqui, não descoberto

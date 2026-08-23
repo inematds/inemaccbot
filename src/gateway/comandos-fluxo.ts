@@ -1062,6 +1062,72 @@ export function refazerFluxo(ref: string, alvo: string | undefined, deps: DepsFl
   ].join('\n');
 }
 
+
+/**
+ * Esta fase declara ESTA palavra e está parada no portão?
+ *
+ * É o desempate do roteador: `capa: A#25 jovens` (promoavatar, roteiro por
+ * público) e `capa: MVD#97 reprova` (resposta ao portão) começam igual. Quem
+ * separa não é a sintaxe — é o `flow.json` do domínio.
+ */
+export function aceitaResposta(ref: string, fase: string, palavra: string, deps: DepsFluxo): boolean {
+  const r = parseRef(ref);
+  if (!r) return false;
+  const visao = deps.fluxos.status(r.id);
+  if (!visao || visao.fluxo.prefixo !== r.prefixo) return false;
+  if (!visao.fases.some((f) => f.fase === fase && f.estado === 'aguardando-ok')) return false;
+  const def = deps.fluxos.definicaoDe(visao.fluxo);
+  return Boolean(def?.fases.find((f) => f.id === fase)?.portao?.respostas?.[palavra]);
+}
+
+/**
+ * `clipe: MVD#97 reprova 4,17,23` — RESPONDER ao portão.
+ *
+ * A gramática é a do `capa:` do promoavatar (verbo, ref, resto), e por um
+ * motivo: é a que a mão já aprendeu. O verbo é o nome da FASE, porque um fluxo
+ * pode ter dois portões abertos e "reprova" sozinho seria ambíguo.
+ *
+ * O que se pode responder é do DOMÍNIO (`portao.respostas` no `flow.json`) — o
+ * bot não conhece `reprova` nem `ritmo`, só sabe que a fase declarou.
+ */
+export function parseResposta(texto: string): { fase: string; ref?: string; palavra?: string; resto: string } {
+  const t = String(texto ?? '').trim();
+  const m = t.match(/^\/?([a-z0-9-]+)\s*:?\s+(\S+)(?:\s+([a-z0-9-]+))?\s*([\s\S]*)$/i);
+  if (!m) return { fase: '', resto: '' };
+  return {
+    fase: (m[1] ?? '').toLowerCase(),
+    ref: m[2],
+    ...(m[3] ? { palavra: m[3].toLowerCase() } : {}),
+    resto: (m[4] ?? '').trim(),
+  };
+}
+
+/**
+ * O que a fase aceita como resposta, para a mensagem do portão. Sem isto a
+ * pessoa teria que adivinhar as palavras que o `flow.json` declarou — e o
+ * portão que não diz o que aceita é tão mudo quanto o que não mostra nada.
+ */
+export function linhaDeRespostas(ref: string, fase: string, respostas?: Record<string, string>): string | null {
+  if (!respostas || !Object.keys(respostas).length) return null;
+  return `Não gostou? ${Object.keys(respostas).map((p) => `\`${fase}: ${ref} ${p} …\``).join(' · ')}`;
+}
+
+/** `clipe: MVD#97 reprova 4,17` → executa a resposta declarada e reabre o portão. */
+export function responderPortao(
+  ref: string, fase: string, palavra: string, resto: string, deps: DepsFluxo,
+): string | undefined {
+  const r = parseRef(ref);
+  if (!r) return undefined;
+  const visao = deps.fluxos.status(r.id);
+  if (!visao || visao.fluxo.prefixo !== r.prefixo) return `${ref} não existe neste bot.`;
+  const saida = deps.fluxos.responder(r.id, fase, palavra, resto);
+  if ('erro' in saida) return saida.erro;
+  return [
+    `🔁 ${ref} — "${palavra}" em ${fase} (job ${saida.jobId}).`,
+    'Quando pegar, eu refaço a fase e abro o portão de novo com o material novo.',
+  ].join('\n');
+}
+
 /** `/pausar <ref>` · `/retomar <ref>` · `/prioridade <ref>`. */
 export function pausarFluxo(ref: string, deps: DepsFluxo): string | undefined {
   const r = refDe(ref);

@@ -13,7 +13,7 @@ import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
 import { Fluxos } from '../fluxos/runtime.js';
 import { ctaDaDefinicao, type FlowDef } from '../dominio/flow.js';
-import { definirCapaFluxo, parseCapa, tabelaFluxo } from './comandos-fluxo.js';
+import { definirCapaFluxo, parseCapa, parseResposta, tabelaFluxo } from './comandos-fluxo.js';
 import { tratarMensagem, type DepsMensagem } from './mensagem.js';
 
 let dir: string;
@@ -1706,5 +1706,32 @@ describe('ajuda de fluxo em duas camadas', () => {
   it('/ajuda <fluxo> <seção> responde igual à outra forma', async () => {
     comSecoes();
     expect(await manda('/ajuda brinquedo variantes')).toContain('corpo das variantes');
+  });
+});
+
+// O roteador tem DOIS `capa:` para separar: o do promoavatar (roteiro por
+// público, `capa: A#25 jovens 2`) e a resposta a um portão que declare a
+// palavra. Quem separa não é a sintaxe — é o `flow.json` do domínio.
+describe('parseResposta', () => {
+  it('separa fase, ref, palavra e o resto', () => {
+    expect(parseResposta('clipe: MVD#97 reprova 4,17,23'))
+      .toEqual({ fase: 'clipe', ref: 'MVD#97', palavra: 'reprova', resto: '4,17,23' });
+  });
+
+  it('o resto vai INTEIRO, num pedaço só — quem interpreta é o domínio', () => {
+    expect(parseResposta('musica: MVD#97 correcao mais lenta, sem bateria').resto)
+      .toBe('mais lenta, sem bateria');
+  });
+
+  it('sem palavra (o `capa: A#25 jovens` do promoavatar) não vira resposta', () => {
+    // `jovens` casa como palavra, mas o desempate real é `aceitaResposta`:
+    // aquele fluxo não declara `jovens` em `portao.respostas`.
+    const p = parseResposta('capa: A#25 jovens');
+    expect(p.fase).toBe('capa');
+    expect(p.ref).toBe('A#25');
+  });
+
+  it('texto que não é comando não vira nada', () => {
+    expect(parseResposta('oi').fase).toBe('');
   });
 });
