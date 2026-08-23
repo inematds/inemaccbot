@@ -1,5 +1,11 @@
 # Reprovar no portão (e as duas faixas que ninguém viu)
 
+> **FEITO em 2026-08-23 (bot v0.17.6 + musicavideo `3f6a559`).** O portão passou
+> a aceitar RESPOSTA: a fase declara `portao.respostas` (palavra → comando do
+> domínio), o bot executa e a fase REABRE com o material novo. Itens 1, 3, 4, 5
+> e 6 fechados no que dependia desta peça. O que ficou de fora está listado em
+> "O que NÃO entrou", no fim. O texto abaixo é o diagnóstico original.
+
 Anotado em 2026-08-22, para fazer depois. Dois pedidos, a mesma raiz: **o portão
 só sabe dizer SIM.**
 
@@ -200,3 +206,28 @@ volta a `aguardando-ok` depois de regerar. Isso pede que o portão saiba REABRIR
 
 Custo a dizer no chat junto com a folha: regerar N shots custa N × o preço do
 shot, e a montagem é de graça. Sem esse número, reprovar vira aposta.
+
+
+## O que NÃO entrou (2026-08-23)
+
+Três coisas, todas nomeadas de propósito:
+
+1. **`2` = dois clipes DIFERENTES.** O que entrou foi `a`/`b`: escolher qual das
+   duas faixas é a principal, custo zero, porque `montar_todas` já casa o MESMO
+   vídeo com as duas. Dois vídeos *distintos*, um por faixa, é a única leitura
+   que exige render dobrado — a fase mais cara do fluxo, numa fila de uma vaga.
+   Fica sob pedido explícito, nunca por default.
+
+2. **Mandar a SUA faixa no meio do fluxo.** `--faixa-pronta` só existe na criação
+   do plano. Receber o áudio no portão precisa de uma entrada nova no domínio
+   (`aprova <slug> musica --arquivo <path>`), que não é difícil mas é peça nova —
+   e o `gateway/midia.ts` teria que montar `| arquivo=` para a fase certa.
+
+3. **`reprova 0:42` (por TEMPO, não por número).** Mapear o segundo do vídeo para
+   o shot exige o `plano.json`, que é do domínio — o bot não pode lê-lo sem saber
+   o formato de cada um. O lugar certo é o `parse_numeros` do musicavideo aceitar
+   `mm:ss` e resolver pela decupagem. Hoje é por número, e a folha de contato
+   (que vai no portão) traz o número desenhado em cada quadro.
+
+E uma nota de alcance que vale para tudo isto: **fluxo já criado carrega a
+definição CONGELADA.** O MVD#96 não ganha resposta nenhuma; vale do próximo.
