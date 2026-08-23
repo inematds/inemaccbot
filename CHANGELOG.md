@@ -8,6 +8,47 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.17.6 — 2026-08-23
+
+**O portão aprendeu a ouvir "não".** Era de mão única: `/aprovar` liberava e não
+havia o contrário. Corrigir uma capa custava `/cancelar` — o fluxo inteiro, com
+o plano e a música junto. `/refazer` não servia: só pega fase em `falhou`, e a
+que espera no portão está em `aguardando-ok`.
+
+A fase agora DECLARA o que se pode responder, do mesmo jeito que declara o que
+mostrar:
+
+```json
+"portao": {
+  "mostrar": ["{{artefato:clipe}}"],
+  "respostas": {
+    "reprova": "bash {{repo}}/x.sh reprova {{anterior:slug}} clipe {{resposta}}",
+    "b": { "comando": "bash {{repo}}/x.sh aprova {{anterior:slug}} musica --faixa 2", "reabre": false }
+  }
+}
+```
+
+`clipe: MVD#97 reprova 4,17,23` roda o comando do domínio, e a fase REABRE com o
+material novo — é o "refaz e me apresenta até eu aprovar". O bot continua sem
+saber o que "reprovar um clipe" significa: quem sabe é o domínio, que já tinha
+`reprova`, `ajusta` e `aprova --faixa N`.
+
+`{{resposta}}` é o resto da linha, num argumento só e aspado — a mesma
+filosofia do `--bruto`: quem interpreta flags é o domínio.
+
+`reabre: false` para o que não refaz nada. Escolher entre duas faixas já geradas
+é reapontar um arquivo (as duas ganham o mesmo vídeo em `montar_todas`);
+reabrir ali regeraria uma música paga.
+
+Três armadilhas fechadas com teste: o recibo velho é APAGADO na reabertura
+(senão `cli.rodar` responde com ele em zero segundo e o portão reabre mostrando
+exatamente o que foi reprovado); a resposta roda ANTES da fase (senão o refazer
+regenera o que ainda não foi apagado); e `capa: A#25 jovens` do promoavatar
+continua caindo no tratador dele — o desempate é o `flow.json`, não a sintaxe.
+
+O portão passou a enumerar o que aceita: portão que não diz suas respostas é tão
+mudo quanto o que não mostra material.
+
 ## 0.16.6 — 2026-08-22
 
 **`{{molde}}?` no `portao.mostrar`: material que às vezes existe.** O Suno

@@ -709,6 +709,9 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
             respostas: {
               reprova: 'bash {{repo}}/x.sh reprova {{ref}} clipe {{resposta}}',
               ritmo: 'bash {{repo}}/x.sh recorta {{ref}} --ritmo {{resposta}}',
+              // Escolher entre duas faixas JÁ geradas: reaponta um arquivo.
+              // Refazer a fase aqui regeraria (e cobraria) música que existe.
+              b: { comando: 'bash {{repo}}/x.sh aprova {{ref}} musica --faixa 2', reabre: false },
             },
           },
         }],
@@ -804,6 +807,22 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
       expect(portao.texto).toContain('/aprovar R#1');
       expect(portao.texto).toContain('clipe: R#1 reprova');
       expect(portao.texto).toContain('clipe: R#1 ritmo');
+    });
+
+    it('resposta com `reabre: false` NÃO refaz a fase — só reaponta', () => {
+      const { f, eventos, recibo } = montarFluxoComRespostas();
+      ateOPortao(f, recibo);
+      f.responder(1, 'clipe', 'b', '');
+      const resp = fila.listar().find((x) => x.flow_ref?.includes('#resposta:b'))!;
+      const recibo2 = join(dir, 'recibo-escolha.txt');
+      writeFileSync(recibo2, 'clipe.mp4 agora é o clipe-2.mp4 (sem re-render, sem custo)\n');
+      reclamar(resp.id);
+      fila.concluir(resp.id, recibo2, 'W', (job) => f.avancar(job));
+
+      // A fase NÃO voltou para a fila: nada foi regerado, nada foi pago.
+      expect(f.status(1)!.fases[0]!.estado).toBe('aguardando-ok');
+      expect(fila.listar().filter((x) => x.flow_ref === 'R#1//clipe')).toHaveLength(1);
+      expect(eventos.some((e) => e.texto.includes('sem re-render'))).toBe(true);
     });
 
     it('palavra não declarada diz QUAIS valem', () => {

@@ -133,6 +133,9 @@ function slugificar(texto: string): string {
 /** Separa o job de RESPOSTA do job de FASE no `flow_ref`. `#` não aparece em
  *  nome de fase nem de alvo, então a marca não colide com um ref legítimo. */
 const MARCA_RESPOSTA = '#resposta:';
+/** Resposta que NÃO refaz nada — escolher entre duas faixas já geradas é
+ *  reapontar um arquivo. Refazer a fase ali regeraria música paga. */
+const MARCA_SO_APONTA = '!';
 
 export class Fluxos {
   private readonly estado: EstadoFluxos;
@@ -893,8 +896,8 @@ export class Fluxos {
     if (!respostas || !Object.keys(respostas).length) {
       return { erro: `a fase "${faseId}" não declara respostas — aqui só vale /aprovar.` };
     }
-    const molde = respostas[palavra];
-    if (!molde) {
+    const declarada = respostas[palavra];
+    if (!declarada) {
       return {
         erro: `"${palavra}" não é resposta de "${faseId}" — aceito: ${Object.keys(respostas).join(' · ')}.`,
       };
@@ -920,7 +923,7 @@ export class Fluxos {
       kind: 'function',   // segundos. O caro é a fase, que roda depois, na fila dela.
       tarefa: 'cli.rodar',
       input: JSON.stringify({
-        comando: resolverComando(molde, {
+        comando: resolverComando(declarada.comando, {
           repo: this.repoDe(fluxo.tipo) ?? '',
           input: fluxo.assunto,
           alvo: fase.alvo,
@@ -933,7 +936,11 @@ export class Fluxos {
         saida,
       }),
       max_tentativas: 1,
-      flow_ref: `${flowRef(fluxo.prefixo, fluxo.id, fase.alvo, faseId)}${MARCA_RESPOSTA}${palavra}`,
+      // O `reabre` viaja no `flow_ref` porque é lá que a conclusão o lê: o job
+      // termina noutro processo, e ir buscar a definição de novo só para
+      // descobrir isto seria trabalho para saber o que já se sabia.
+      flow_ref: `${flowRef(fluxo.prefixo, fluxo.id, fase.alvo, faseId)}${MARCA_RESPOSTA}${palavra}`
+        + (declarada.reabre ? '' : MARCA_SO_APONTA),
       chat_id: null,
     });
     this.log(`${ref}/${fase.alvo || '-'}/${faseId} RESPOSTA "${palavra}" — job ${job.id}`);
@@ -954,6 +961,16 @@ export class Fluxos {
         `❌ ${fluxo.prefixo}#${fluxo.id} — "${palavra}" em ${faseId} não pegou:\n`
         + `${(job.erro ?? '').slice(0, 300)}\n`
         + 'O portão continua aberto — nada foi refeito.',
+      );
+      return;
+    }
+    if (String(palavra).endsWith(MARCA_SO_APONTA)) {
+      // Nada a refazer: o portão continua aberto, agora com a escolha feita.
+      this.avisar(
+        fluxo,
+        `✅ ${fluxo.prefixo}#${fluxo.id} — "${String(palavra).slice(0, -1)}" aplicado em ${faseId}.\n`
+        + `${(job.resultado ? readFileSync(job.resultado, 'utf8').trim().split('\n').slice(-2).join('\n') : '')}\n`
+        + `Segue com /aprovar ${fluxo.prefixo}#${fluxo.id}.`,
       );
       return;
     }

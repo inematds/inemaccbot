@@ -122,11 +122,15 @@ export interface FaseDef {
      * e aspado — a mesma filosofia do `--bruto`: quem interpreta é o domínio.
      * Os demais marcadores são os do `comando` (`{{repo}}`, `{{anterior:campo}}`).
      *
-     * Depois que a resposta roda, a fase REABRE: o recibo velho é apagado, ela
-     * volta para a fila e o portão mostra o material novo. É o "refaz e me
-     * apresenta até eu aprovar".
+     * Depois que a resposta roda, a fase REABRE por padrão: o recibo velho é
+     * apagado, ela volta para a fila e o portão mostra o material novo. É o
+     * "refaz e me apresenta até eu aprovar".
+     *
+     * `{ "comando": "...", "reabre": false }` para o que NÃO precisa refazer
+     * nada — escolher entre duas faixas já geradas é reapontar um arquivo, e
+     * refazer a fase ali regeraria (e cobraria) uma música que já existe.
      */
-    respostas?: Record<string, string>;
+    respostas?: Record<string, { comando: string; reabre: boolean }>;
   };
   /**
    * O COMANDO da fase, quando `tarefa: "cli.rodar"` — o domínio declara, o bot
@@ -472,7 +476,7 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       // `respostas`: palavra → comando do domínio. Conferido aqui pelo mesmo
       // motivo que o `comando` da fase é: erro de digitação em `flow.json` tem
       // que aparecer no carregamento, não no primeiro portão às três da manhã.
-      let respostas: Record<string, string> | undefined;
+      let respostas: Record<string, { comando: string; reabre: boolean }> | undefined;
       if (p?.respostas !== undefined) {
         const r = p.respostas as Record<string, unknown>;
         const nomes = r && typeof r === 'object' && !Array.isArray(r) ? Object.keys(r) : null;
@@ -488,15 +492,20 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
               erro(`fases[${i}].portao.respostas["${nome}"]`, 'palavra em minúsculas, sem espaço');
               continue;
             }
-            if (typeof cmd !== 'string' || !cmd.trim()) {
-              erro(`fases[${i}].portao.respostas.${nome}`, 'linha de comando não vazia');
+            // Duas formas: a linha crua (reabre a fase) ou
+            // `{ comando, reabre }` para o que só reaponta um arquivo.
+            const obj = (cmd && typeof cmd === 'object' ? cmd : {}) as Record<string, unknown>;
+            const linha = typeof cmd === 'string' ? cmd : obj.comando;
+            const reabre = typeof cmd === 'string' ? true : obj.reabre !== false;
+            if (typeof linha !== 'string' || !linha.trim()) {
+              erro(`fases[${i}].portao.respostas.${nome}`, 'linha de comando não vazia (ou { comando, reabre })');
               continue;
             }
-            if (!cmd.includes('{{repo}}')) {
+            if (!linha.includes('{{repo}}')) {
               erro(`fases[${i}].portao.respostas.${nome}`, 'comando com {{repo}} — caminho absoluto não viaja de máquina');
               continue;
             }
-            respostas[nome] = cmd.trim();
+            respostas[nome] = { comando: linha.trim(), reabre };
           }
         }
       }
