@@ -108,6 +108,28 @@ rodar('musicavideo: fluxo sem agente', () => {
     expect(capa.fila).toBe('io');
   });
 
+  // As RESPOSTAS do portão: o que o dono pode dizer além de "sim". O bot não
+  // conhece nenhuma destas palavras — quem as declara é este flow.json.
+  it('os três portões declaram o que aceitam como resposta', () => {
+    const r = (id: string) => def.fases.find((f) => f.id === id)!.portao?.respostas ?? {};
+    expect(Object.keys(r('musica'))).toEqual(['refaz', 'correcao', 'a', 'b']);
+    expect(Object.keys(r('capa'))).toEqual(['refaz', 'correcao']);
+    expect(Object.keys(r('clipe'))).toEqual(['reprova', 'ritmo', 'correcao']);
+  });
+
+  // Escolher a faixa e mudar o ritmo NÃO refazem nada: `montar_todas` já casou o
+  // MESMO vídeo com as duas faixas, e o `recorta` reusa os shots do disco (19s,
+  // em vez das 4h da geração). Reabrir a fase ali regeraria material pago.
+  it('escolher faixa e mudar ritmo não reabrem a fase', () => {
+    const musica = def.fases.find((f) => f.id === 'musica')!.portao!.respostas!;
+    expect(musica.a!.reabre).toBe(false);
+    expect(musica.b!.reabre).toBe(false);
+    expect(musica.correcao!.reabre, 'corrigir a letra REGERA a faixa').toBe(true);
+    const clipe = def.fases.find((f) => f.id === 'clipe')!.portao!.respostas!;
+    expect(clipe.ritmo!.reabre).toBe(false);
+    expect(clipe.reprova!.reabre, 'shot reprovado tem que ser gerado de novo').toBe(true);
+  });
+
   // O clipe é o trabalho longo: fila de render, poll, e o teto declarado.
   it('o clipe roda destacado, com espera declarada', () => {
     const clipe = def.fases.find((f) => f.id === 'clipe')!;

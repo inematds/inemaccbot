@@ -823,6 +823,9 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
       expect(f.status(1)!.fases[0]!.estado).toBe('aguardando-ok');
       expect(fila.listar().filter((x) => x.flow_ref === 'R#1//clipe')).toHaveLength(1);
       expect(eventos.some((e) => e.texto.includes('sem re-render'))).toBe(true);
+      // E o material é MOSTRADO de novo: o arquivo mudou e a fase não roda mais.
+      expect(eventos.filter((e) => e.texto.includes('📎 clipe.mp4')).length,
+        'o portão mostra de novo: o arquivo mudou e a fase não roda mais').toBe(2);
     });
 
     it('palavra não declarada diz QUAIS valem', () => {

@@ -972,6 +972,12 @@ export class Fluxos {
         + `${(job.resultado ? readFileSync(job.resultado, 'utf8').trim().split('\n').slice(-2).join('\n') : '')}\n`
         + `Segue com /aprovar ${fluxo.prefixo}#${fluxo.id}.`,
       );
+      // E MOSTRA de novo: `ritmo` remonta o clipe no mesmo caminho, `b` reaponta
+      // para a outra faixa. O arquivo é outro e ninguém veria, porque a fase não
+      // roda de novo — o portão precisa reentregar por conta.
+      const def = this.estado.definicaoDe(fluxo);
+      const faseDef = def.fases.find((f) => f.id === faseId);
+      if (faseDef) this.entregarDeclarado(fluxo, faseDef);
       return;
     }
     this.reabrirFase(fluxo, faseId, alvo ?? '', palavra ?? '');
