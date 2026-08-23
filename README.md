@@ -641,6 +641,38 @@ seletivo, retomada e definição congelada.
    passa dos 50 MB que o Telegram aceita). Sem declarar, vale o comportamento
    antigo — os roteiros em `textos/<REF>/<alvo>.md`, e o artefato da fase como
    rede quando não há roteiro nenhum.
+
+   Molde terminado em `?` é OPCIONAL: não resolveu, segue calado. É para material
+   que às vezes existe — o Suno entrega DUAS faixas, mas `--faixa-pronta` entrega
+   uma, e a segunda não pode virar aviso de erro no fluxo em que ela legitimamente
+   não existe.
+
+4b. **RESPONDER ao portão** (opcional). `portao.respostas` declara o que se pode
+   dizer além de "sim": palavra → comando do domínio.
+
+   ```json
+   "portao": {
+     "mostrar": ["{{artefato:clipe}}"],
+     "respostas": {
+       "reprova": "bash {{repo}}/x.sh reprova {{anterior:slug}} clipe {{resposta}}",
+       "ritmo": { "comando": "bash {{repo}}/x.sh recorta {{anterior:slug}} --ritmo {{resposta}}",
+                  "reabre": false }
+     }
+   }
+   ```
+
+   `clipe: MVD#97 reprova 4,17,23` roda o comando e a fase REABRE com o material
+   novo — o "refaz e me apresenta até eu aprovar". `{{resposta}}` é o resto da
+   linha, num argumento só e ASPADO: quem interpreta é o domínio, como no
+   `--bruto`. O bot não sabe o que "reprovar um clipe" significa, e não deve.
+
+   `reabre: false` para o que NÃO refaz nada — escolher entre duas faixas já
+   geradas é reapontar um arquivo, e reabrir ali regeraria material pago; aí o
+   portão só reentrega o que mudou.
+
+   Existe porque o portão era de mão única: `/aprovar` liberava e não havia o
+   contrário. Corrigir uma capa custava `/cancelar` — o fluxo inteiro. E
+   `/refazer` não serve, porque só pega fase em `falhou`.
 5. Acrescente em `config/fluxos.json`: `{ "command", "repo", "descricao", "exemplo" }`.
 6. **Ajuda (opcional):** `HELP.md` na raiz do repo de domínio.
 7. Confira em SOMBRA antes de gastar qualquer coisa:

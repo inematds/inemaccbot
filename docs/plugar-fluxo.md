@@ -107,6 +107,34 @@ fluxo em que ela legitimamente não existe:
 { "portao": { "mostrar": ["{{artefato:musica}}", "{{artefato:musica_alt}}?"] } }
 ```
 
+### E o que se pode RESPONDER: `portao.respostas`
+
+O portão nasceu de mão única — `/aprovar` liberava e não havia o contrário. A
+fase declara o que se pode dizer além de sim:
+
+```json
+"respostas": {
+  "reprova": "bash {{repo}}/x.sh reprova {{anterior:slug}} clipe {{resposta}}",
+  "b": { "comando": "bash {{repo}}/x.sh aprova {{anterior:slug}} musica --faixa 2",
+         "reabre": false }
+}
+```
+
+`clipe: MVD#97 reprova 4,17,23` roda o comando declarado e a fase REABRE: o
+recibo velho é apagado, ela volta para a fila, o portão mostra o material novo.
+`{{resposta}}` é o resto da linha, num argumento só e aspado — quem interpreta é
+o domínio (o mesmo contrato do `--bruto`).
+
+`reabre: false` para resposta que só reaponta um arquivo (escolher entre duas
+faixas já geradas): refazer a fase ali regeraria material pago, e o portão
+reentrega o material sem rodar nada.
+
+Duas armadilhas que o mecanismo já resolve, e que quem for mexer precisa
+conhecer: o recibo da fase é APAGADO na reabertura (senão `cli.rodar` responde
+"recibo pronto é a resposta" em zero segundo, e o portão reabre mostrando
+exatamente o que foi reprovado), e o comando da resposta roda ANTES da fase
+(senão o refazer regenera o que ainda não foi apagado).
+
 Regras: `portao` só é aceito em fase com `pausa_apos` (declarar o que mostrar
 numa fase que não para seria pedido nunca atendido); molde SEM `?` que não
 resolve vira **aviso nomeando o molde**, nunca portão calado; e quem declara não recebe
