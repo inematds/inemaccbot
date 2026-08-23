@@ -851,6 +851,34 @@ describe('/status P#N', () => {
       expect(feita).not.toContain('47/47 shots');
     });
 
+    // ...e no DETALHE, que é onde se vai procurar. Todos os testes acima usam o
+    // painel (`detalhe: false`), e foi por isso que este buraco passou: com até
+    // 6 alvos o detalhe caía num ramo mais antigo, que listava os alvos e
+    // devolvia a linha ANTES de olhar o progresso. `/status MVD#98` mostrava
+    // "clipe 🔄 (todos)" por quatro horas de render (dono, 2026-08-23: "no
+    // status não apresenta o número de shots").
+    it('DETALHE de fluxo de um alvo também mostra o progresso', () => {
+      const r = tabelaFluxo(
+        visaoCom([fase('clipe', '', 'rodando')]), true, () => '23/47 shots',
+      );
+      expect(r).toContain('23/47 shots');
+    });
+
+    it('DETALHE com poucos alvos mostra o progresso de CADA um', () => {
+      const r = tabelaFluxo(visaoCom([
+        fase('render', 'jovens', 'rodando'),
+        fase('render', '60mais', 'rodando'),
+        // A assinatura é `(fluxo, fase)` — o progresso é lido do log DAQUELE alvo.
+      ]), true, (_fluxo, f) => (f.alvo === 'jovens' ? '9/47 shots' : '31/47 shots'));
+      expect(r).toContain('jovens 9/47 shots');
+      expect(r).toContain('60mais 31/47 shots');
+    });
+
+    it('DETALHE de um alvo NOMEADO diz de quem é a linha', () => {
+      const r = tabelaFluxo(visaoCom([fase('render', 'jovens', 'rodando')]), true, () => undefined);
+      expect(r).toContain('jovens');
+    });
+
     it('domínio que não declara progresso não muda nada', () => {
       const r = tabelaFluxo(visaoCom([fase('render', '', 'rodando')]), false, () => undefined);
       expect(r).toContain('▶️');

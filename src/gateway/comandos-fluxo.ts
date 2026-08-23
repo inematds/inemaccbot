@@ -848,8 +848,19 @@ function linhasDaFase(
     if (!detalhe && f.estado === 'pendente') return '⏳';
     return ICONE[f.estado];
   };
-  if (lista.length <= ALVOS_ANTES_DE_CONTAR && detalhe) {
-    const alvos = lista.map((f) => `${icone(f)} ${f.alvo || '(todos)'}`).join(' · ');
+  // `lista.length > 1`: com UM alvo, quem manda é o bloco abaixo — ele traz o
+  // PROGRESSO (`23/47 shots`) e a causa da falha, e este aqui os engolia. Era o
+  // caso do musicavideo, que é de um alvo só: `/status MVD#98` mostrava
+  // "clipe 🔄 (todos)" durante quatro horas de render, sem o número que o
+  // domínio estava imprimindo no log a cada shot. No painel (`detalhe: false`)
+  // o progresso aparecia; no detalhe, que é onde se vai procurar, não.
+  if (lista.length > 1 && lista.length <= ALVOS_ANTES_DE_CONTAR && detalhe) {
+    const alvos = lista.map((f) => {
+      // Também aqui: 2 a 6 alvos rodando e nenhum número. O progresso é por
+      // ALVO — cada um tem seu render e seu log.
+      const quanto = f.estado === 'rodando' || f.estado === 'falhou' ? progresso?.(f) : undefined;
+      return `${icone(f)} ${f.alvo || '(todos)'}${quanto ? ` ${quanto}` : ''}`;
+    }).join(' · ');
     return [`${rotulo} ${alvos}`];
   }
 
@@ -866,7 +877,12 @@ function linhasDaFase(
     // é o número de que se precisa para decidir se vale retomar.
     // Fase FEITA não mostra: ali o número seria o total repetido.
     const quanto = f.estado === 'rodando' || f.estado === 'falhou' ? progresso?.(f) : undefined;
-    const linha = `${rotulo} ${icone(f)}${detalhe ? ` ${nome}` : ''}${quanto ? ` ${quanto}` : ''}`;
+    // O nome do alvo, quando há um: um fluxo de UM público (`| alvos=jovens`)
+    // não pode virar uma linha que não diz de quem é. Alvo vazio (o musicavideo
+    // inteiro) não ganha `(todos)` aqui — seria uma palavra por linha dizendo
+    // sempre a mesma coisa.
+    const quem = detalhe && f.alvo ? ` ${f.alvo}` : '';
+    const linha = `${rotulo} ${icone(f)}${quem}${detalhe ? ` ${nome}` : ''}${quanto ? ` ${quanto}` : ''}`;
     if (f.estado !== 'falhou' || !f.erro) return [linha];
     // No PAINEL a causa é uma linha só: o teto de 90 do detalhe quebra em duas
     // no celular e desalinha a pilha. Cortada, ganha reticência — some no meio

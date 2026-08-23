@@ -8,6 +8,23 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.17.7 — 2026-08-23
+
+**O `/status` de um fluxo não mostrava o progresso da fase.** O mecanismo existia
+desde ontem (o domínio imprime `progresso: 23/47 shots` no log, o bot lê a última
+linha e repete), e funcionava — no PAINEL. No detalhe, que é onde se vai
+procurar, um ramo mais antigo tratava "até 6 alvos" listando os alvos e devolvia
+a linha ANTES de olhar o progresso. Como o musicavideo é de um alvo só,
+`/status MVD#98` mostrava `clipe 🔄 (todos)` durante as quatro horas do render,
+com o número sendo escrito no log a cada shot.
+
+Agora o detalhe mostra: com um alvo, o número entra na linha da fase; com 2 a 6,
+o de CADA alvo (cada um tem seu render e seu log). E a linha de um alvo NOMEADO
+passa a dizer de quem é — antes o ramo de um alvo omitia o nome.
+
+Os quatro testes de progresso existiam e passavam, todos com `detalhe: false`.
+Era o buraco exato entre eles.
+
 ## 0.17.6 — 2026-08-23
 
 **O portão aprendeu a ouvir "não".** Era de mão única: `/aprovar` liberava e não
