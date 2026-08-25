@@ -976,7 +976,8 @@ export function painelFluxos(deps: DepsFluxo): string {
   const linhaSoltos = (): string[] => {
     if (!soltos.length) return [];
     const rodando = soltos.filter((j) => j.status === 'running');
-    const fila = soltos.filter((j) => j.status !== 'running');
+    const falhados = soltos.filter((j) => j.status === 'failed');
+    const fila = soltos.filter((j) => j.status !== 'running' && j.status !== 'failed');
     // O NOME da skill, não só a contagem: "⏳ 2 na fila" não diz se o que espera
     // é a análise que você acabou de mandar ou outra coisa. Acima de três, a
     // contagem volta — a parede é o defeito que o painel existe para evitar.
@@ -986,7 +987,19 @@ export function painelFluxos(deps: DepsFluxo): string {
       ...rodando.map((j) => `▶️ ${j.tarefa} #${j.id}`),
       ...(fila.length ? [`⏳ ${nomes.join(', ')}${sobra ? ` +${sobra}` : ''}`] : []),
     ];
-    return ['', `Skills: ${partes.join(' · ')}`];
+    const linhas = partes.length ? ['', `Skills: ${partes.join(' · ')}`] : [];
+    // A FALHA com o id ao lado, porque o id é o que `/refazer` pede. Sem ele a
+    // linha diria que algo quebrou e deixaria a pessoa procurando em `/jobs`.
+    if (falhados.length) {
+      const quais = falhados.slice(0, 4).map((j) => `${j.tarefa} #${j.id}`).join(' · ');
+      const resto = falhados.length - Math.min(4, falhados.length);
+      linhas.push(
+        linhas.length ? '' : '',
+        `❌ falharam nas últimas 12h: ${quais}${resto ? ` +${resto}` : ''}`,
+        '   veja o motivo com /status <id> · retente com /refazer <id>',
+      );
+    }
+    return linhas;
   };
 
   if (!abertos.length) {

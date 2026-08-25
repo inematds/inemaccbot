@@ -89,12 +89,28 @@ function tratarComandoDeFluxo(
       );
       return ultimoProgresso(base);
     },
-    jobsSoltos: () => [
-      ...deps.fila.listar({ status: 'running' }),
-      ...deps.fila.listar({ status: 'queued' }),
-    ]
-      .filter((j) => !j.flow_ref)
-      .map((j) => ({ id: j.id, tarefa: j.tarefa, status: j.status })),
+    // Vivos E os que FALHARAM há pouco.
+    //
+    // Job de skill que falha só existia no instante da mensagem: o `/status`
+    // listava `running` e `queued`, então dez minutos depois a análise que
+    // morreu não estava em lugar nenhum do painel — nem em `/status`, nem em
+    // `/completos` (que é de fluxo). O dono perguntou "e os que falharam, por
+    // que não aparecem?" em 2026-08-25, e a resposta era essa.
+    //
+    // TETO DE TEMPO, não contagem: falha de ontem não é o que se está olhando
+    // agora, e o painel morre de parede. As 12h cobrem "o que aconteceu desde
+    // que eu vi isto pela última vez".
+    jobsSoltos: () => {
+      const desde = deps.agora() - 12 * 3600;
+      return [
+        ...deps.fila.listar({ status: 'running' }),
+        ...deps.fila.listar({ status: 'queued' }),
+        ...deps.fila.listar({ status: 'failed' })
+          .filter((j) => (j.terminado_em ?? 0) >= desde),
+      ]
+        .filter((j) => !j.flow_ref)
+        .map((j) => ({ id: j.id, tarefa: j.tarefa, status: j.status }));
+    },
   };
 
   const t = texto.trim();

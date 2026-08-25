@@ -13,7 +13,7 @@ import { FilaSqlite } from '../fila/store.js';
 import { EstadoFluxos } from '../fluxos/estado.js';
 import { Fluxos } from '../fluxos/runtime.js';
 import { ctaDaDefinicao, type FlowDef } from '../dominio/flow.js';
-import { definirCapaFluxo, parseCapa, parseResposta, tabelaFluxo } from './comandos-fluxo.js';
+import { definirCapaFluxo, painelFluxos, parseCapa, parseResposta, tabelaFluxo } from './comandos-fluxo.js';
 import { tratarMensagem, type DepsMensagem } from './mensagem.js';
 
 let dir: string;
@@ -1740,6 +1740,39 @@ describe('ajuda de fluxo em duas camadas', () => {
 // O roteador tem DOIS `capa:` para separar: o do promoavatar (roteiro por
 // público, `capa: A#25 jovens 2`) e a resposta a um portão que declare a
 // palavra. Quem separa não é a sintaxe — é o `flow.json` do domínio.
+// Job de skill que FALHA só existia no instante da mensagem: o painel listava
+// `running` e `queued`, então dez minutos depois a análise que morreu não estava
+// em lugar nenhum — nem em `/status`, nem em `/completos` (que é de fluxo).
+// Pergunta do dono em 2026-08-25: "e os que falharam, por que não aparecem?".
+describe('painel: skills que falharam', () => {
+  const deps = (soltos: { id: number; tarefa: string; status: string }[]) => ({
+    fluxos: { listarFluxos: () => [], status: () => undefined } as never,
+    registrados: [],
+    chatId: 1,
+    jobsSoltos: () => soltos,
+  });
+
+  it('mostra a falha com o id — que é o que o /refazer pede', () => {
+    const r = painelFluxos(deps([{ id: 5178, tarefa: 'analisevideo', status: 'failed' }]));
+    expect(r).toContain('analisevideo #5178');
+    expect(r).toContain('/refazer');
+  });
+
+  it('a falha não engole o que está vivo', () => {
+    const r = painelFluxos(deps([
+      { id: 1, tarefa: 'analisevideo', status: 'running' },
+      { id: 2, tarefa: 'reel', status: 'failed' },
+    ]));
+    expect(r).toContain('▶️ analisevideo #1');
+    expect(r).toContain('reel #2');
+  });
+
+  it('sem falha, o painel não ganha linha nenhuma', () => {
+    const r = painelFluxos(deps([{ id: 1, tarefa: 'analisevideo', status: 'running' }]));
+    expect(r).not.toContain('falharam');
+  });
+});
+
 describe('parseResposta', () => {
   it('separa fase, ref, palavra e o resto', () => {
     expect(parseResposta('clipe: MVD#97 reprova 4,17,23'))

@@ -8,6 +8,18 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.18.9 — 2026-08-25
+
+**Skill que falha some do painel.** O `/status` listava jobs soltos `running` e
+`queued`; a análise que morreu existia só no instante da mensagem de erro — dez
+minutos depois não estava em lugar nenhum (`/completos` é de fluxo, não de
+skill). Quem perdeu a notificação no meio do chat não tinha como saber o que
+tinha quebrado.
+
+Agora o painel mostra o que falhou nas **últimas 12h**, com o id ao lado — que é
+o que `/refazer` pede — e a linha diz onde ver o motivo. Teto de TEMPO e não de
+contagem: falha de ontem não é o que se está olhando agora.
+
 ## 0.17.9 — 2026-08-25
 
 **Vídeo grande mandado no chat dizia só "não consegui baixar esse arquivo".** O
