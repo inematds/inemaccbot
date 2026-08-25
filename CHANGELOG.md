@@ -8,6 +8,19 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.17.9 — 2026-08-25
+
+**Vídeo grande mandado no chat dizia só "não consegui baixar esse arquivo".** O
+teto de 20 MB (o que a API do Telegram deixa um bot baixar) existia e era
+inalcançável: o `getFile` responde **400** para arquivo grande, e o `throw` desse
+400 vinha ANTES da linha que checava `file_size`. Ou seja, a mensagem boa
+existia para um caso que nunca chegava nela.
+
+Agora o tamanho é conferido no gateway, com o `file_size` que já vem no próprio
+update — sem ida perdida à API — e a resposta diz o tamanho e o que fazer
+(caminho no disco ou link). O 400 do `getFile` também passou a explicar o
+motivo provável, como rede.
+
 ## 0.17.8 — 2026-08-23
 
 **O log da tentativa anterior deixou de ser apagado.** `limparMarcadores` sumia

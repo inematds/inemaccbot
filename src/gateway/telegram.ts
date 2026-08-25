@@ -3,7 +3,7 @@
 // que é pura e testável sem grammy. `criarBot` é só a fiação.
 import { Bot, InputFile } from 'grammy';
 import type { Config } from '../config.js';
-import { comandoDeAnexo, type BaixarAnexo } from './midia.js';
+import { comandoDeAnexo, LIMITE_ANEXO_BYTES, type BaixarAnexo } from './midia.js';
 import { ehPingDePareamento, emPareamento, mensagemDePareamento } from './pareamento.js';
 
 /** Telegram rejeita qualquer mensagem acima de 4096 chars (UTF-16 code units) com
@@ -261,6 +261,23 @@ export function criarBot(
       const m = ctx.message;
       const arquivo = m?.document ?? m?.video ?? m?.audio ?? m?.voice;
       if (!arquivo) return;
+      // O TAMANHO vem no próprio update — conferir aqui evita uma ida à API que
+      // já se sabe perdida, e é a diferença entre "não consegui baixar esse
+      // arquivo" e uma frase que diz o que fazer.
+      //
+      // O teto de 20 MB existia e era INALCANÇÁVEL: o `getFile` responde 400
+      // para arquivo grande, e o `throw` do 400 acontecia ANTES da linha que
+      // checa `file_size`. Foi o que o dono viu em 2026-08-24 ao mandar um
+      // vídeo pelo chat — mensagem genérica para um limite conhecido.
+      const tamanho = (arquivo as { file_size?: number }).file_size ?? 0;
+      if (tamanho > LIMITE_ANEXO_BYTES) {
+        const mb = (tamanho / 1024 / 1024).toFixed(0);
+        await ctx.reply(
+          `esse arquivo tem ${mb} MB e a API do Telegram só deixa um bot baixar até 20 MB.\n`
+          + 'Mande o CAMINHO no disco (`analisevideo: /caminho/video.mp4`) ou um link.',
+        );
+        return;
+      }
       const nome =
         (m.document?.file_name ?? m.audio?.file_name)
         ?? `anexo.${m.video ? 'mp4' : m.voice ? 'ogg' : 'bin'}`;

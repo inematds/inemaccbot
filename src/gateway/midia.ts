@@ -91,6 +91,15 @@ export function criarBaixadorTelegram(botToken: string, raizMidia: string, agora
     const info = await fetch(
       `https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`,
     );
+    // 400 no `getFile` é, quase sempre, arquivo acima dos 20 MB que um bot pode
+    // baixar — e a checagem de `file_size` logo abaixo nunca chega a rodar
+    // nesse caso. Dizer o motivo provável aqui é o que impede a mensagem
+    // genérica de esconder um limite conhecido (rede do teto conferido no
+    // gateway, que vê o tamanho no próprio update).
+    if (info.status === 400) {
+      throw new Error('a API do Telegram recusou o arquivo — provavelmente passa dos '
+        + '20 MB que um bot pode baixar. Mande o caminho no disco ou um link.');
+    }
     if (!info.ok) throw new Error(`a API do Telegram recusou o arquivo (HTTP ${info.status})`);
     const corpo = (await info.json()) as { ok?: boolean; result?: { file_path?: string; file_size?: number } };
     if (!corpo.ok || !corpo.result?.file_path) throw new Error('não consegui localizar o arquivo no Telegram');

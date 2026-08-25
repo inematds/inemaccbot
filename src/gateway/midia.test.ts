@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { caminhoAnexo, comandoDeAnexo, nomeAnexo } from './midia.js';
+import { caminhoAnexo, comandoDeAnexo, criarBaixadorTelegram, nomeAnexo } from './midia.js';
 import { rotearAnexo } from './telegram.js';
 
 describe('nomeAnexo', () => {
@@ -99,5 +99,23 @@ describe('rotearAnexo', () => {
 
   it('capa sem alvo continua com o caminho como entrada', () => {
     expect(comandoDeAnexo('capa', '/midia/x.png')).toBe('capa: /midia/x.png');
+  });
+});
+
+// O teto de 20 MB existia e era INALCANÇÁVEL: o `getFile` responde 400 para
+// arquivo grande, e o `throw` do 400 vinha ANTES da linha que checa
+// `file_size`. O dono mandou um vídeo pelo chat em 2026-08-24 e recebeu "não
+// consegui baixar esse arquivo" — genérica para um limite conhecido.
+describe('anexo grande demais', () => {
+  it('o 400 do getFile explica o limite, em vez de virar erro genérico', async () => {
+    const fetchOriginal = globalThis.fetch;
+    globalThis.fetch = (async () => ({ ok: false, status: 400 })) as unknown as typeof fetch;
+    try {
+      const baixar = criarBaixadorTelegram('token', '/tmp/nao-usado', () => 1);
+      await expect(baixar('id', 'v.mp4')).rejects.toThrow(/20 MB/);
+      await expect(baixar('id', 'v.mp4')).rejects.toThrow(/caminho no disco|link/);
+    } finally {
+      globalThis.fetch = fetchOriginal;
+    }
   });
 });
