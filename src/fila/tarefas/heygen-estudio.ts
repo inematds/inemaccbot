@@ -103,8 +103,19 @@ export function criarHeygenEstudio(cliente: ClienteHeygen, opts: OpcoesEstudio):
     if (codigo !== 0) {
       // A última linha `ERRO:` do script é a mensagem útil (template ambíguo,
       // sessão deslogada, modal sem "Enviar"). Sem ela sobraria "exit 3".
-      const motivo = saida.split('\n').reverse().find((l) => l.startsWith('ERRO:'))
-        ?? `saiu com código ${codigo}`;
+      // A última linha `ERRO:` do script é a mensagem útil. Quando ela não
+      // existe — o Playwright estourou sozinho, sem passar pelo `morrer` — o
+      // que resta é o ÚLTIMO PASSO anunciado: "renomeando", "buscando X". Sem
+      // isso, `locator.fill: Timeout` não diz QUAL campo, e a caçada começa do
+      // zero (foi o C#110 em 2026-08-26: 36 fases com a mesma linha muda).
+      // De trás para frente nas duas buscas — e por cópia, porque `reverse()`
+      // mexe no array e a segunda busca herdaria a ordem virada da primeira.
+      const linhas = saida.split('\n').map((l) => l.trim()).filter(Boolean);
+      const deTras = [...linhas].reverse();
+      const erro = deTras.find((l) => l.startsWith('ERRO:'));
+      const ultimoPasso = deTras.find((l) => /^\d{2}:\d{2}:\d{2}\s/.test(l));
+      const motivo = erro
+        ?? `saiu com código ${codigo}${ultimoPasso ? ` (último passo: ${ultimoPasso})` : ''}`;
       throw new Error(`heygen.estudio: ${titulo} — ${motivo.replace(/^ERRO:\s*/, '')}`);
     }
     ctx.log(`heygen.estudio: ${titulo} enviado para gerar`);

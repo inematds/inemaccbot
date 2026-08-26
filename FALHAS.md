@@ -5,6 +5,7 @@ separado e é linkado — aqui é só o suficiente para o padrão aparecer.
 
 | data | o que quebrou | menor correção | prompt \| infra |
 |---|---|---|---|
+| 2026-08-26 | C#110: as 36 fases de estudio falharam com `locator.fill: Timeout` — o HeyGen escondeu a busca atras de uma lupa e o DOM ficou com DOIS inputs iguais; o script usava `.first()`, sempre o invisivel | clicar na lupa e usar o primeiro input VISIVEL; o erro passa a citar o ultimo passo | infra |
 | 2026-08-25 | video mandado pelo chat respondeu "nao consegui baixar esse arquivo": o teto de 20 MB era inalcancavel, porque o `getFile` devolve 400 antes de o codigo chegar na checagem de `file_size` | conferir o tamanho no gateway (o update ja traz `file_size`) e explicar o 400 do `getFile` | infra |
 | 2026-08-23 | `/status` de fase falhada sem progresso: o `.log` com `progresso: 6/42` era APAGADO por `limparMarcadores` ao re-disparar, e a falha do MVD#100 (cota da Agnes) ficou sem dizer onde parou | guardar como `.log.anterior` em vez de apagar; o progresso cai nele | infra |
 | 2026-08-23 | `/status MVD#96` não mostrava `23/47 shots` durante 4h de render — o mecanismo existia e só valia no painel; no detalhe, o ramo de "até 6 alvos" devolvia a linha antes de olhar o progresso | ramo de um alvo passa a valer também no detalhe (`lista.length > 1` no ramo de cima) | prompt |

@@ -75,6 +75,37 @@ ctx = await chromium.launchPersistentContext(PERFIL, {
 const pg = ctx.pages()[0] ?? await ctx.newPage();
 pg.setDefaultTimeout(45_000);
 const BUSCA = 'input[placeholder*="esquisar" i], input[placeholder*="earch" i]';
+
+// A BUSCA agora nasce ESCONDIDA atrás de uma lupa.
+//
+// O HeyGen redesenhou a tela de Projetos (visto em 2026-08-26): a barra de
+// busca virou um ícone, e o DOM passou a ter DOIS inputs com o mesmo
+// placeholder — o `[0]` fica invisível para sempre e o `[1]` só aparece depois
+// do clique. O script pegava `.first()`, ou seja, sempre o fantasma: o `fill`
+// esperava 45s por um elemento que nunca ficaria visível e a fase morria com
+// `locator.fill: Timeout`. Foi assim que as 36 fases do C#110 falharam de uma
+// vez, com a sessão perfeitamente logada.
+//
+// Por isso `:visible` em vez de `.first()`: o que importa não é existir, é
+// poder ser usado. E o clique na lupa é condicional — se um dia a barra voltar
+// a nascer aberta, este código continua servindo.
+const buscaVisivel = () => pg.locator(`${BUSCA}`).filter({ visible: true }).first();
+
+async function abrirBusca() {
+  if (await buscaVisivel().count()) return;
+  const lupa = pg.getByRole('button', { name: /^(search|buscar|pesquisar)$/i }).first();
+  if (!(await lupa.count())) await morrer('não achei a busca nem o botão de lupa na tela de Projetos');
+  await lupa.click();
+  await pg.waitForTimeout(1_500);
+  if (!(await buscaVisivel().count())) await morrer('cliquei na lupa e a busca não apareceu');
+}
+
+async function buscar(termo) {
+  await abrirBusca();
+  const campo = buscaVisivel();
+  await campo.fill('');
+  await campo.fill(termo);
+}
 const CAMPO_TITULO = 'input[placeholder*="sem título" i], input[placeholder*="Untitled" i]';
 
 try {
@@ -87,7 +118,7 @@ try {
 
   // Retomada: um rascunho com ESTE título é uma tentativa anterior que renomeou
   // e não gerou. Continuar dele evita deixar um segundo rascunho homônimo.
-  await pg.locator(BUSCA).first().fill(TITULO);
+  await buscar(TITULO);
   await pg.waitForTimeout(3_500);
   const rascunho = pg.getByText(TITULO, { exact: true }).first();
   if (await rascunho.count()) {
@@ -96,7 +127,7 @@ try {
     await pg.waitForURL(/create-v4|editor/, { timeout: 60_000 });
   } else {
     passo(`buscando "${TEMPLATE}"`);
-    await pg.locator(BUSCA).first().fill(TEMPLATE);
+    await buscar(TEMPLATE);
     await pg.waitForTimeout(4_000);
     const alvo = pg.getByText(TEMPLATE, { exact: true });
     const n = await alvo.count();

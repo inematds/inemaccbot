@@ -105,3 +105,20 @@ describe('heygen.estudio: o estúdio por script', () => {
     await expect(tarefa(ctx(entrada, { sinal: c.signal }))).rejects.toThrow(/desligando/);
   });
 });
+
+// `locator.fill: Timeout` não diz QUAL campo. Quando o Playwright estoura
+// sozinho — sem passar pelo `morrer` do script — o que resta é o último passo
+// anunciado. Sem ele, o C#110 deixou 36 fases com a mesma linha muda
+// (2026-08-26) e o diagnóstico começou do zero.
+describe('erro sem linha ERRO:', () => {
+  it('carrega o último passo anunciado', async () => {
+    const tarefa = criarHeygenEstudio(cliente(), opts(async () => ({
+      codigo: 1,
+      saida: '04:01:02 abrindo Projetos\n04:01:09 buscando "TEMPLATE-AVATAR"\n'
+        + 'locator.fill: Timeout 45000ms exceeded.\n',
+    })));
+    // O ÚLTIMO passo, não o primeiro: é onde o script estava quando travou.
+    await expect(tarefa(ctx(entrada))).rejects
+      .toThrow(/último passo: 04:01:09 buscando "TEMPLATE-AVATAR"/);
+  });
+});

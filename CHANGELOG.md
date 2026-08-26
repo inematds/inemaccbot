@@ -8,6 +8,23 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.18.10 — 2026-08-26
+
+**As 36 fases de estúdio do C#110 morreram no mesmo lugar: a busca do HeyGen.**
+Eles redesenharam a tela de Projetos — a barra de busca virou uma **lupa**, e o
+DOM passou a ter DOIS inputs com o mesmo placeholder: o `[0]` fica invisível
+para sempre e o `[1]` só aparece depois do clique. O script pegava `.first()`,
+ou seja, sempre o fantasma; o `fill` esperava 45s por um elemento que nunca
+ficaria visível e a fase morria com `locator.fill: Timeout`.
+
+A sessão estava perfeitamente logada o tempo todo — a prova de sessão do script
+é `count()` da busca, que não distingue "existe" de "dá para usar".
+
+Agora: clica na lupa quando preciso e usa o primeiro input **visível**. E a
+mensagem de erro carrega o ÚLTIMO PASSO anunciado pelo script quando o
+Playwright estoura sozinho — `locator.fill: Timeout` não diz qual campo, e sem
+isso a caçada recomeça do zero (36 fases com a mesma linha muda).
+
 ## 0.18.9 — 2026-08-25
 
 **Skill que falha some do painel.** O `/status` listava jobs soltos `running` e
