@@ -96,6 +96,23 @@ describe('heygen.estudio: o estúdio por script', () => {
     await expect(tarefa(ctx(comPrazo, { agora: () => 5_000 }))).rejects.toThrow(/não foi enviado/);
   });
 
+  it('conta o prazo da primeira tentativa, não do tempo parado na fila', async () => {
+    // Um lote de 36 alvos nasce no mesmo segundo numa fila serial: quem sai do
+    // fim da fila chega com `criado_em` velho e ainda assim tem direito ao
+    // prazo inteiro. Sem isto, ele falhava em segundos sem abrir o navegador.
+    let rodou = false;
+    const tarefa = criarHeygenEstudio(cliente(), opts(async () => {
+      rodou = true;
+      return { codigo: 0, saida: '' };
+    }));
+    const comPrazo = JSON.stringify({
+      titulo: 'A32-jovens-v1', texto: 'oi', espera: { intervalo: 60, timeout: 100 },
+    });
+    const job = { input: comPrazo, criado_em: 0, iniciado_em: 5_000 } as never;
+    await expect(tarefa(ctx(comPrazo, { job, agora: () => 5_010 }))).resolves.toBe('A32-jovens-v1');
+    expect(rodou).toBe(true);
+  });
+
   it('não começa quando o worker já largou o job', async () => {
     const c = new AbortController();
     c.abort(new Error('desligando'));

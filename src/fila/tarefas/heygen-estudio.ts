@@ -82,7 +82,14 @@ export function criarHeygenEstudio(cliente: ClienteHeygen, opts: OpcoesEstudio):
       return titulo;
     }
 
-    if (espera && ctx.agora() - ctx.job.criado_em > espera.timeout) {
+    // O teto conta da PRIMEIRA TENTATIVA (`iniciado_em`, gravado com COALESCE e
+    // nunca reescrito), não da criação. Um lote inteiro de alvos nasce no mesmo
+    // segundo, mas a fila `navegador` é serial: medir de `criado_em` faz o
+    // próprio tempo de espera na fila consumir o orçamento, e quem está do
+    // meio para o fim do lote falha em segundos sem nunca abrir o navegador
+    // (C#126 em 2026-08-27: 5 passaram, 31 morreram sem tentar).
+    const relogio = ctx.job.iniciado_em ?? ctx.job.criado_em;
+    if (espera && ctx.agora() - relogio > espera.timeout) {
       throw new Error(
         `heygen.estudio: "${titulo}" não foi enviado em ${Math.round(espera.timeout / 60)} min`,
       );

@@ -8,6 +8,19 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.18.11 — 2026-08-27
+
+### Corrigido
+
+- **`heygen.estudio`: o prazo de 60 min contava do momento errado.** O teto era
+  medido contra `criado_em`, mas as fases `estudio` de um C# inteiro nascem no
+  mesmo segundo e a fila `navegador` é serial (~1 min por alvo). Quem estava do
+  meio para o fim do lote chegava ao worker já com o orçamento gasto pela
+  própria espera na fila e falhava em segundos, sem nunca abrir o navegador —
+  no C#126, 5 alvos passaram e 31 morreram sem tentar. Agora o relógio começa
+  na PRIMEIRA tentativa (`iniciado_em`, gravado com `COALESCE` e nunca
+  reescrito), que é o que a mensagem sempre prometeu medir.
+
 ## 0.18.10 — 2026-08-26
 
 **As 36 fases de estúdio do C#110 morreram no mesmo lugar: a busca do HeyGen.**
