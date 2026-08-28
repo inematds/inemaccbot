@@ -1,6 +1,6 @@
 {
   "name": "inemaccbot",
-  "version": "0.18.11",
+  "version": "0.19.11",
   "private": true,
   "type": "module",
   "scripts": {

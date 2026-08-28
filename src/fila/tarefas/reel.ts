@@ -157,9 +157,22 @@ export function criarReelMontar(opts: Disparo): Tarefa {
       return adotado;
     }
 
-    // Prazo contado do PRIMEIRO enfileiramento: um render pendurado não pode
-    // pollar para sempre — `aindaNao` não gasta tentativa.
-    if (cheia.espera && ctx.agora() - ctx.job.criado_em > cheia.espera.timeout) {
+    // O teto conta da PRIMEIRA TENTATIVA (`iniciado_em`, gravado com COALESCE e
+    // nunca reescrito), não da criação — o mesmo relógio que o `cli.rodar` e o
+    // `heygen.estudio` já usavam; só este ficou para trás.
+    //
+    // Os 36 reels de um C# nascem no mesmo segundo e a fila `render` é serial
+    // (concorrência 1, é a GPU). Medir de `criado_em` faz a ESPERA NA FILA
+    // consumir o orçamento do render: quem está do meio para o fim do lote é
+    // chamado, vê o prazo já vencido e morre em MILISSEGUNDOS, sem nunca tocar
+    // na GPU. C#141 e C#142 em 2026-08-28: 49 reels mortos assim, atrás de
+    // clipes de música de 1-2h cada.
+    //
+    // O que o teto ainda protege continua protegido: o render pendurado. Ele
+    // vive dentro de UMA tentativa (o job segura a vaga e vigia), então o
+    // relógio da primeira tentativa é o relógio dele.
+    const relogio = ctx.job.iniciado_em ?? ctx.job.criado_em;
+    if (cheia.espera && ctx.agora() - relogio > cheia.espera.timeout) {
       throw new Error(
         `reel.montar: "${cheia.alvo}" não ficou pronto em ${Math.round(cheia.espera.timeout / 60)} min`,
       );

@@ -164,6 +164,36 @@ describe('reel.montar: dispara o pipeline sem agente', () => {
     await expect(tarefa(ctx(inp, { agora: () => 5_000 }))).rejects.toThrow(/não ficou pronto/);
   });
 
+  /**
+   * C#141/C#142 em 2026-08-28: 36 reels nascem no mesmo segundo, a fila `render`
+   * é serial, e quem estava do meio para o fim do lote foi chamado com o prazo
+   * já vencido pela ESPERA — morreu em milissegundos sem tocar na GPU. 49 assim.
+   */
+  it('conta o prazo da primeira tentativa, não do tempo parado na fila', async () => {
+    const inp = entrada({ espera: { intervalo: 60, timeout: 100 } });
+    const job = { input: inp, criado_em: 0, iniciado_em: 5_000 } as never;
+    const chamadas: { saida: string }[] = [];
+    const tarefa = criarReelMontar({
+      disparar: (d) => {
+        chamadas.push(d);
+        mkdirSync(dirname(d.saida), { recursive: true });
+        writeFileSync(d.saida, 'reel-pronto');
+      },
+      vigia: VIGIA,
+    });
+    // chega no fim da fila com `criado_em` velho e AINDA ASSIM dispara
+    await tarefa(ctx(inp, { job, agora: () => 5_010 })).catch(() => {});
+    expect(chamadas).toHaveLength(1);
+  });
+
+  it('estoura o prazo quando o RENDER (não a fila) passou do teto', async () => {
+    const inp = entrada({ espera: { intervalo: 60, timeout: 100 } });
+    const job = { input: inp, criado_em: 0, iniciado_em: 1_000 } as never;
+    const tarefa = criarReelMontar({ disparar: () => {} });
+    await expect(tarefa(ctx(inp, { job, agora: () => 5_000 })))
+      .rejects.toThrow(/não ficou pronto/);
+  });
+
   it('não começa quando o worker já largou o job', async () => {
     const c = new AbortController();
     c.abort(new Error('desligando'));

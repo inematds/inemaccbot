@@ -41,6 +41,13 @@ EnvironmentFile=%h/projetos/inemaccbot/.env
 # headless de antes — que é o que se quer numa VPS sem Xvfb, e o que NÃO se quer
 # aqui.
 Environment=DISPLAY=:99
+# O ~/.local/bin ENTRA NO PATH. O `systemd --user` não o herda, então tudo que
+# foi instalado com `pip --user` (ou npm global do usuário) existia no terminal
+# e NÃO existia para o bot. Deu duas falhas no mesmo dia (2026-08-28): o
+# `claude` caía no /usr/bin 2.1.63, que não conhece o apelido `fable` e recusou
+# TODA fase `plano`; e o `analisevideo` morreu com "yt-dlp nao instalado" numa
+# máquina onde o yt-dlp está instalado.
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=5

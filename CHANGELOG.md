@@ -8,6 +8,24 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.19.11 — 2026-08-28
+
+- **`reel.montar`: o prazo de 360 min contava do momento errado.** O teto era
+  medido contra `criado_em` — o mesmo defeito que o `heygen.estudio` corrigiu na
+  0.18.11, e que o `cli.rodar` já não tinha. Os 36 reels de um C# nascem no
+  mesmo segundo e a fila `render` é serial (concorrência 1, é a GPU): a espera
+  na fila comia o orçamento do render, e quem estava do meio para o fim do lote
+  era chamado com o prazo já vencido, morrendo em MILISSEGUNDOS sem nunca tocar
+  na GPU. C#141 e C#142 em 2026-08-28: **49 reels mortos assim**, atrás de
+  clipes de música de 1-2h cada. Agora o relógio é `iniciado_em` (primeira
+  tentativa, gravado com COALESCE e nunca reescrito), igual às outras duas
+  tarefas. O que o teto protegia continua protegido: o render pendurado vive
+  dentro de uma tentativa, então o relógio dela é o dele.
+- **O número MVD viaja com o pedido.** A fase `plano` do musicavideo passa a
+  receber `--mvd {{ref}}`, e a produção nasce numerada. Antes o número só
+  aparecia num `reindex` posterior, que ADIVINHAVA de qual fluxo a pasta veio
+  casando prefixo de slug — e errava quando dois pedidos começavam igual.
+
 ## 0.18.11 — 2026-08-27
 
 ### Corrigido

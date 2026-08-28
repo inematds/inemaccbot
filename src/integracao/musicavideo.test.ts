@@ -55,7 +55,17 @@ rodar('musicavideo: fluxo sem agente', () => {
   // conhece `--estilo` nem `--idioma`, e não deve conhecer.
   it('o assunto vai aspado, num argumento só, com --bruto', () => {
     expect(comandoDe('plano'))
-      .toBe(`bash ${REPO_DOMINIO}/musicavideo.sh plano 'balada pop sobre recomeço' --bruto`);
+      .toBe(`bash ${REPO_DOMINIO}/musicavideo.sh plano 'balada pop sobre recomeço' --bruto --mvd 'MVD89'`);
+  });
+
+  /**
+   * O NÚMERO É DO BOT, e vai junto com o pedido. Sem isto o domínio numerava
+   * depois, ADIVINHANDO de qual fluxo a pasta veio pelo prefixo do slug — e
+   * errava sempre que dois pedidos começavam igual (MVD#146 nasceu sem número
+   * no painel em 2026-08-28, e o #135 antes dele herdou o número do irmão).
+   */
+  it('o plano recebe o número do fluxo em --mvd', () => {
+    expect(comandoDe('plano')).toContain("--mvd 'MVD89'");
   });
 
   // O slug é derivado do texto e desambiguado com `-2` pelo próprio domínio: o
