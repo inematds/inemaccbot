@@ -80,6 +80,9 @@ const RUIDO = /^\s*(\[download\]|\[info\]|frame=|size=|progresso:)|ETA\s|\d+% of
 /** Uma linha que anuncia erro — é ela que a mensagem de chat quer. */
 const PARECE_ERRO = /\b(erro|error|failed|falhou|traceback|exception|recusou|http \d{3}|\d{3}:)\b/i;
 
+/** Traceback Python: a causa está no FIM, não no começo. */
+const TRACEBACK = /^Traceback \(most recent call last\):/m;
+
 /**
  * Últimas linhas ÚTEIS — o que serve numa mensagem de erro de chat.
  *
@@ -88,10 +91,14 @@ const PARECE_ERRO = /\b(erro|error|failed|falhou|traceback|exception|recusou|htt
  * que restou. Nunca devolve vazio se havia texto: uma mensagem ruim é melhor
  * que nenhuma.
  */
-function cauda(texto: string, linhas = 4): string {
+export function cauda(texto: string, linhas = 4): string {
   const uteis = texto.split('\n').map((l) => l.trimEnd())
     .filter((l) => l.trim() && !RUIDO.test(l));
-  const iErro = uteis.findIndex((l) => PARECE_ERRO.test(l));
+  // Traceback Python é ao contrário: a primeira linha é `Traceback (most recent
+  // call last):` e a CAUSA é a última. Ancorar no primeiro "parece erro" cortava
+  // fora justamente a linha que explica (MVD#132 chegou no chat mostrando só o
+  // `sys.exit(main(...))`). Nesse caso, cauda pura.
+  const iErro = TRACEBACK.test(texto) ? -1 : uteis.findIndex((l) => PARECE_ERRO.test(l));
   const escolhidas = iErro >= 0 ? uteis.slice(iErro, iErro + linhas) : uteis.slice(-linhas);
   const saida = escolhidas.join('\n').slice(0, 800);
   if (saida.trim()) return saida;

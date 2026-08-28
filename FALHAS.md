@@ -5,6 +5,7 @@ separado e é linkado — aqui é só o suficiente para o padrão aparecer.
 
 | data | o que quebrou | menor correção | prompt \| infra |
 |---|---|---|---|
+| 2026-08-27 | a mensagem de falha do `cli.rodar` cortava fora a causa: o `cauda()` ancora na primeira linha que "parece erro", e num traceback Python essa é `Traceback (most recent call last):` — o chat do MVD#132 mostrou 3 linhas de cabeçalho e nenhuma exceção | quando o texto tem traceback, usar a cauda pura (a causa é a última linha); `cauda` exportado e coberto por teste | prompt |
 | 2026-08-27 | 31 das 36 fases `estudio` do C#126 falharam em ~6s com "não foi enviado em 60 min", sem abrir o navegador | o teto passou a contar de `iniciado_em` (1ª tentativa) e não de `criado_em`: numa fila serial, a espera na fila comia o próprio prazo | infra |
 | 2026-08-26 | C#110: as 36 fases de estudio falharam com `locator.fill: Timeout` — o HeyGen escondeu a busca atras de uma lupa e o DOM ficou com DOIS inputs iguais; o script usava `.first()`, sempre o invisivel | clicar na lupa e usar o primeiro input VISIVEL; o erro passa a citar o ultimo passo | infra |
 | 2026-08-25 | video mandado pelo chat respondeu "nao consegui baixar esse arquivo": o teto de 20 MB era inalcancavel, porque o `getFile` devolve 400 antes de o codigo chegar na checagem de `file_size` | conferir o tamanho no gateway (o update ja traz `file_size`) e explicar o 400 do `getFile` | infra |
