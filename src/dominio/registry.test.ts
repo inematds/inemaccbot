@@ -120,9 +120,14 @@ describe('o registry REAL do repo', () => {
 
   it('é válido e tem as skills das etapas 2 e 3, mais as da Agnes', () => {
     expect(defs.map((d) => d.command).sort()).toEqual(
-      ['analisevideo', 'curso', 'demo', 'dublar', 'explicativo', 'historia', 'imagem',
-        'reel', 'reelinematds', 'reelpromo', 'transcrever'],
+      ['analisevideo', 'content2video', 'curso', 'demo', 'dublar', 'explicativo', 'historia',
+        'imagem', 'otimizevideo', 'reel', 'reelinematds', 'reelpromo', 'transcrever'],
     );
+    // `otimizevideo` e `content2video` são 15 a 40 min de ffmpeg e Codex sem
+    // GPU: ficam na `cpu` pelo mesmo motivo da `historia` — em `render`
+    // segurariam os reels, em `io` dois renders brigariam pelo processador.
+    expect(acharSkill(defs, 'otimizevideo')?.fila).toBe('cpu');
+    expect(acharSkill(defs, 'content2video')?.fila).toBe('cpu');
     expect(acharSkill(defs, 'transcrever')?.fila).toBe('texto');
     expect(acharSkill(defs, 'explicativo')?.fila).toBe('render');
     // `historia` fica na fila `cpu`, NÃO em `render`: ela roda de 30 min a

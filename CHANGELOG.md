@@ -8,6 +8,21 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.20.11 — 2026-09-07
+
+- **Dois domínios novos no catálogo, sem uma linha de código no bot:**
+  `otimizevideo` (vídeo longo → corte de ~2 min, o `otv`) e `content2video`
+  (URL → vídeo narrado de ~60 s em HyperFrames, com CTA). Os dois entram pela
+  rota de skill `kind: function`, como o `analisevideo`: cada repo ganhou um
+  `bot.sh` que imprime o caminho do MP4 na última linha e um `integracao.json`
+  que o `plugar-repo.sh` aplica em qualquer máquina. Fila `cpu` para ambos —
+  são 15 a 40 min de ffmpeg e Codex, e a `cpu` (concorrência 1) não segura
+  nem a GPU do reel nem o navegador do HeyGen. `aguarda_artefato` liga o modo
+  destacado: o trabalho sobrevive a restart e a tentativa seguinte o adota.
+- Os wrappers cuidam do PATH que o systemd não herda (`~/.local/bin` para o
+  `yt-dlp`, `~/.npm-global/bin` para `npx` e `codex`) — a mesma classe de
+  falha que o analisevideo teve em 2026-08-24.
+
 ## 0.19.11 — 2026-08-28
 
 - **`reel.montar`: o prazo de 360 min contava do momento errado.** O teto era

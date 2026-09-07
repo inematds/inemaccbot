@@ -284,5 +284,59 @@
     "exemplo": "analisevideo: https://youtube.com/watch?v=exemplo",
     "comando": "bash {{repo}}/analisevideo.sh analisa {{input}}",
     "aguarda_artefato": true
+  },
+  {
+    "command": "otimizevideo",
+    "fila": "cpu",
+    "kind": "function",
+    "comando": "bash {{repo}}/bot.sh {{input}} {{modo}} {{alvo}}",
+    "repo": "otimizevideo",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 2,
+    "timeout_segundos": 5400,
+    "aceita_destino": true,
+    "aguarda_artefato": true,
+    "campos": {
+      "modo": {
+        "tipo": "texto",
+        "padrao": "A",
+        "usa": "prompt",
+        "descricao": "A = fala original (padrão); B = sem apresentador, narração TTS; C = só demo/gráfico; N = vídeo inteiro com narração"
+      },
+      "alvo": {
+        "tipo": "texto",
+        "padrao": "120",
+        "usa": "prompt",
+        "descricao": "duração alvo do corte, em segundos"
+      }
+    },
+    "descricao": "Vídeo longo (aula, podcast, 20–30 min) vira um corte de ~2 min com o melhor conteúdo, cortado por palavra (otv). Anexo só até 20 MB: mande link ou caminho.",
+    "exemplo": "otimizevideo: https://youtube.com/watch?v=xxxx | modo=A | alvo=120"
+  },
+  {
+    "command": "content2video",
+    "fila": "cpu",
+    "kind": "function",
+    "comando": "bash {{repo}}/bot.sh {{input}} {{horizontal}}",
+    "repo": "content2video",
+    "artefato_exts": [
+      "mp4"
+    ],
+    "max_tentativas": 2,
+    "timeout_segundos": 5400,
+    "aceita_destino": true,
+    "aguarda_artefato": true,
+    "campos": {
+      "horizontal": {
+        "tipo": "bandeira",
+        "padrao": "não",
+        "usa": "prompt",
+        "descricao": "16:9 (YouTube) em vez do 9:16 padrão"
+      }
+    },
+    "descricao": "Uma URL (artigo, página) vira um vídeo narrado de ~60 s em HyperFrames, com CTA INEMA.CLUB no fim; o Codex lê a fonte e escreve o roteiro (OAuth da assinatura, sem API key).",
+    "exemplo": "content2video: https://www.inema.club/ | horizontal"
   }
 ]

@@ -1,0 +1,38 @@
+{
+  "manifesto": 1,
+  "rota": "skill",
+  "command": "otimizevideo",
+  "repo": {
+    "url": "https://github.com/inematds/otimizevideo",
+    "commit": "5feafb6",
+    "pasta": "otimizevideo"
+  },
+  "invocacao": "bash {{repo}}/bot.sh {{input}} {{modo}} {{alvo}}",
+  "sem_agente": true,
+  "fila": "cpu",
+  "artefato_exts": ["mp4"],
+  "timeout_segundos": 5400,
+  "max_tentativas": 2,
+  "aceita_destino": true,
+  "campos": {
+    "modo": { "tipo": "texto", "padrao": "A", "descricao": "A = fala original (padrão); B = sem apresentador, narração TTS; C = só demo/gráfico; N = vídeo inteiro com narração" },
+    "alvo": { "tipo": "texto", "padrao": "120", "descricao": "duração alvo do corte, em segundos" }
+  },
+  "requer": {
+    "bin": ["python3", "ffmpeg", "ffprobe", "yt-dlp"],
+    "chaves": ["GROQ_API_KEY", "OPENROUTER_API_KEY"],
+    "fontes": []
+  },
+  "descricao": "Vídeo longo (aula, podcast, 20–30 min) vira um corte de ~2 min com o melhor conteúdo, cortado por palavra (otv). Anexo só até 20 MB: mande link ou caminho.",
+  "exemplo": "otimizevideo: https://youtube.com/watch?v=xxxx | modo=A | alvo=120",
+  "gerado": {
+    "em": "2026-09-07",
+    "por": "claude",
+    "confianca": {
+      "manifesto": "lido", "rota": "lido", "command": "lido", "repo": "lido",
+      "invocacao": "lido", "fila": "lido", "artefato_exts": "lido",
+      "timeout_segundos": "chute", "max_tentativas": "lido", "aceita_destino": "lido",
+      "campos": "lido", "requer": "lido", "descricao": "lido"
+    }
+  }
+}
