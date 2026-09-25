@@ -16,6 +16,12 @@ export const MODELOS_RANK: Record<string, number> = {
   fable: 2,
   sonnet: 3,
   opus: 4,
+  // Níveis do central (~/.config/inema/modelos.env, doc wifi/MODELOS.md): o runner
+  // troca pelo ID completo do motor. Rank = ordem de uso, não benchmark.
+  menor: 3,
+  executor: 4,
+  topo: 5,
+  super: 6,
 };
 
 export const ESFORCOS_RANK: Record<string, number> = {

@@ -2,6 +2,7 @@
 // Trocar de motor = escrever outro arquivo como este e registrá-lo em RUNNERS.
 import { spawn } from 'node:child_process';
 
+import { ehNivel, nivel } from '../modelos.js';
 import { RUNNERS, type ContextoExecucao, type Execucao, type Runner } from './runner.js';
 
 /**
@@ -13,7 +14,11 @@ import { RUNNERS, type ContextoExecucao, type Execucao, type Runner } from './ru
  * exata, o mapa alias → id entra AQUI, não no ranking do domínio.
  */
 export function argumentosClaude(ctx: ContextoExecucao): string[] {
-  return ['--model', ctx.perfil.modelo, '--effort', ctx.perfil.esforco, '-p', ctx.prompt];
+  // Nível (`super|topo|executor|menor`) vira o ID do central; o esforço continua
+  // o do perfil (skills.json / fase / override), que já vem sempre resolvido.
+  const m = ctx.perfil.modelo;
+  const modelo = ehNivel(m) ? nivel('claude', m).modelo ?? m : m;
+  return ['--model', modelo, '--effort', ctx.perfil.esforco, '-p', ctx.prompt];
 }
 
 /**

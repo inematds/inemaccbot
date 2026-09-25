@@ -11,7 +11,7 @@
     "max_tentativas": 2,
     "timeout_segundos": 3600,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": false,
@@ -29,7 +29,7 @@
     "max_tentativas": 2,
     "timeout_segundos": 5400,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,
@@ -45,7 +45,7 @@
     "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,
@@ -71,7 +71,7 @@
     "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,
@@ -107,7 +107,7 @@
     "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,
@@ -133,7 +133,7 @@
     "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,
@@ -166,7 +166,7 @@
     "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,
@@ -194,7 +194,7 @@
     "max_tentativas": 4,
     "timeout_segundos": 7200,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,
@@ -224,7 +224,7 @@
     "max_tentativas": 3,
     "timeout_segundos": 10800,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,
@@ -249,7 +249,7 @@
     "max_tentativas": 3,
     "timeout_segundos": 900,
     "perfil": {
-      "modelo": "sonnet",
+      "modelo": "executor",
       "esforco": "low"
     },
     "aceita_destino": true,

@@ -114,7 +114,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv): Config {
     opencodeBin: env.OPENCODE_BIN?.trim()
       || join(env.HOME ?? homedir(), '.opencode', 'bin', 'opencode'),
     motorPadrao: env.MOTOR_PADRAO?.trim() || 'claude',
-    modeloPadrao: env.MODELO_PADRAO?.trim() || 'sonnet',
+    modeloPadrao: env.MODELO_PADRAO?.trim() || 'executor',
     esforcoPadrao: env.ESFORCO_PADRAO?.trim() || 'low',
     publicoDir: env.PUBLICO_DIR?.trim()
       || join(env.HOME ?? homedir(), 'projetos', 'output', 'reels'),

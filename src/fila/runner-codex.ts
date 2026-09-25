@@ -12,6 +12,7 @@
 // de motor para motor é só a tradução do perfil em flags — a função pura abaixo.
 //
 // Ver `docs/motor-codex.md`.
+import { ehNivel, nivel } from '../modelos.js';
 import { ClaudeRunner } from './runner-claude.js';
 import { RUNNERS, type ContextoExecucao } from './runner.js';
 
@@ -70,7 +71,9 @@ export function argumentosCodex(
   ctx: ContextoExecucao,
   mapa: Record<string, string> = mapaModelos(),
 ): string[] {
-  const modelo = mapa[ctx.perfil.modelo];
+  // Mapa CODEX_MODELOS primeiro; senão, nível central (`INEMA_CODEX_<NIVEL>`).
+  const alias = ctx.perfil.modelo;
+  const modelo = mapa[alias] ?? (ehNivel(alias) ? nivel('codex', alias).modelo : undefined);
   return [
     'exec',
     '--skip-git-repo-check',

@@ -22,7 +22,7 @@ describe('carregarConfig', () => {
   it('aplica os defaults de perfil quando não vêm no ambiente', () => {
     const c = carregarConfig(base);
     expect(c.motorPadrao).toBe('claude');
-    expect(c.modeloPadrao).toBe('sonnet');
+    expect(c.modeloPadrao).toBe('executor');
     expect(c.esforcoPadrao).toBe('low');
   });
 
