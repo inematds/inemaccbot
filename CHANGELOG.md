@@ -8,6 +8,14 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.21.11 — 2026-10-19
+
+- `heygen.estudio` entra na fila comum do estúdio do HeyGen: `scripts/heygen-estudio.mjs`
+  abre o perfil por `abrirPerfil` (`scripts/heygen-perfil.mjs`, cópia idêntica do
+  explicavideos/r7ex). Um envio por vez entre promoavatar, explicavideos, r7ex, finviral
+  etc.; espera até 3 h (`HEYGEN_ESPERA_MIN`); trava de pid morto é tomada. Abre também o
+  Chrome mais novo instalado (o antigo caía com SIGTRAP depois que o r7ex atualizou o perfil).
+
 ## 0.20.11 — 2026-09-07
 
 - **Dois domínios novos no catálogo, sem uma linha de código no bot:**
