@@ -8,6 +8,14 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.22.11 — 2026-10-20
+
+- `reel.montar` entra na **fila única de GPU da máquina** (`~/projetos/wifi/scripts/gpu-fila`,
+  trava `~/.cache/inemaccbot/gpu.trava.1`, espera até 120 min). A fila `render` daqui só segurava
+  os jobs do bot; às 3h de 20/10 r7ex, explicavideos e cadeias rodaram juntos por fora e
+  esgotaram a memória (NVRM NO_MEMORY). Mesma ideia da trava do estúdio do HeyGen. Chamada
+  aninhada (já dentro da fila) passa direto, sem trava eterna.
+
 ## 0.21.11 — 2026-10-19
 
 - `heygen.estudio` entra na fila comum do estúdio do HeyGen: `scripts/heygen-estudio.mjs`

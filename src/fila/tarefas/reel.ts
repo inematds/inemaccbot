@@ -76,6 +76,10 @@ export interface Disparo {
  */
 export function montarComando(e: EntradaReel): string {
   const py = [
+    // Fila única de GPU da MÁQUINA (wifi/scripts/gpu-fila, 20/10/2026): a fila `render` daqui só
+    // segura os jobs do bot; r7ex, explicavideos e cadeias rodam fora dele e esgotaram a memória
+    // juntos. Quem estiver lá dentro e chamar a fila de novo passa direto (sem trava eterna).
+    GPU_FILA, 'reel', '--',
     'python3', q(e.script),
     '--avatar', q(e.avatar),
     '--ws', q(e.ws),
@@ -88,6 +92,8 @@ export function montarComando(e: EntradaReel): string {
   ].join(' ');
   return `echo $$ > ${q(`${e.saida}.pid`)}; ${py} || touch ${q(`${e.saida}.err`)}`;
 }
+
+const GPU_FILA = `GPU_ESPERA_MIN=120 ${q(process.env.GPU_FILA ?? `${process.env.HOME ?? '/home/nmaldaner'}/projetos/wifi/scripts/gpu-fila`)}`;
 
 /** Aspas simples no estilo POSIX: nenhum caminho vira comando. */
 function q(s: string): string {
