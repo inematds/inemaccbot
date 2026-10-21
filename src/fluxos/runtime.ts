@@ -12,7 +12,7 @@ import { primeiraFala } from '../dominio/roteiro.js';
 import type { FilaSqlite } from '../fila/store.js';
 import type { Agora, Job, Perfil } from '../fila/types.js';
 import { resolverPerfil } from '../dominio/perfil.js';
-import { EstadoFluxos, type Fase, type Fluxo, type StatusFluxo } from './estado.js';
+import { EstadoFluxos, type Avaliacao, type Fase, type Fluxo, type Opiniao, type StatusFluxo } from './estado.js';
 import { caminhoRecibo, montarInput, pastaTextos, resolverComando, tituloEstudio } from './entrada-fase.js';
 import type { Publicacao } from './publicar.js';
 import { entregarPacote, pacoteNoRecibo } from './entregar-canal.js';
@@ -392,6 +392,8 @@ export class Fluxos {
             ? 'Revise os textos abaixo — os avatares quem gera é o BOT, e isso gasta da carteira.\n'
             : '')
           + `Quando estiver pronto: /aprovar ${fluxo.prefixo}#${fluxo.id}`
+          // Nota opcional (LOOP-R): sem a dica, ninguém digita `nota=`.
+          + ` (dá nota? \`nota=1-5 | por quê\`)`
           // O que se pode responder ALÉM de sim. Portão que não diz o que
           // aceita é tão mudo quanto o que não mostra nada: as palavras são do
           // `flow.json` do domínio, e ninguém as adivinha.
@@ -825,12 +827,17 @@ export class Fluxos {
    * Idempotente — aprovar duas vezes não duplica job, porque a fase deixa de
    * estar `aguardando-ok` na primeira.
    */
-  aprovar(fluxoId: number): { liberados: number; fase?: string } {
+  aprovar(fluxoId: number, opiniao: Opiniao = {}): { liberados: number; fase?: string } {
     const fluxo = this.estado.obter(fluxoId);
     if (!fluxo) throw new Error('fluxo não existe');
     const def = this.estado.definicaoDe(fluxo);
     const esperando = this.estado.fases(fluxoId).filter((f) => f.estado === 'aguardando-ok');
     if (!esperando.length) return { liberados: 0 };
+    // Uma linha por fase aprovada (não por alvo): a nota é sobre o que a pessoa
+    // viu no portão, e ela viu a fase. Grava mesmo sem nota — "passou" é dado.
+    for (const nome of new Set(esperando.map((f) => f.fase))) {
+      this.estado.registrarAvaliacao(fluxo, { ...opiniao, fase: nome, acao: 'aprovar' });
+    }
 
     let liberados = 0;
     for (const fase of esperando) {
@@ -884,7 +891,7 @@ export class Fluxos {
    * `portao.respostas`, e aqui só se executa e reabre.
    */
   responder(
-    fluxoId: number, faseId: string, palavra: string, resposta: string,
+    fluxoId: number, faseId: string, palavra: string, resposta: string, opiniao: Opiniao = {},
   ): { erro: string } | { fase: string; palavra: string; jobId: number } {
     const fluxo = this.estado.obter(fluxoId);
     if (!fluxo) return { erro: 'fluxo não existe' };
@@ -944,6 +951,11 @@ export class Fluxos {
       chat_id: null,
     });
     this.log(`${ref}/${fase.alvo || '-'}/${faseId} RESPOSTA "${palavra}" — job ${job.id}`);
+    // A reprovação que já acontecia de verdade no bot: é o sinal mais valioso.
+    this.estado.registrarAvaliacao(fluxo, {
+      ...opiniao, fase: faseId, alvo: fase.alvo, acao: 'responder', palavra,
+      motivo: opiniao.motivo ?? resposta,
+    });
     return { fase: faseId, palavra, jobId: job.id };
   }
 
@@ -1053,6 +1065,11 @@ export class Fluxos {
       this.estado.fases(f.id).some((fase) => fase.estado === 'aguardando-ok'));
   }
 
+  /** O que o dono disse nos portões deste fluxo (LOOP-R, camada "medir"). */
+  avaliacoes(fluxoId: number): Avaliacao[] {
+    return this.estado.avaliacoes(fluxoId);
+  }
+
   status(fluxoId: number): { fluxo: Fluxo; fases: Fase[] } | undefined {
     const fluxo = this.estado.obter(fluxoId);
     if (!fluxo) return undefined;
@@ -1064,7 +1081,7 @@ export class Fluxos {
    * quando pedido. Nunca mexe no que está pendente ou rodando — isso poria dois
    * jobs no mesmo trabalho.
    */
-  refazer(fluxoId: number, alvo?: string): {
+  refazer(fluxoId: number, alvo?: string, opiniao: Opiniao = {}): {
     refeitos: number; jobs: number[]; itens: { fase: string; alvo: string; jobId: number }[];
   } {
     const fluxo = this.estado.obter(fluxoId);
@@ -1090,6 +1107,9 @@ export class Fluxos {
       itens.push({ fase: fase.fase, alvo: fase.alvo, jobId: job.id });
     }
     if (jobs.length) this.estado.marcarStatus(fluxoId, 'rodando');
+    for (const i of itens) {
+      this.estado.registrarAvaliacao(fluxo, { ...opiniao, fase: i.fase, alvo: i.alvo, acao: 'refazer' });
+    }
     return { refeitos: jobs.length, jobs, itens };
   }
 

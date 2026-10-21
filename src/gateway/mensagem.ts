@@ -28,7 +28,7 @@ import { AJUDA_COMPLETA, executar, parseComando } from './comandos.js';
 import {
   ajudaDoFluxo, aprovarFluxo, cancelarFluxo, criarFluxo, definirCapaFluxo, fluxosCompletos,
   aceitaResposta, dadosDoFluxo, painelFluxos, parseCapa, parseResposta, pausarFluxo,
-  priorizarFluxo, refazerFluxo, responderPortao,
+  priorizarFluxo, refazerFluxo, responderPortao, separarOpiniao,
   retomarFluxo, statusDoDominio, statusFluxo, textoFluxos,
 } from './comandos-fluxo.js';
 import { caudaDoLog, responderPergunta } from './answer.js';
@@ -174,7 +174,11 @@ function tratarComandoDeFluxo(
   // o verbo certo é o de quem TERMINOU a própria parte, não o de quem julga o
   // trabalho de outro.
   if (verbo === '/aprovar' || verbo === '/aprovado' || verbo === '/pronto' || verbo === '/ok') {
-    const [ref] = resto;
+    // `nota=4 | motivo` sai antes de ler a referência (LOOP-R, "medir").
+    const { args, nota, motivo, erro } = separarOpiniao(argumento);
+    if (erro) return erro;
+    const opiniao = { ...(nota !== undefined ? { nota } : {}), ...(motivo ? { motivo } : {}) };
+    const [ref] = args;
     // Sem referência, o bot ADIVINHA quando não há ambiguidade. Aconteceu de
     // verdade: `/aprovar` sem argumento respondia "diga qual: /aprovar P#16"
     // com UM único fluxo esperando no portão — o bot sabia a resposta e mandava
@@ -183,13 +187,13 @@ function tratarComandoDeFluxo(
       const esperando = depsFluxo.fluxos.aguardandoAprovacao();
       if (esperando.length === 1) {
         const f = esperando[0]!;
-        return aprovarFluxo(`${f.prefixo}#${f.id}`, depsFluxo) ?? '';
+        return aprovarFluxo(`${f.prefixo}#${f.id}`, depsFluxo, opiniao) ?? '';
       }
       if (!esperando.length) return 'nenhum fluxo esperando aprovação agora.';
       const quais = esperando.map((f) => `${f.prefixo}#${f.id}`).join(' · ');
       return `mais de um fluxo esperando — diga qual: ${quais}`;
     }
-    return aprovarFluxo(ref, depsFluxo) ?? `não entendi "${ref}" — use /aprovar A#9`;
+    return aprovarFluxo(ref, depsFluxo, opiniao) ?? `não entendi "${ref}" — use /aprovar A#9`;
   }
 
   if (verbo === '/limpar') {
@@ -221,7 +225,14 @@ function tratarComandoDeFluxo(
   }
 
   if (verbo === '/status' || verbo === '/refazer' || verbo === '/cancelar') {
-    const [ref, alvo] = resto;
+    // Só o `/refazer` leva opinião; nos outros o `|` não tem sentido e segue como antes.
+    const op = verbo === '/refazer' ? separarOpiniao(argumento) : { args: resto };
+    if ('erro' in op && op.erro) return op.erro;
+    const [ref, alvo] = op.args;
+    const opiniao = {
+      ...('nota' in op && op.nota !== undefined ? { nota: op.nota } : {}),
+      ...('motivo' in op && op.motivo ? { motivo: op.motivo } : {}),
+    };
     // `/status` sozinho é o painel dos FLUXOS. Era a lista de jobs, e mudou de
     // dono porque a pergunta que se faz no chat é "quais assuntos estão em pé e
     // o que cada um espera de mim" — job solto é detalhe de máquina. A lista de
@@ -229,7 +240,7 @@ function tratarComandoDeFluxo(
     // aponta para ela.
     if (!ref) return verbo === '/status' ? painelFluxos(depsFluxo) : undefined;
     const resposta = verbo === '/status' ? statusFluxo(ref, depsFluxo)
-      : verbo === '/refazer' ? refazerFluxo(ref, alvo, depsFluxo)
+      : verbo === '/refazer' ? refazerFluxo(ref, alvo, depsFluxo, opiniao)
         : cancelarFluxo(ref, alvo, depsFluxo);
     if (resposta !== undefined) return resposta;
     // `undefined` = não era referência de fluxo. Número É legítimo (`/status 13`

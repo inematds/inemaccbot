@@ -8,6 +8,22 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.23.11 — 2026-10-21
+
+- **Nota e motivo no portão (LOOP-R, camada "medir").** `/aprovar` (e `/ok`, `/pronto`,
+  `/aprovado`) aceita `nota=1-5` e um motivo depois do `|`:
+  `/aprovar MVD#97 nota=4 | capa fraca`. `/refazer <ref> [alvo] | motivo=…` também.
+  Tudo opcional: sem nada, o comando é o de sempre. Nota fora de 1–5 é recusada sem
+  aprovar.
+- Cada aprovação, refazer e **resposta ao portão** (`clipe: MVD#97 reprova …`) vira uma
+  linha na tabela nova `avaliacoes` (migration 5), com o `definicao_hash` do fluxo — a
+  versão da definição congelada, para comparar antes/depois de mudar um prompt de fase.
+  Aprovação sem nota também grava ("passou no portão" é dado). Job de skill avulsa
+  (`prompts/*.md`) fica fora: não passa por portão.
+- A mensagem do portão ensina a dar nota (`nota=1-5 | por quê`).
+- `scripts/loopr-coletor.py`: lê o banco só para leitura, agrupa falhas e avaliações e
+  registra as novas no SIL Loop R do projeto (`.sil/`, fora do git). Sem token, sem API.
+
 ## 0.22.11 — 2026-10-20
 
 - `reel.montar` entra na **fila única de GPU da máquina** (`~/projetos/wifi/scripts/gpu-fila`,

@@ -13,7 +13,7 @@ import {
   type FlowDef,
 } from '../dominio/flow.js';
 import type { FluxoRegistrado } from '../dominio/registry-fluxos.js';
-import type { Fase, Fluxo } from '../fluxos/estado.js';
+import type { Fase, Fluxo, Opiniao } from '../fluxos/estado.js';
 import type { Fluxos } from '../fluxos/runtime.js';
 import { comCapa } from '../fluxos/capa.js';
 import { pastaTextos } from '../fluxos/entrada-fase.js';
@@ -194,7 +194,7 @@ export function ajudaDoFluxo(
     `Acompanhar: /status ${def.prefixo}#N · /refazer ${def.prefixo}#N [público] · /cancelar ${def.prefixo}#N`,
   ];
   if (def.fases.some((f) => f.pausa_apos)) {
-    linhas.push(`Liberar o portão: /aprovar ${def.prefixo}#N`);
+    linhas.push(`Liberar o portão: /aprovar ${def.prefixo}#N [nota=1-5 | por quê]`);
   }
   return linhas.join('\n');
 }
@@ -1059,33 +1059,84 @@ export function fluxosCompletos(deps: DepsFluxo): string {
   return linhas.join('\n');
 }
 
-/** `/aprovar P#16` — solta o portão humano. */
-export function aprovarFluxo(ref: string, deps: DepsFluxo): string | undefined {
+/**
+ * Nota e motivo que podem vir junto do comando do portão (LOOP-R, "medir"):
+ *
+ *     /aprovar MVD#97 nota=4 | ritmo bom, capa fraca
+ *     /refazer A#9 jovens | motivo=texto longo demais
+ *
+ * Mesma convenção do `| arquivo=` do `capa:`. Tudo opcional: sem nada, o
+ * comando funciona como sempre. Depois do `|`, texto solto é o motivo.
+ */
+export function separarOpiniao(argumento: string): {
+  args: string[]; nota?: number; motivo?: string; erro?: string;
+} {
+  const t = String(argumento ?? '');
+  const corte = t.indexOf('|');
+  let antes = corte >= 0 ? t.slice(0, corte) : t;
+  let depois = corte >= 0 ? t.slice(corte + 1) : '';
+  let motivo: string | undefined;
+  let nota: number | undefined;
+  let erro: string | undefined;
+  const pegarMotivo = (txt: string): string => {
+    const m = txt.match(/(?:^|\s)motivo=([\s\S]*)$/i);
+    if (m) { motivo = (motivo ? `${motivo} ` : '') + m[1]!.trim(); return txt.slice(0, m.index); }
+    return txt;
+  };
+  const pegarNota = (txt: string): string => txt.replace(/(?:^|\s)nota=(\S*)/gi, (_, v: string) => {
+    const n = Number(v);
+    if (Number.isInteger(n) && n >= 1 && n <= 5) nota = n;
+    else erro = `nota "${v}" inválida — use nota=1 a nota=5.`;
+    return ' ';
+  });
+  antes = pegarNota(pegarMotivo(antes));
+  depois = pegarNota(pegarMotivo(depois)).trim();
+  if (depois) motivo = motivo ? `${depois} ${motivo}` : depois;
+  return {
+    args: antes.split(/\s+/).filter(Boolean),
+    ...(nota !== undefined ? { nota } : {}),
+    ...(motivo?.trim() ? { motivo: motivo.trim() } : {}),
+    ...(erro ? { erro } : {}),
+  };
+}
+
+function eco(opiniao: Opiniao): string {
+  const partes = [
+    opiniao.nota !== undefined ? `nota ${opiniao.nota}` : '',
+    opiniao.motivo ? 'motivo' : '',
+  ].filter(Boolean);
+  return partes.length ? ` (${partes.join(' e ')} anotado${partes.length > 1 ? 's' : ''})` : '';
+}
+
+/** `/aprovar P#16 [nota=1-5] [| motivo]` — solta o portão humano. */
+export function aprovarFluxo(ref: string, deps: DepsFluxo, opiniao: Opiniao = {}): string | undefined {
   const r = parseRef(ref);
   if (!r) return undefined;
   const visao = deps.fluxos.status(r.id);
   if (!visao || visao.fluxo.prefixo !== r.prefixo) return `${ref} não existe neste bot.`;
-  const { liberados, fase } = deps.fluxos.aprovar(r.id);
+  const { liberados, fase } = deps.fluxos.aprovar(r.id, { ...opiniao, chatId: deps.chatId });
   // "Não está esperando" é verdade e não ajuda: quem digitou quer saber se
   // precisa fazer algo. Aconteceu de verdade — depois de um `/refazer`, o
   // fluxo já estava trabalhando e a pessoa insistiu no `/aprovar` achando que
   // faltava liberar, até criar um fluxo novo por engano.
   if (!liberados) return `${ref} não está esperando aprovação.\n${oQueEstaFazendo(visao)}`;
-  return `${ref}: ${fase} aprovada — ${liberados} job(s) enfileirado(s).`;
+  return `${ref}: ${fase} aprovada${eco(opiniao)} — ${liberados} job(s) enfileirado(s).`;
 }
 
-export function refazerFluxo(ref: string, alvo: string | undefined, deps: DepsFluxo): string | undefined {
+export function refazerFluxo(
+  ref: string, alvo: string | undefined, deps: DepsFluxo, opiniao: Opiniao = {},
+): string | undefined {
   const r = parseRef(ref);
   if (!r) return undefined;
   const visao = deps.fluxos.status(r.id);
   if (!visao || visao.fluxo.prefixo !== r.prefixo) return `${ref} não existe neste bot.`;
-  const { refeitos, itens } = deps.fluxos.refazer(r.id, alvo);
+  const { refeitos, itens } = deps.fluxos.refazer(r.id, alvo, { ...opiniao, chatId: deps.chatId });
   if (!refeitos) return `nada a refazer em ${ref}${alvo ? ` (alvo ${alvo})` : ''} — nenhuma fase falhou.`;
   // Dizer O QUE voltou e que NÃO precisa aprovar. Antes era só a contagem, e o
   // silêncio dos minutos seguintes fazia parecer que o comando não pegou — a
   // pessoa mandava `/aprovar`, não acontecia nada, e ela criava um fluxo novo.
   return [
-    `${ref}: ${refeitos} fase(s) de volta na fila.`,
+    `${ref}: ${refeitos} fase(s) de volta na fila${eco(opiniao)}.`,
     ...itens.map((i) => `  ▶️ ${i.fase}${i.alvo ? ` (${i.alvo})` : ''} — job ${i.jobId}`),
     'Não precisa aprovar: o portão já foi passado. Eu aviso quando terminar.',
   ].join('\n');
@@ -1149,7 +1200,7 @@ export function responderPortao(
   if (!r) return undefined;
   const visao = deps.fluxos.status(r.id);
   if (!visao || visao.fluxo.prefixo !== r.prefixo) return `${ref} não existe neste bot.`;
-  const saida = deps.fluxos.responder(r.id, fase, palavra, resto);
+  const saida = deps.fluxos.responder(r.id, fase, palavra, resto, { chatId: deps.chatId });
   if ('erro' in saida) return saida.erro;
   return [
     `🔁 ${ref} — "${palavra}" em ${fase} (job ${saida.jobId}).`,

@@ -805,6 +805,7 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
       ateOPortao(f, recibo);
       const portao = eventos.find((e) => e.texto.includes('AGUARDANDO você'))!;
       expect(portao.texto).toContain('/aprovar R#1');
+      expect(portao.texto, 'ensina a dar nota (LOOP-R)').toContain('nota=1-5');
       expect(portao.texto).toContain('clipe: R#1 reprova');
       expect(portao.texto).toContain('clipe: R#1 ritmo');
     });

@@ -145,6 +145,35 @@ export const MIGRATIONS: Migration[] = [
           );
     `,
   },
+  {
+    version: 5,
+    nome: 'avaliacoes',
+    // O que o dono disse no portão (LOOP-R, camada "medir"). Antes, `/aprovar`
+    // passava a fase de `aguardando-ok` para `feito` sem nota nem motivo: não
+    // havia como saber se um fluxo saiu bom ou só passável, nem por que se
+    // refez. `definicao_hash` é a versão da definição congelada do fluxo — é
+    // por ela que se compara "antes" e "depois" de mudar um prompt de fase.
+    // Job de SKILL avulsa (`prompts/*.md`) fica fora: não passa por portão.
+    sql: `
+      CREATE TABLE avaliacoes (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        fluxo_id       INTEGER NOT NULL,
+        prefixo        TEXT    NOT NULL,
+        tipo           TEXT    NOT NULL,
+        fase           TEXT    NOT NULL,
+        alvo           TEXT    NOT NULL DEFAULT '',
+        acao           TEXT    NOT NULL CHECK (acao IN ('aprovar', 'refazer', 'responder')),
+        palavra        TEXT,
+        nota           INTEGER CHECK (nota IS NULL OR nota BETWEEN 1 AND 5),
+        motivo         TEXT,
+        definicao_hash TEXT    NOT NULL,
+        chat_id        INTEGER,
+        criado_em      INTEGER NOT NULL
+      );
+      CREATE INDEX idx_avaliacoes_tipo ON avaliacoes (tipo, fase, criado_em);
+      CREATE INDEX idx_avaliacoes_fluxo ON avaliacoes (fluxo_id);
+    `,
+  },
 ];
 
 const SCHEMA_CONTROLE = `

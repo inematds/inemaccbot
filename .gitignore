@@ -24,3 +24,6 @@ doc/
 # Backup que o `plugar-repo.sh` guarda antes de escrever (o `--desfazer` o
 # consome). É estado local de instalação, não fonte.
 config/*.bak-*
+
+# SIL Loop R (estado local do LOOP-R)
+.sil/

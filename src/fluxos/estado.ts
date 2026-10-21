@@ -174,4 +174,52 @@ export class EstadoFluxos {
       .prepare('UPDATE fluxos SET status = ?, terminado_em = ? WHERE id = ?')
       .run(status, status === 'rodando' ? null : this.agora(), fluxoId);
   }
+
+  /** Grava o que o dono disse no portão (migration 5). */
+  registrarAvaliacao(fluxo: Fluxo, a: NovaAvaliacao): void {
+    this.db.prepare(`
+      INSERT INTO avaliacoes
+        (fluxo_id, prefixo, tipo, fase, alvo, acao, palavra, nota, motivo, definicao_hash, chat_id, criado_em)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      fluxo.id, fluxo.prefixo, fluxo.tipo, a.fase, a.alvo ?? '', a.acao, a.palavra ?? null,
+      a.nota ?? null, a.motivo?.trim() || null, fluxo.definicao_hash, a.chatId ?? null, this.agora(),
+    );
+  }
+
+  avaliacoes(fluxoId: number): Avaliacao[] {
+    return this.db
+      .prepare('SELECT * FROM avaliacoes WHERE fluxo_id = ? ORDER BY id')
+      .all(fluxoId) as Avaliacao[];
+  }
+}
+
+/** Nota (1–5) e motivo opcionais que acompanham `/aprovar`, `/refazer` e as respostas ao portão. */
+export interface Opiniao {
+  nota?: number;
+  motivo?: string;
+  chatId?: number;
+}
+
+export interface NovaAvaliacao extends Opiniao {
+  fase: string;
+  alvo?: string;
+  acao: 'aprovar' | 'refazer' | 'responder';
+  palavra?: string;
+}
+
+export interface Avaliacao {
+  id: number;
+  fluxo_id: number;
+  prefixo: string;
+  tipo: string;
+  fase: string;
+  alvo: string;
+  acao: 'aprovar' | 'refazer' | 'responder';
+  palavra: string | null;
+  nota: number | null;
+  motivo: string | null;
+  definicao_hash: string;
+  chat_id: number | null;
+  criado_em: number;
 }
