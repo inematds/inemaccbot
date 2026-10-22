@@ -490,6 +490,11 @@ campos próprios de cada skill saem em `/ajuda <skill>`.
 portões automáticos → produção do r7ex (avatar, montagem, revisor) → fila do canal.
 Canal e "agora" saem do texto; o comando vale como OK do avatar. `/r7ex help` explica.
 
+**`/explicavideo <assunto>`** (0.25.11): explicavideo com o avatar do Nei, 16:9, 9:16
+ou os dois, sem portão humano. Ficha → avatar no HeyGen → visual v2 → render e
+publicação no canal (link no inemaytbot, arquivo no v3). Formato e canal saem do
+texto. `| portao` (vale também no `/r7ex`) para para aprovar. `/explicavideo help` explica.
+
 ```
 /promoavatar <assunto> [--alvo=jovens] [| legenda=nao] [| versao=N] [| de=<fase>] [| sombra]
 ```
@@ -656,6 +661,8 @@ seletivo, retomada e definição congelada.
    **Mostrar sem parar (0.24.11):** `portao.mostrar` numa fase SEM `pausa_apos`
    manda o material no chat e o fluxo segue — é o `/r7ex`, que mostra o que
    entendeu do pedido e vai até a fila sem `/aprovar`. `respostas` exige a pausa.
+   Quem quiser aprovar mesmo assim manda `| portao` (0.25.11): a pausa volta em
+   toda fase que declara `portao`, menos a última.
 
 4b. **RESPONDER ao portão** (opcional). `portao.respostas` declara o que se pode
    dizer além de "sim": palavra → comando do domínio.

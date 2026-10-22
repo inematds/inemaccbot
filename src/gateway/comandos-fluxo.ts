@@ -184,6 +184,8 @@ export function ajudaDoFluxo(
       ? ['  | estudio    o BOT gera no estúdio por SCRIPT, clonando o template (créditos)'] : []),
     ...(def.fases.some((f) => f.pausa_apos)
       ? ['  | sem-portao  não para para você aprovar'] : []),
+    ...(def.fases.some((f) => f.portao && !f.pausa_apos)
+      ? ['  | portao     para antes de seguir, para você aprovar (/aprovar)'] : []),
     '',
     // As CONSULTAS que o domínio declarou: elas só existem se ele as declarou, e
     // ninguém as descobriria sozinho.
@@ -193,7 +195,7 @@ export function ajudaDoFluxo(
     '',
     `Acompanhar: /status ${def.prefixo}#N · /refazer ${def.prefixo}#N [público] · /cancelar ${def.prefixo}#N`,
   ];
-  if (def.fases.some((f) => f.pausa_apos)) {
+  if (def.fases.some((f) => f.pausa_apos || f.portao)) {
     linhas.push(`Liberar o portão: /aprovar ${def.prefixo}#N [nota=1-5 | por quê]`);
   }
   return linhas.join('\n');
@@ -241,6 +243,10 @@ export function ajudaDoFluxo(
  */
 interface OpcoesDoFluxo {
   legenda: boolean;
+  /** O espelho do `semPortao` (0.25.11): fluxo que nasce sem portão (r7ex,
+   *  explicavideo) e a pessoa QUER aprovar. Liga `pausa_apos` em toda fase que
+   *  declara `portao` — é ela que diz o que mostrar na pausa. */
+  comPortao?: boolean;
   /** Ligada, mantém no fluxo as fases marcadas `opcional: "api"` no
    *  `flow.json`. Quem REMOVE as não pedidas é o runtime (`definicaoEfetiva`),
    *  para que import e teste passem pelo mesmo ponto. */
@@ -249,7 +255,7 @@ interface OpcoesDoFluxo {
 }
 
 function resolverOpcoes(def: FlowDef, repo: string, opcoes: OpcoesDoFluxo): FlowDef {
-  const { legenda, semPortao } = opcoes;
+  const { legenda, semPortao, comPortao } = opcoes;
   const clipe = join(repo, 'cta', 'cta-9x16.mp4');
   const temClipe = existsSync(clipe);
   const textoCta = temClipe
@@ -277,7 +283,12 @@ function resolverOpcoes(def: FlowDef, repo: string, opcoes: OpcoesDoFluxo): Flow
       // parece portão desligado por engano, em vez de fluxo pedido sem portão.
       const { pausa_apos: _, ...semPausa } = f;
       return semPausa;
-    });
+    })
+    // A ÚLTIMA fase não ganha pausa: depois dela não há o que liberar, e o fluxo
+    // ficaria esperando um /aprovar que não leva a lugar nenhum.
+    .map((f, i, todas): FlowDef['fases'][number] => (comPortao && f.portao
+      && !(f as FlowDef['fases'][number]).pausa_apos && i < todas.length - 1
+      ? { ...f, pausa_apos: true } : f));
   // A recusa que existia aqui caiu em 2026-08-07: o `montar-reel.py` PASSOU a
   // legendar (ver `promoavatar/docs/legenda.md`). Enquanto ele não legendava,
   // aceitar a opção em silêncio seria mentir; agora recusá-la é que seria.
@@ -334,6 +345,8 @@ interface ArgumentoFluxo {
   estudio: boolean;
   /** Tira o portão humano. Default NÃO: o fluxo continua parando. */
   semPortao: boolean;
+  /** Põe o portão humano nas fases que só MOSTRAM (`portao` sem `pausa_apos`). */
+  comPortao: boolean;
   /** Variante de prompt pedida (`| prompt=viral`). Quais existem é o domínio
    *  que diz, no `variantes` da fase — aqui só chega o nome digitado. */
   prompt?: string;
@@ -345,13 +358,13 @@ interface ArgumentoFluxo {
 const CAMPOS = [
   'alvos', 'alvo', 'versao', 'versão', 'de', 'legenda', 'prompt',
   'api', 'creditos', 'créditos', 'navega', 'estudio', 'estúdio',
-  'sem-portao', 'sem-portão',
+  'sem-portao', 'sem-portão', 'com-portao', 'com-portão', 'portao', 'portão',
 ] as const;
 
 /** Campos que são BANDEIRA: existir já é ligar, valor é opcional. */
 const BANDEIRAS = new Set([
   'legenda', 'api', 'creditos', 'créditos', 'navega', 'estudio', 'estúdio',
-  'sem-portao', 'sem-portão',
+  'sem-portao', 'sem-portão', 'com-portao', 'com-portão', 'portao', 'portão',
 ]);
 
 /** `--alvo=x`, `--alvos=a,b`, `--sombra`. Repetível, e em qualquer posição. */
@@ -389,6 +402,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
   let navega = false;
   let estudio = false;
   let semPortao = false;
+  let comPortao = false;
   let erro: string | undefined;
 
   const acrescentar = (nome: string, bruto: string | undefined): void => {
@@ -415,6 +429,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     if (chave === 'navega') { navega = ligado; return; }
     if (chave === 'estudio' || chave === 'estúdio') { estudio = ligado; return; }
     if (chave === 'sem-portao' || chave === 'sem-portão') { semPortao = ligado; return; }
+    if (/^(com-)?port(ao|ão)$/.test(chave)) { comPortao = ligado; return; }
     const n = Number(valor);
     if (!Number.isInteger(n) || n <= 0) { erro ??= `versão inválida: "${valor}"`; return; }
     versao = n;
@@ -443,7 +458,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     // `est[uú]dio` faltava aqui: estava em CAMPOS e em BANDEIRAS, mas sem esta
     // alternação `| estudio=nao` caía como campo desconhecido. Toda flag nova
     // precisa entrar nos TRÊS lugares.
-    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda|prompt|api|cr[eé]ditos|navega|est[uú]dio|sem-porta[oõ])\s*=\s*(.+)$/i);
+    const m = campo.match(/^(alvos|alvo|versao|versão|de|legenda|prompt|api|cr[eé]ditos|navega|est[uú]dio|sem-port(?:ao|ão)|(?:com-)?port(?:ao|ão))\s*=\s*(.+)$/i);
     if (m) {
       acrescentar(m[1], m[2]);
       if (erro) return { erro };
@@ -454,7 +469,7 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     return {
       erro: `campo desconhecido: "${campo}" — aceito: alvos=a,b · versao=N · de=<fase>`
         + ' · prompt=<variante> · legenda · api · creditos · navega · estudio'
-        + ' · sem-portao · sombra',
+        + ' · sem-portao · portao · sombra',
     };
   }
 
@@ -489,8 +504,12 @@ function interpretarArgumento(argumento: string): ArgumentoFluxo | { erro: strin
     };
   }
 
+  if (comPortao && semPortao) {
+    return { erro: 'peça "| portao" OU "| sem-portao" — um liga a aprovação, o outro tira.' };
+  }
+
   return {
-    assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, estudio, semPortao,
+    assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, estudio, semPortao, comPortao,
     ...(prompt ? { prompt } : {}),
   };
 }
@@ -511,7 +530,7 @@ export function criarFluxo(
     ? `faltou o assunto — ex.: ${registrado.exemplo}`
     : lido.erro;
   const {
-    assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, estudio, semPortao,
+    assunto, alvos, versao, de, sombra, legenda, api, creditos, navega, estudio, semPortao, comPortao,
     prompt: variante,
   } = lido;
 
@@ -531,7 +550,7 @@ export function criarFluxo(
     // Congela AQUI: daqui para frente o fluxo não depende mais do disco do repo
     // de domínio, nem para o texto dos prompts.
     definicao = resolverOpcoes(
-      congelar(doDisco, registrado.repo), registrado.repo, { legenda, api, semPortao },
+      congelar(doDisco, registrado.repo), registrado.repo, { legenda, api, semPortao, comPortao },
     );
   } catch (e) {
     const msg = (e as Error).message;
@@ -547,7 +566,7 @@ export function criarFluxo(
     chatId: deps.chatId,
     // A chave é o NOME da opção no `flow.json` (`opcional: "estudio"`): quem
     // filtra é `definicaoEfetiva`, comparando por essa string.
-    opcoes: { api, creditos, navega, estudio, semPortao },
+    opcoes: { api, creditos, navega, estudio, semPortao, comPortao },
   };
 
   try {

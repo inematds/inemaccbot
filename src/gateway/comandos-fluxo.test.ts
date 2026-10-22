@@ -370,6 +370,54 @@ describe('| api e | sem-portao', () => {
   });
 });
 
+// O ESPELHO do `| sem-portao` (0.25.11): fluxo que nasce SEM portão (r7ex,
+// explicavideo) e quem quer aprovar liga com `| portao`. A pausa entra só nas
+// fases que já declaram `portao` — elas dizem o que mostrar na pausa.
+describe('| portao', () => {
+  beforeEach(() => {
+    writeFileSync(join(repo, 'flow.json'), JSON.stringify({
+      nome: 'brinquedo', prefixo: 'B', versao_def: 1,
+      alvos: { unico: {} },
+      fases: [
+        { id: 'texto', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md', portao: { mostrar: ['olha'] } },
+        { id: 'render', escopo: 'fluxo', fila: 'render', kind: 'agent', tarefa: 'fluxo-agente', prompt: 'prompts/a.md', portao: { mostrar: ['fim'] } },
+      ],
+    }));
+  });
+
+  const pausaDe = (fase: string): unknown =>
+    (JSON.parse(fluxos.status(1)!.fluxo.definicao_json).fases as { id: string; pausa_apos?: boolean }[])
+      .find((f) => f.id === fase)!.pausa_apos;
+
+  it('sem a flag: nasce sem pausa', async () => {
+    await manda('/brinquedo Assunto');
+    expect(pausaDe('texto')).toBeUndefined();
+  });
+
+  it.each(['| portao', '| portão', '| com-portao', '--portao'])('%s põe a pausa na fase que declara portão (menos na última)', async (flag) => {
+    await manda(`/brinquedo Assunto ${flag}`);
+    expect(pausaDe('texto')).toBe(true);
+    expect(pausaDe('render')).toBeUndefined();
+  });
+
+  it('| portao=nao desliga', async () => {
+    await manda('/brinquedo Assunto | portao=nao');
+    expect(pausaDe('texto')).toBeUndefined();
+  });
+
+  it('| portao com | sem-portao é recusado', async () => {
+    const r = await manda('/brinquedo Assunto | portao | sem-portao');
+    expect(r).toMatch(/portao.*sem-portao|sem-portao.*portao/);
+    expect(fluxos.status(1)).toBeUndefined();
+  });
+
+  it('o help oferece | portao quando há portão que só mostra', async () => {
+    const r = await manda('/brinquedo help');
+    expect(r).toContain('| portao');
+    expect(r).not.toContain('| sem-portao');
+  });
+});
+
 describe('--alvo=x, a forma de bandeira', () => {
   it('--alvo=um filtra igual a | alvos=um', async () => {
     await manda('/brinquedo Assunto --alvo=um');

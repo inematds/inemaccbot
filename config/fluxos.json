@@ -28,5 +28,11 @@
     "repo": "r7ex",
     "descricao": "o mesmo que /r7ex",
     "exemplo": "/rtex hackers vão atacar todo mundo, no lives1"
+  },
+  {
+    "command": "explicavideo",
+    "repo": "explicavideos",
+    "descricao": "Assunto → explicavideo com o avatar do Nei (16:9, 9:16 ou os dois): roteiro, avatar no HeyGen, visual v2, render e publicação no canal. Sem /aprovar: o comando já é o OK (| portao para aprovar antes).",
+    "exemplo": "/explicavideo a geleira do juízo final vai subir o mar, nos dois formatos, no lives10"
   }
 ]

@@ -8,6 +8,19 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.25.11 — 2026-10-22
+
+- **`| portao`** (também `| portão`, `| com-portao`, `--portao`): o espelho do
+  `| sem-portao`. Num fluxo que nasce sem portão, liga `pausa_apos` em toda fase
+  que declara `portao` (menos a última, que não tem o que liberar). `| portao`
+  com `| sem-portao` é recusado. O help mostra a opção quando há portão que só
+  mostra. Corrigido de passagem: `| sem-portão=nao` não casava (`[oõ]` não cobre
+  "ão").
+- **`/explicavideo`** registrado (repo `explicavideos`, prefixo EV): assunto →
+  ficha (agente) → avatar no HeyGen (script) → visual v2 (agente) → render e
+  publicação no canal (script). Sem `/aprovar`; o comando vale como OK do avatar
+  e da publicação. Formato (16:9, 9:16, os dois) e canal saem do texto.
+
 ## 0.24.11 — 2026-10-22
 
 - **Portão que só MOSTRA, declarado no `flow.json`.** `portao.mostrar` agora vale em
