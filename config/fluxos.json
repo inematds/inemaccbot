@@ -16,5 +16,17 @@
     "repo": "musicavideo",
     "descricao": "Uma frase vira música + capa + clipe, planejados juntos e executados em fases com portão de aprovação.",
     "exemplo": "/musicavideo balada pop sobre recomeço"
+  },
+  {
+    "command": "r7ex",
+    "repo": "r7ex",
+    "descricao": "Tema ou tese → reel viral r7ex 9:16: ficha + portões automáticos, avatar no HeyGen, montagem, revisor e fila do canal. Sem /aprovar: o comando já é o OK.",
+    "exemplo": "/r7ex hackers vão atacar todo mundo, cita PHP2Shell, no lives1 agora"
+  },
+  {
+    "command": "rtex",
+    "repo": "r7ex",
+    "descricao": "o mesmo que /r7ex",
+    "exemplo": "/rtex hackers vão atacar todo mundo, no lives1"
   }
 ]

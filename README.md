@@ -486,6 +486,10 @@ campos próprios de cada skill saem em `/ajuda <skill>`.
 
 ### Fluxos (várias fases, com estado)
 
+**`/r7ex <tema>`** (ou `/rtex`, 0.24.11): reel viral r7ex sem portão humano. Ficha +
+portões automáticos → produção do r7ex (avatar, montagem, revisor) → fila do canal.
+Canal e "agora" saem do texto; o comando vale como OK do avatar. `/r7ex help` explica.
+
 ```
 /promoavatar <assunto> [--alvo=jovens] [| legenda=nao] [| versao=N] [| de=<fase>] [| sombra]
 ```
@@ -648,6 +652,10 @@ seletivo, retomada e definição congelada.
    que às vezes existe — o Suno entrega DUAS faixas, mas `--faixa-pronta` entrega
    uma, e a segunda não pode virar aviso de erro no fluxo em que ela legitimamente
    não existe.
+
+   **Mostrar sem parar (0.24.11):** `portao.mostrar` numa fase SEM `pausa_apos`
+   manda o material no chat e o fluxo segue — é o `/r7ex`, que mostra o que
+   entendeu do pedido e vai até a fila sem `/aprovar`. `respostas` exige a pausa.
 
 4b. **RESPONDER ao portão** (opcional). `portao.respostas` declara o que se pode
    dizer além de "sim": palavra → comando do domínio.

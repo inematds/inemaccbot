@@ -8,6 +8,18 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.24.11 — 2026-10-22
+
+- **Portão que só MOSTRA, declarado no `flow.json`.** `portao.mostrar` agora vale em
+  fase SEM `pausa_apos`: a fase manda no chat o que declarou e o fluxo segue, sem
+  pedir `/aprovar` (o mesmo caminho do `| sem-portao`, sem precisar digitar a opção).
+  `portao.respostas` continua exigindo `pausa_apos`. Dois testes novos em
+  `integracao/fluxos.test.ts`.
+- **Fluxos `/r7ex` e `/rtex`** (mesmo repo `r7ex`, prefixo `RX`): o Nei manda o tema e
+  o bot faz a ficha com portões automáticos, entrega à produção do r7ex e espera a
+  edição chegar na fila do canal. O comando vale como OK do avatar daquela produção.
+  Definição no repo do domínio (`r7ex/flow.json`, `prompts/bot-ficha.md`, `HELP.md`).
+
 ## 0.23.11 — 2026-10-21
 
 - **Nota e motivo no portão (LOOP-R, camada "medir").** `/aprovar` (e `/ok`, `/pronto`,

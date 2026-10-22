@@ -643,6 +643,65 @@ describe('o fluxo AVISA no chat (§3.6.2 e §8)', () => {
     expect(eventos.some((e) => e.texto.includes('plano inteiro aqui'))).toBe(true);
   });
 
+  // MOSTRA E SEGUE, declarado no `flow.json` (r7ex, 22/10/2026): o Nei manda
+  // `/r7ex <tema>` e não quer aprovar nada, mas quer ver o que o bot entendeu.
+  // Antes isso só existia pelo `| sem-portao` digitado a cada vez.
+  it('portão SEM pausa_apos no flow.json: mostra o declarado e segue sem pedir /aprovar', () => {
+    const eventos: { chatId: number; texto: string }[] = [];
+    const dom4 = join(dir, 'dominio4');
+    mkdirSync(join(dom4, 'prompts'), { recursive: true });
+    writeFileSync(join(dom4, 'prompts', 'p.md'), 'faça {{input}} em {{saida}}');
+    const resumo = join(dir, 'RESUMO-do-teste.md');
+    writeFileSync(resumo, 'entendi: canal lives7, gancho forte');
+    const recibo = join(dir, 'recibo-mostra.txt');
+    writeFileSync(recibo, `resumo: ${resumo}\n`);
+    writeFileSync(join(dom4, 'flow.json'), JSON.stringify({
+      nome: 'mostra', prefixo: 'M', versao_def: 1,
+      alvos: { unico: { gatilho: 'x' } },
+      fases: [
+        {
+          id: 'ficha', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+          prompt: 'prompts/p.md', portao: { mostrar: ['{{artefato:resumo}}'] },
+        },
+        {
+          id: 'segue', escopo: 'fluxo', fila: 'io', kind: 'agent', tarefa: 'fluxo-agente',
+          prompt: 'prompts/p.md',
+        },
+      ],
+    }));
+    const def4 = carregarFlow(dom4);
+    const f = new Fluxos({
+      fila, estado: new EstadoFluxos(db, () => t), agora: () => t,
+      aoEvento: (e) => eventos.push(e),
+    });
+    fluxos.criar({
+      tipo: 'mostra', definicao: congelar(def4, dom4), hash: 'h4', assunto: 'A', chatId: 77,
+    });
+    const j = fila.listar().find((x) => x.flow_ref === 'M#1//ficha')!;
+    reclamar(j.id);
+    fila.concluir(j.id, recibo, 'W', (job) => f.avancar(job));
+
+    expect(eventos.some((e) => e.texto.includes('entendi: canal lives7'))).toBe(true);
+    expect(eventos.some((e) => e.texto.includes('AGUARDANDO você'))).toBe(false);
+    expect(fila.listar().some((x) => x.flow_ref === 'M#1//segue')).toBe(true);
+  });
+
+  it('portão com RESPOSTAS continua exigindo pausa_apos', () => {
+    const dom5 = join(dir, 'dominio5');
+    mkdirSync(join(dom5, 'prompts'), { recursive: true });
+    writeFileSync(join(dom5, 'prompts', 'p.md'), 'faça {{input}} em {{saida}}');
+    writeFileSync(join(dom5, 'flow.json'), JSON.stringify({
+      nome: 'resp', prefixo: 'Q', versao_def: 1,
+      alvos: { unico: { gatilho: 'x' } },
+      fases: [{
+        id: 'ficha', escopo: 'fluxo', fila: 'texto', kind: 'agent', tarefa: 'fluxo-agente',
+        prompt: 'prompts/p.md',
+        portao: { mostrar: ['{{artefato:resumo}}'], respostas: { refaz: 'bash {{repo}}/x.sh' } },
+      }],
+    }));
+    expect(() => carregarFlow(dom5)).toThrow(/respostas.*pausa_apos/);
+  });
+
   // `{{molde}}?` — OPCIONAL. O Suno entrega DUAS faixas e o musicavideo só
   // declarava uma: a segunda ficava no disco, paga no mesmo custo e nunca
   // ouvida (MVD#96). Mas `--faixa-pronta` produz UMA, e um molde obrigatório

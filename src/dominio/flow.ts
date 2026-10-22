@@ -462,9 +462,8 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       erro(`fases[${i}].max_tentativas`, 'inteiro > 0');
     }
 
-    // `portao.mostrar` só existe onde há portão: declarar o que mostrar numa
-    // fase que não para é pedido que nunca seria atendido, e silêncio aqui
-    // viraria "configurei e não aconteceu nada".
+    // `portao.mostrar`: com `pausa_apos`, mostra e espera `/aprovar`; sem, mostra
+    // e segue (o runtime entrega pelo caminho do `| sem-portao`).
     let portao: FaseDef['portao'];
     if (f.portao !== undefined) {
       const p = f.portao as Record<string, unknown>;
@@ -472,7 +471,12 @@ export function validarFlow(dados: unknown, raiz: string, skills: string[] = [])
       if (!Array.isArray(lista) || !lista.length || lista.some((x) => typeof x !== 'string' || !x.trim())) {
         erro(`fases[${i}].portao.mostrar`, 'lista não vazia de caminhos (com {{marcadores}})');
       }
-      if (f.pausa_apos !== true) erro(`fases[${i}].portao`, 'só faz sentido em fase com pausa_apos');
+      // Sem `pausa_apos`, o portão só MOSTRA e o fluxo segue (r7ex, 22/10/2026) —
+      // o mesmo caminho do `| sem-portao` no runtime. `respostas` continua
+      // exigindo a pausa: responder a uma fase que já seguiu não reabre nada.
+      if (f.pausa_apos !== true && p?.respostas !== undefined) {
+        erro(`fases[${i}].portao.respostas`, 'só faz sentido em fase com pausa_apos');
+      }
       // `respostas`: palavra → comando do domínio. Conferido aqui pelo mesmo
       // motivo que o `comando` da fase é: erro de digitação em `flow.json` tem
       // que aparecer no carregamento, não no primeiro portão às três da manhã.
