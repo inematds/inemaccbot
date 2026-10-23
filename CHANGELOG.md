@@ -8,6 +8,16 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.25.12 — 2026-10-23
+
+- **Documentação dos fluxos do catálogo.** `docs/fluxos.md` (novo): comando,
+  prefixo, repo, fases e portão de promoavatar3, promoavatar, musicavideo, r7ex e
+  explicavideo, com exemplo de cada um. Guia PT/EN/ES ganha a seção "Fluxos no
+  catálogo" com o link de cada repo, os exemplos de `/r7ex` e `/explicavideo` no
+  passo 5 e a linha "Fluxos de domínio" no estado. READMEs PT/EN/ES: os clones de
+  musicavideo, r7ex e explicavideos no passo 2 e os três na lista de domínios; EN e
+  ES ganham os parágrafos de `/r7ex` e `/explicavideo` que só o PT tinha.
+
 ## 0.25.11 — 2026-10-22
 
 - **`| portao`** (também `| portão`, `| com-portao`, `--portao`): o espelho do

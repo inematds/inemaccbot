@@ -101,6 +101,10 @@ directory:
 cd ..   # the folder containing inemaccbot
 git clone https://github.com/inematds/promoavatar.git
 git clone https://github.com/inematds/promoavatar3.git
+# the other catalog flows (only if you are going to use their command)
+git clone https://github.com/inematds/musicavideo.git
+git clone https://github.com/inematds/r7ex.git
+git clone https://github.com/inematds/explicavideos.git
 ```
 
 Without them, the bot starts, but dozens of tests fail and `/promoavatar` and
@@ -384,7 +388,7 @@ is missing, so you do not discover it in the middle of a render.
 | **HeyGen API key** | in the file pointed to by `HEYGEN_ENV_PATH` (default `~/projetos/wifi/.env`, the ecosystem’s only vault) — any file with a `HEYGEN_API_KEY=` line works; see `.env.example` | the `\| api` and `\| creditos` routes fail |
 | **HeyGen CLI** | `heygen` binary on PATH, or the path in `HEYGEN_CLI` | same |
 | **Final link server** | `PUBLICO_DIR` (served folder) + `PUBLICO_URLS` (URL bases) | the video is produced, but the message arrives without a download link. There are **two** URLs because the machine is on two networks at once |
-| **Domain repos** | `promoavatar` and `promoavatar3` as siblings (step 2) | workflows break in the first phase |
+| **Domain repos** | `promoavatar` and `promoavatar3` as siblings (step 2), plus `musicavideo`, `r7ex` and `explicavideos` for their commands | workflows break in the first phase |
 
 General rule: **`.env` stores paths and IDs; third-party secrets live in their owner’s
 file.** That is why the HeyGen key was not copied here.
@@ -494,6 +498,17 @@ Generic fields: `livesN` (destination) · `modelo=haiku` · `esforco=high`. Skil
 fields are listed in `/ajuda <skill>`.
 
 ### Workflows (multiple phases, with state)
+
+**`/r7ex <topic>`** (or `/rtex`, 0.24.11): r7ex viral reel with no human gate. Sheet +
+automatic gates → r7ex production (avatar, assembly, reviewer) → channel queue.
+Channel and "now" come from the text; the command counts as the avatar OK. `/r7ex help` explains.
+
+**`/explicavideo <subject>`** (0.25.11): explainer video with Nei's avatar, 16:9, 9:16
+or both, no human gate. Sheet → avatar on HeyGen → v2 visual → render and
+publication to the channel (link in inemaytbot, file in v3). Format and channel come from the
+text. `| portao` (also valid on `/r7ex`) stops to ask for approval. `/explicavideo help` explains.
+
+All catalog flows, with prefix, phases and gate: [`docs/fluxos.md`](docs/fluxos.md).
 
 ```
 /promoavatar <assunto> [--alvo=jovens] [| legenda=nao] [| versao=N] [| de=<fase>] [| sombra]
@@ -781,6 +796,10 @@ detail buried in this file, that is an organization bug — open an issue or mov
 - [`promoavatar3`](https://github.com/inematds/promoavatar3) — the **active** domain.
 - [`promoavatar`](https://github.com/inematds/promoavatar) — **frozen** since
   2026-08-06; kept running, with no behavior changes.
+- [`musicavideo`](https://github.com/inematds/musicavideo) — `/musicavideo`: phrase → music, cover and clip, with a gate at each phase.
+- [`r7ex`](https://github.com/inematds/r7ex) — `/r7ex` and `/rtex`: 7-step viral 9:16 reel, no human gate.
+- [`explicavideos`](https://github.com/inematds/explicavideos) — `/explicavideo`: explainer video with an avatar in 16:9, 9:16 or both, published to the channel, no human gate.
+- All flows, with prefix, phases and gate: [`docs/fluxos.md`](docs/fluxos.md).
 
 **History and analyses:**
 

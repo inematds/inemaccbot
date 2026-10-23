@@ -42,13 +42,13 @@
   nav .pro{color:var(--pro);font-weight:600;font-size:.88rem;font-family:Sora}
   nav .pro:hover{filter:brightness(1.15)}
   nav .clubpro{display:inline-flex;align-items:center;gap:6px}
-  nav .links{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:.92rem}
-  nav .links a.sec{color:var(--mut)} nav .links a.sec:hover{color:var(--txt)}
+  nav .links{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:.86rem}
+  nav .links a.sec{color:var(--mut);white-space:nowrap} nav .links a.sec:hover{color:var(--txt)}
   .tgl{background:var(--bg2);border:1px solid var(--line);color:var(--txt);width:38px;height:38px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:1.05rem}
   .tgl:hover{border-color:var(--amb)}
   .btn{display:inline-block;background:var(--amb);color:#1a1206;font-weight:600;padding:.6em 1.05em;border-radius:10px;font-family:Sora}
   .btn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
-  @media(max-width:760px){nav .links a.sec{display:none}}
+  @media(max-width:1180px){nav .links a.sec{display:none}}
   .hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
   .hero .glow{position:absolute;inset:-40% -20% auto auto;width:70%;height:600px;background:radial-gradient(closest-side,rgba(226,162,59,.22),transparent 70%);pointer-events:none}
   .hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:74px 22px}
@@ -106,6 +106,7 @@
 <a class="sec" href="#fluxo">Como funciona</a>
 <a class="sec" href="#pre">Pré-requisitos</a>
 <a class="sec" href="#guia">Guia de uso</a>
+<a class="sec" href="#catalogo">Fluxos</a>
 <a class="sec" href="#dominio">Domínio novo</a>
 <a class="sec" href="#roadmap">Estado</a>
 <a class="sec" href="arquitetura.html">Arquitetura</a>
@@ -210,7 +211,9 @@ LOG_FILE=<span class="s">./inemaccbot.log</span></pre></div>
 <p><code>| sombra</code> imprime fase × alvo × fila × tarefa e <strong>não enfileira nada</strong>. É o jeito barato de descobrir que você ia disparar 12 públicos por engano.</p>
 <pre><span class="k">/promoavatar &lt;assunto&gt; | sombra</span>
 <span class="k">/promoavatar &lt;assunto&gt; --alvo=jovens</span>
-<span class="k">/promoavatar &lt;assunto&gt; | alvos=mulheres | legenda</span></pre>
+<span class="k">/promoavatar &lt;assunto&gt; | alvos=mulheres | legenda</span>
+<span class="k">/r7ex &lt;tese&gt; | sombra</span>          <span class="c"># reel viral, sem /aprovar</span>
+<span class="k">/explicavideo &lt;assunto&gt; | sombra</span>  <span class="c"># 16:9, 9:16 ou os dois</span></pre>
 </div></div>
 <div class="step"><div class="b">6</div><div>
 <h3>Acompanhe e libere o portão</h3>
@@ -243,6 +246,20 @@ LOG_FILE=<span class="s">./inemaccbot.log</span></pre></div>
 <span class="c"># vazio → reinicie à vontade. Com render em voo → espere.</span></pre>
 </div></div>
 </div></section>
+<section id="catalogo"><div class="wrap">
+<span class="chip">Catálogo</span>
+<h2>Os fluxos que já estão no bot</h2>
+<p class="sub">Cada um mora no próprio repo, irmão do inemaccbot. O bot só guarda o comando e o repo (<code>config/fluxos.json</code>); fases, prompts e scripts são do domínio. <code>/&lt;fluxo&gt; help</code> explica qualquer um. Ficha de cada fluxo: <a href="https://github.com/inematds/inemaccbot/blob/main/docs/fluxos.md">docs/fluxos.md</a>.</p>
+<div class="phase"><div class="tag">C#</div><div class="d"><strong>/promoavatar3 · <a href="https://github.com/inematds/promoavatar3">promoavatar3</a></strong><span>Um assunto vira reels para 12 públicos, três por público (alcance, autoridade, promocional): textos → avatar no HeyGen → download → reel. Para em <code>/aprovar</code> depois do texto e do download.</span></div></div>
+<div class="phase"><div class="tag">A#</div><div class="d"><strong>/promoavatar · <a href="https://github.com/inematds/promoavatar">promoavatar</a></strong><span>O mesmo caminho, um vídeo por público. Congelado desde 06/08/2026: fica de pé, sem mudança de comportamento.</span></div></div>
+<div class="phase"><div class="tag">MVD#</div><div class="d"><strong>/musicavideo · <a href="https://github.com/inematds/musicavideo">musicavideo</a></strong><span>Uma frase vira música, capa e clipe, planejados juntos. Cada fase para e espera <code>/aprovar</code>, menos a última; a música é a única parte paga.</span></div></div>
+<div class="phase"><div class="tag">RX#</div><div class="d"><strong>/r7ex ou /rtex · <a href="https://github.com/inematds/r7ex">r7ex</a></strong><span>Tema ou tese vira o reel viral 9:16 de 7 etapas: ficha com portões automáticos → avatar no HeyGen, montagem e revisor → fila do canal. Sem <code>/aprovar</code>: o comando vale como OK do avatar. Canal e "agora" saem do texto.</span></div></div>
+<div class="phase"><div class="tag">EV#</div><div class="d"><strong>/explicavideo · <a href="https://github.com/inematds/explicavideos">explicavideos</a></strong><span>Assunto vira explicavideo com o avatar do Nei, em 16:9, 9:16 ou os dois: ficha → avatar no HeyGen → visual v2 → render, QA e publicação no canal (link no inemaytbot, arquivo no v3). Sem <code>/aprovar</code>; formato e canal saem do texto.</span></div></div>
+<pre><span class="k">/r7ex hackers vão atacar todo mundo, no lives1 agora</span>
+<span class="k">/explicavideo a geleira do juízo final vai subir o mar, nos dois formatos, no lives10</span>
+<span class="k">/explicavideo &lt;assunto&gt; | portao</span>   <span class="c"># para depois da ficha e do visual para você aprovar</span>
+<span class="k">/promoavatar3 &lt;assunto&gt; | sem-portao</span> <span class="c"># o contrário: segue sem parar</span></pre>
+</div></section>
 <section id="dominio"><div class="wrap">
 <span class="chip">Domínio novo</span>
 <h2>Acrescentar trabalho sem tocar no bot</h2>
@@ -273,7 +290,10 @@ LOG_FILE=<span class="s">./inemaccbot.log</span></pre></div>
 <p class="sub" style="margin-top:22px">Todo domínio que entra no catálogo <strong>responde ajuda</strong> — não por disciplina, por construção: quem entende escreve (<code>HELP.md</code> no fluxo, <code>&lt;prompt&gt;.help.md</code> na skill) e, se não escreveu, a ajuda é derivada do mesmo registro que o bot usa para executar. Um teste varre os dois catálogos e falha se algum domínio não responder ajuda utilizável.</p>
 <div class="flow">
 <span>promoavatar (A#)</span><span class="arr">·</span>
-<span>promoavatar3 (C#)</span>
+<span>promoavatar3 (C#)</span><span class="arr">·</span>
+<span>musicavideo (MVD#)</span><span class="arr">·</span>
+<span>r7ex (RX#)</span><span class="arr">·</span>
+<span>explicavideos (EV#)</span>
 </div>
 </div></section>
 <section id="roadmap"><div class="wrap">
@@ -284,6 +304,7 @@ LOG_FILE=<span class="s">./inemaccbot.log</span></pre></div>
 <div class="phase"><div class="tag">Pronto</div><div class="d"><strong>Gateway Telegram</strong><span>Allowlist de chat, parse de comandos puro (sem grammy), corte de mensagem, notificação de job terminado.</span></div></div>
 <div class="phase"><div class="tag">Pronto</div><div class="d"><strong>Skills como agente</strong><span>transcrever · dublar · explicativo · curso · demo · reel · reelinematds · historia · imagem.</span></div></div>
 <div class="phase"><div class="tag">Pronto</div><div class="d"><strong>Motor de fluxos</strong><span>Estado por fase e alvo, definição congelada, portão humano e retomada.</span></div></div>
+<div class="phase"><div class="tag">Pronto</div><div class="d"><strong>Fluxos de domínio</strong><span>promoavatar3 · musicavideo · r7ex (0.24.11) · explicavideo (0.25.11). Os dois últimos rodam sem portão humano; <code>| portao</code> liga a aprovação.</span></div></div>
 <div class="phase"><div class="tag">Aberto</div><div class="d"><strong>Sair do Telegram</strong><span>WhatsApp, e-mail ou chatbot: a costura do gateway já existe; o que trava é <code>chat_id</code> ser <code>INTEGER</code>. Recomendação em análise: não trocar, acrescentar.</span></div></div>
 <div class="phase"><div class="tag">Aberto</div><div class="d"><strong>Imagem e link como material</strong><span>Aceitar imagem e link como entrada de um fluxo — análise escrita, decisão não tomada.</span></div></div>
 <div class="phase"><div class="tag">Fora</div><div class="d"><strong>O que não existe de propósito</strong><span>Barreira entre fases, preempção de job, teto global de agentes, multiusuário — cada um com o gatilho documentado para reconsiderar.</span></div></div>

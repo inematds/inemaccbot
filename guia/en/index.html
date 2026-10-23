@@ -42,13 +42,13 @@
   nav .pro{color:var(--pro);font-weight:600;font-size:.88rem;font-family:Sora}
   nav .pro:hover{filter:brightness(1.15)}
   nav .clubpro{display:inline-flex;align-items:center;gap:6px}
-  nav .links{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:.92rem}
-  nav .links a.sec{color:var(--mut)} nav .links a.sec:hover{color:var(--txt)}
+  nav .links{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:.86rem}
+  nav .links a.sec{color:var(--mut);white-space:nowrap} nav .links a.sec:hover{color:var(--txt)}
   .tgl{background:var(--bg2);border:1px solid var(--line);color:var(--txt);width:38px;height:38px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:1.05rem}
   .tgl:hover{border-color:var(--amb)}
   .btn{display:inline-block;background:var(--amb);color:#1a1206;font-weight:600;padding:.6em 1.05em;border-radius:10px;font-family:Sora}
   .btn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
-  @media(max-width:760px){nav .links a.sec{display:none}}
+  @media(max-width:1180px){nav .links a.sec{display:none}}
   .hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
   .hero .glow{position:absolute;inset:-40% -20% auto auto;width:70%;height:600px;background:radial-gradient(closest-side,rgba(226,162,59,.22),transparent 70%);pointer-events:none}
   .hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:74px 22px}
@@ -99,13 +99,14 @@
 <span class="clubpro">
 <a class="inema" href="https://inema.club" rel="noopener" target="_blank">INEMA.CLUB</a>
 <span class="sep">-</span>
-<a class="pro" href="https://inema.pro" rel="noopener" target="_blank">Asking in the prompt doesn’t guarantee anything. When the reel agent ignored the section</a>
+<a class="pro" href="https://inema.pro" rel="noopener" target="_blank">PRO</a>
 </span>
 <div class="links">
-<a class="sec" href="#oque">The skills and workflows registry is validated at boot: an invalid entry deliberately brings down the service.</a>
+<a class="sec" href="#oque">What it is</a>
 <a class="sec" href="#fluxo">How it works</a>
 <a class="sec" href="#pre">Prerequisites</a>
 <a class="sec" href="#guia">User guide</a>
+<a class="sec" href="#catalogo">Flows</a>
 <a class="sec" href="#dominio">New domain</a>
 <a class="sec" href="#roadmap">State</a>
 <a class="sec" href="arquitetura.html">Architecture</a>
@@ -129,7 +130,7 @@
 </div>
 </header>
 <section id="oque"><div class="wrap">
-<span class="chip">The skills and workflows registry is validated at boot: an invalid entry deliberately brings down the service.</span>
+<span class="chip">What it is</span>
 <h2>An operator that doesn't lose work halfway through</h2>
 <p class="sub">The full path of a message. The two amber boxes are the most important boundaries: the gateway never does the work, and the runtime is the only thing that decides the next phase.</p>
 <div class="grid g3">
@@ -210,7 +211,9 @@ LOG_FILE=<span class="s">./inemaccbot.log</span></pre></div>
 <p><code>| sombra</code> prints phase × target × queue × task and <strong>doesn’t queue anything</strong>. It's the cheap way to discover you were about to trigger 12 audiences by mistake.</p>
 <pre><span class="k">/promoavatar &lt;assunto&gt; | sombra</span>
 <span class="k">/promoavatar &lt;assunto&gt; --alvo=jovens</span>
-<span class="k">/promoavatar &lt;assunto&gt; | alvos=mulheres | legenda</span></pre>
+<span class="k">/promoavatar &lt;assunto&gt; | alvos=mulheres | legenda</span>
+<span class="k">/r7ex &lt;tese&gt; | sombra</span>          <span class="c"># viral reel, no /aprovar</span>
+<span class="k">/explicavideo &lt;assunto&gt; | sombra</span>  <span class="c"># 16:9, 9:16 or both</span></pre>
 </div></div>
 <div class="step"><div class="b">6</div><div>
 <h3>Monitor and release the gate</h3>
@@ -243,6 +246,20 @@ LOG_FILE=<span class="s">./inemaccbot.log</span></pre></div>
 <span class="c"># Empty → restart whenever you want. With a render in flight → wait.</span></pre>
 </div></div>
 </div></section>
+<section id="catalogo"><div class="wrap">
+<span class="chip">Catalog</span>
+<h2>The flows already in the bot</h2>
+<p class="sub">Each one lives in its own repo, a sibling of inemaccbot. The bot only keeps the command and the repo (<code>config/fluxos.json</code>); phases, prompts and scripts belong to the domain. <code>/&lt;fluxo&gt; help</code> explains any of them. Sheet for each flow: <a href="https://github.com/inematds/inemaccbot/blob/main/docs/fluxos.md">docs/fluxos.md</a>.</p>
+<div class="phase"><div class="tag">C#</div><div class="d"><strong>/promoavatar3 · <a href="https://github.com/inematds/promoavatar3">promoavatar3</a></strong><span>One topic becomes reels for 12 audiences, three per audience (reach, authority, promotional): texts → avatar on HeyGen → download → reel. Stops at <code>/aprovar</code> after the text and the download.</span></div></div>
+<div class="phase"><div class="tag">A#</div><div class="d"><strong>/promoavatar · <a href="https://github.com/inematds/promoavatar">promoavatar</a></strong><span>The same path, one video per audience. Frozen since Aug 6, 2026: it stays up, with no change in behavior.</span></div></div>
+<div class="phase"><div class="tag">MVD#</div><div class="d"><strong>/musicavideo · <a href="https://github.com/inematds/musicavideo">musicavideo</a></strong><span>One sentence becomes a song, a cover and a clip, planned together. Each phase stops and waits for <code>/aprovar</code>, except the last; the song is the only paid part.</span></div></div>
+<div class="phase"><div class="tag">RX#</div><div class="d"><strong>/r7ex or /rtex · <a href="https://github.com/inematds/r7ex">r7ex</a></strong><span>A topic or thesis becomes the 7-step viral 9:16 reel: sheet with automatic gates → avatar on HeyGen, assembly and reviewer → channel queue. No <code>/aprovar</code>: the command counts as the OK for the avatar. Channel and "now" are taken from the text.</span></div></div>
+<div class="phase"><div class="tag">EV#</div><div class="d"><strong>/explicavideo · <a href="https://github.com/inematds/explicavideos">explicavideos</a></strong><span>A subject becomes an explicavideo with Nei's avatar, in 16:9, 9:16 or both: sheet → avatar on HeyGen → visual v2 → render, QA and publishing to the channel (link in inemaytbot, file in v3). No <code>/aprovar</code>; format and channel are taken from the text.</span></div></div>
+<pre><span class="k">/r7ex hackers vão atacar todo mundo, no lives1 agora</span>
+<span class="k">/explicavideo a geleira do juízo final vai subir o mar, nos dois formatos, no lives10</span>
+<span class="k">/explicavideo &lt;assunto&gt; | portao</span>   <span class="c"># stops after the sheet and the visual for you to approve</span>
+<span class="k">/promoavatar3 &lt;assunto&gt; | sem-portao</span> <span class="c"># the opposite: keeps going without stopping</span></pre>
+</div></section>
 <section id="dominio"><div class="wrap">
 <span class="chip">New domain</span>
 <h2>Add work without touching the bot</h2>
@@ -273,7 +290,10 @@ LOG_FILE=<span class="s">./inemaccbot.log</span></pre></div>
 <p class="sub" style="margin-top:22px">Every domain added to the catalog <strong>replies with help</strong> — not through discipline, but by design: those who understand write (<code>HELP.md</code> in the flow, <code>&lt;prompt&gt;.help.md</code> in the skill) and, if it didn't provide one, the help text is derived from the same record the bot uses to execute it. A test scans both catalogs and fails if any domain doesn't provide usable help.</p>
 <div class="flow">
 <span>promoavatar (A#)</span><span class="arr">·</span>
-<span>promoavatar3 (C#)</span>
+<span>promoavatar3 (C#)</span><span class="arr">·</span>
+<span>musicavideo (MVD#)</span><span class="arr">·</span>
+<span>r7ex (RX#)</span><span class="arr">·</span>
+<span>explicavideos (EV#)</span>
 </div>
 </div></section>
 <section id="roadmap"><div class="wrap">
@@ -284,6 +304,7 @@ LOG_FILE=<span class="s">./inemaccbot.log</span></pre></div>
 <div class="phase"><div class="tag">Ready</div><div class="d"><strong>Telegram gateway</strong><span>Chat allowlist, pure command parsing (without grammy), message truncation, notification when a job finishes.</span></div></div>
 <div class="phase"><div class="tag">Ready</div><div class="d"><strong>Skills as an agent</strong><span>transcribe · dub · explainer · course · demo · reel · reelinematds · historia · image.</span></div></div>
 <div class="phase"><div class="tag">Ready</div><div class="d"><strong>Workflow engine</strong><span>State by phase and target, frozen definition, human gate, and resumption.</span></div></div>
+<div class="phase"><div class="tag">Ready</div><div class="d"><strong>Domain flows</strong><span>promoavatar3 · musicavideo · r7ex (0.24.11) · explicavideo (0.25.11). The last two run with no human gate; <code>| portao</code> turns on the approval.</span></div></div>
 <div class="phase"><div class="tag">Open</div><div class="d"><strong>Log out of Telegram</strong><span>WhatsApp, email, or chatbot: the gateway integration is already in place; what’s blocking it is <code>chat_id</code> to be <code>INTEGER</code>. Recommendation under review: don't replace it; add to it.</span></div></div>
 <div class="phase"><div class="tag">Open</div><div class="d"><strong>Image and link as material</strong><span>Accept an image and a link as flow inputs — analysis written, decision not made.</span></div></div>
 <div class="phase"><div class="tag">Outside</div><div class="d"><strong>What’s intentionally missing</strong><span>Phase barrier, job preemption, global agent limit, multi-user support — each with a documented trigger for reconsideration.</span></div></div>

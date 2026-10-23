@@ -104,6 +104,10 @@ ni son submódulos: clona ambos como hermanos de este directorio:
 cd ..   # la carpeta que contiene inemaccbot
 git clone https://github.com/inematds/promoavatar.git
 git clone https://github.com/inematds/promoavatar3.git
+# los otros flujos del catálogo (solo si vas a usar su comando)
+git clone https://github.com/inematds/musicavideo.git
+git clone https://github.com/inematds/r7ex.git
+git clone https://github.com/inematds/explicavideos.git
 ```
 
 Sin ellos, el bot inicia, pero docenas de pruebas fallan y `/promoavatar` y `/promoavatar3`
@@ -374,7 +378,7 @@ un renderizado.
 | **Clave de API de HeyGen** | en el archivo indicado por `HEYGEN_ENV_PATH` (predeterminado `~/projetos/wifi/.env`, el cofre único del ecosistema); sirve cualquier archivo con una línea `HEYGEN_API_KEY=`; ver `.env.example` | fallan las rutas `\| api` y `\| creditos` |
 | **CLI de HeyGen** | binario `heygen` en PATH o la ruta de `HEYGEN_CLI` | lo mismo |
 | **Servidor del enlace final** | `PUBLICO_DIR` (la carpeta servida) + `PUBLICO_URLS` (las bases de URL) | se produce el video, pero el mensaje llega sin enlace de descarga. Son **dos** URL porque la máquina está en dos redes a la vez |
-| **Repos de dominio** | `promoavatar` y `promoavatar3` como hermanos (paso 2) | los flujos fallan en la primera fase |
+| **Repos de dominio** | `promoavatar` y `promoavatar3` como hermanos (paso 2), más `musicavideo`, `r7ex` y `explicavideos` para sus comandos | los flujos fallan en la primera fase |
 
 Regla general: **`.env` guarda rutas e ids; los secretos de terceros van en el archivo de quien los administra.** Por eso la clave de HeyGen no se copió aquí.
 
@@ -481,6 +485,17 @@ Campos genéricos: `livesN` (destino) · `modelo=haiku` · `esforco=high`. Los
 campos propios de cada skill aparecen en `/ajuda <skill>`.
 
 ### Flujos (varias fases, con estado)
+
+**`/r7ex <tema>`** (o `/rtex`, 0.24.11): reel viral r7ex sin puerta de control humana. Ficha +
+puertas de control automáticas → producción del r7ex (avatar, montaje, revisor) → cola del canal.
+El canal y el "ahora" salen del texto; el comando vale como OK del avatar. `/r7ex help` lo explica.
+
+**`/explicavideo <asunto>`** (0.25.11): explicavideo con el avatar de Nei, 16:9, 9:16
+o ambos, sin puerta de control humana. Ficha → avatar en HeyGen → visual v2 → render y
+publicación en el canal (enlace en inemaytbot, archivo en el v3). El formato y el canal salen
+del texto. `| portao` (vale también en `/r7ex`) se detiene para aprobar. `/explicavideo help` lo explica.
+
+Todos los flujos del catálogo, con prefijo, fases y puerta de control: [`docs/fluxos.md`](docs/fluxos.md).
 
 ```
 /promoavatar <assunto> [--alvo=jovens] [| legenda=nao] [| versao=N] [| de=<fase>] [| sombra]
@@ -742,6 +757,10 @@ es un problema de organización: abre un issue o trasládalo.
 - [`promoavatar3`](https://github.com/inematds/promoavatar3): el dominio **activo**.
 - [`promoavatar`](https://github.com/inematds/promoavatar): **congelado** desde
   2026-08-06; sigue disponible, sin cambios de comportamiento.
+- [`musicavideo`](https://github.com/inematds/musicavideo) — `/musicavideo`: frase → música, portada y clip, con puerta de control en cada fase.
+- [`r7ex`](https://github.com/inematds/r7ex) — `/r7ex` y `/rtex`: reel viral 9:16 de 7 etapas, sin puerta de control humana.
+- [`explicavideos`](https://github.com/inematds/explicavideos) — `/explicavideo`: explicavideo con avatar en 16:9, 9:16 o ambos, publicado en el canal, sin puerta de control humana.
+- Todos los flujos, con prefijo, fases y puerta de control: [`docs/fluxos.md`](docs/fluxos.md).
 
 **Historial y análisis:**
 

@@ -104,6 +104,10 @@ e não são submódulos — clone os dois como irmãos deste diretório:
 cd ..   # a pasta que contém o inemaccbot
 git clone https://github.com/inematds/promoavatar.git
 git clone https://github.com/inematds/promoavatar3.git
+# os outros fluxos do catálogo (só se for usar o comando deles)
+git clone https://github.com/inematds/musicavideo.git
+git clone https://github.com/inematds/r7ex.git
+git clone https://github.com/inematds/explicavideos.git
 ```
 
 Sem eles o boot sobe, mas dezenas de testes falham e `/promoavatar` e `/promoavatar3`
@@ -376,7 +380,7 @@ de um render.
 | **API key do HeyGen** | no arquivo apontado por `HEYGEN_ENV_PATH` (default `~/projetos/wifi/.env`, o cofre único do ecossistema) — qualquer arquivo com uma linha `HEYGEN_API_KEY=` serve; ver `.env.example` | as rotas `\| api` e `\| creditos` falham |
 | **CLI do HeyGen** | binário `heygen` no PATH, ou o caminho em `HEYGEN_CLI` | idem |
 | **Servidor do link final** | `PUBLICO_DIR` (a pasta servida) + `PUBLICO_URLS` (as bases de URL) | o vídeo é produzido, mas a mensagem chega sem link para baixar. São **duas** URLs porque a máquina fica em duas redes ao mesmo tempo |
-| **Repos de domínio** | `promoavatar` e `promoavatar3` como irmãos (passo 2) | os fluxos quebram na primeira fase |
+| **Repos de domínio** | `promoavatar` e `promoavatar3` como irmãos (passo 2), mais `musicavideo`, `r7ex` e `explicavideos` para os comandos deles | os fluxos quebram na primeira fase |
 
 Regra geral: **`.env` guarda caminho e id; segredo de terceiro mora no arquivo do
 dono dele.** É por isso que a key do HeyGen não foi copiada para cá.
@@ -494,6 +498,8 @@ Canal e "agora" saem do texto; o comando vale como OK do avatar. `/r7ex help` ex
 ou os dois, sem portão humano. Ficha → avatar no HeyGen → visual v2 → render e
 publicação no canal (link no inemaytbot, arquivo no v3). Formato e canal saem do
 texto. `| portao` (vale também no `/r7ex`) para para aprovar. `/explicavideo help` explica.
+
+Todos os fluxos do catálogo, com prefixo, fases e portão: [`docs/fluxos.md`](docs/fluxos.md).
 
 ```
 /promoavatar <assunto> [--alvo=jovens] [| legenda=nao] [| versao=N] [| de=<fase>] [| sombra]
@@ -777,6 +783,10 @@ detalhe longo dentro deste arquivo, é bug de organização — abra um issue ou
 - [`promoavatar3`](https://github.com/inematds/promoavatar3) — o domínio **ativo**.
 - [`promoavatar`](https://github.com/inematds/promoavatar) — **congelado** desde
   2026-08-06; mantido de pé, sem receber mudança de comportamento.
+- [`musicavideo`](https://github.com/inematds/musicavideo) — `/musicavideo`: frase → música, capa e clipe, com portão em cada fase.
+- [`r7ex`](https://github.com/inematds/r7ex) — `/r7ex` e `/rtex`: reel viral 9:16 de 7 etapas, sem portão humano.
+- [`explicavideos`](https://github.com/inematds/explicavideos) — `/explicavideo`: explicavideo com avatar em 16:9, 9:16 ou os dois, publicado no canal, sem portão humano.
+- Todos os fluxos, com prefixo, fases e portão: [`docs/fluxos.md`](docs/fluxos.md).
 
 **Histórico e análises:**
 
