@@ -8,6 +8,15 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.26.12 — 2026-11-05
+
+- **`/rtex` vira fluxo próprio e entra o `/rtexjp`** (Nei, 05/11/2026: "no inemaccbot pode ter
+  /rtex /rtexjp /r7ex"). Até aqui o `/rtex` era apelido do `/r7ex` (repo `r7ex`). Agora:
+  `/r7ex` → repo `r7ex` (`RX#`, sem mudança); `/rtex` → repo `rtex` (`RT#`); `/rtexjp` → repo
+  `rtexjp` (`RJ#`). Nada mudou no código do bot: só o catálogo (`config/fluxos.json`). Fases,
+  prompts, `HELP.md` e a produção sem sessão (timers `rtex-producao` e `rtexjp-producao`) moram
+  nos repos de domínio.
+
 ## 0.25.12 — 2026-10-23
 
 - **Documentação dos fluxos do catálogo.** `docs/fluxos.md` (novo): comando,

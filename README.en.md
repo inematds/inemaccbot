@@ -104,6 +104,8 @@ git clone https://github.com/inematds/promoavatar3.git
 # the other catalog flows (only if you are going to use their command)
 git clone https://github.com/inematds/musicavideo.git
 git clone https://github.com/inematds/r7ex.git
+git clone https://github.com/inematds/rtex.git
+git clone https://github.com/inematds/rtexjp.git
 git clone https://github.com/inematds/explicavideos.git
 ```
 
@@ -388,7 +390,7 @@ is missing, so you do not discover it in the middle of a render.
 | **HeyGen API key** | in the file pointed to by `HEYGEN_ENV_PATH` (default `~/projetos/wifi/.env`, the ecosystem’s only vault) — any file with a `HEYGEN_API_KEY=` line works; see `.env.example` | the `\| api` and `\| creditos` routes fail |
 | **HeyGen CLI** | `heygen` binary on PATH, or the path in `HEYGEN_CLI` | same |
 | **Final link server** | `PUBLICO_DIR` (served folder) + `PUBLICO_URLS` (URL bases) | the video is produced, but the message arrives without a download link. There are **two** URLs because the machine is on two networks at once |
-| **Domain repos** | `promoavatar` and `promoavatar3` as siblings (step 2), plus `musicavideo`, `r7ex` and `explicavideos` for their commands | workflows break in the first phase |
+| **Domain repos** | `promoavatar` and `promoavatar3` as siblings (step 2), plus `musicavideo`, `r7ex`, `rtex`, `rtexjp` and `explicavideos` for their commands | workflows break in the first phase |
 
 General rule: **`.env` stores paths and IDs; third-party secrets live in their owner’s
 file.** That is why the HeyGen key was not copied here.
@@ -499,9 +501,17 @@ fields are listed in `/ajuda <skill>`.
 
 ### Workflows (multiple phases, with state)
 
-**`/r7ex <topic>`** (or `/rtex`, 0.24.11): r7ex viral reel with no human gate. Sheet +
-automatic gates → r7ex production (avatar, assembly, reviewer) → channel queue.
-Channel and "now" come from the text; the command counts as the avatar OK. `/r7ex help` explains.
+**`/r7ex <tema>`** (0.24.11): 7-step viral r7ex reel with no human gate. Brief +
+automatic gates → r7ex production (avatar, editing, reviewer) → channel queue.
+The channel and "now" are taken from the text; the command counts as avatar approval. `/r7ex help` explains.
+
+**`/rtex <tema>`** (0.26.12; previously an alias for `/r7ex`): rtex reel (N pieces + opinion
+question, Nei’s real avatar) via the `rtex` repo. Script + check + critic → rtex production
+(avatar on HeyGen, editing, QA, reviewer) → channel queue. The command counts as avatar approval.
+
+**`/rtexjp <tema>`** (0.26.12): navy-blue illustrated reel via the `rtexjp` repo, all local
+(Nei’s voice in chatterbox, illustrated avatar, no HeyGen). Script + proof screenshot + check →
+rtexjp production (voice, render, visual QA, reviewer) → channel queue.
 
 **`/explicavideo <subject>`** (0.25.11): explainer video with Nei's avatar, 16:9, 9:16
 or both, no human gate. Sheet → avatar on HeyGen → v2 visual → render and
@@ -797,7 +807,9 @@ detail buried in this file, that is an organization bug — open an issue or mov
 - [`promoavatar`](https://github.com/inematds/promoavatar) — **frozen** since
   2026-08-06; kept running, with no behavior changes.
 - [`musicavideo`](https://github.com/inematds/musicavideo) — `/musicavideo`: phrase → music, cover and clip, with a gate at each phase.
-- [`r7ex`](https://github.com/inematds/r7ex) — `/r7ex` and `/rtex`: 7-step viral 9:16 reel, no human gate.
+- [`r7ex`](https://github.com/inematds/r7ex) — `/r7ex`: 9:16, 7-step viral reel with no human gate.
+- [`rtex`](https://github.com/inematds/rtex) — `/rtex`: 9:16 reel with N pieces, an opinion question, and a real avatar, with no human gate.
+- [`rtexjp`](https://github.com/inematds/rtexjp) — `/rtexjp`: navy-blue illustrated 9:16 reel, all local, with no human gate.
 - [`explicavideos`](https://github.com/inematds/explicavideos) — `/explicavideo`: explainer video with an avatar in 16:9, 9:16 or both, published to the channel, no human gate.
 - All flows, with prefix, phases and gate: [`docs/fluxos.md`](docs/fluxos.md).
 

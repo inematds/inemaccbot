@@ -107,6 +107,8 @@ git clone https://github.com/inematds/promoavatar3.git
 # los otros flujos del catálogo (solo si vas a usar su comando)
 git clone https://github.com/inematds/musicavideo.git
 git clone https://github.com/inematds/r7ex.git
+git clone https://github.com/inematds/rtex.git
+git clone https://github.com/inematds/rtexjp.git
 git clone https://github.com/inematds/explicavideos.git
 ```
 
@@ -378,7 +380,7 @@ un renderizado.
 | **Clave de API de HeyGen** | en el archivo indicado por `HEYGEN_ENV_PATH` (predeterminado `~/projetos/wifi/.env`, el cofre único del ecosistema); sirve cualquier archivo con una línea `HEYGEN_API_KEY=`; ver `.env.example` | fallan las rutas `\| api` y `\| creditos` |
 | **CLI de HeyGen** | binario `heygen` en PATH o la ruta de `HEYGEN_CLI` | lo mismo |
 | **Servidor del enlace final** | `PUBLICO_DIR` (la carpeta servida) + `PUBLICO_URLS` (las bases de URL) | se produce el video, pero el mensaje llega sin enlace de descarga. Son **dos** URL porque la máquina está en dos redes a la vez |
-| **Repos de dominio** | `promoavatar` y `promoavatar3` como hermanos (paso 2), más `musicavideo`, `r7ex` y `explicavideos` para sus comandos | los flujos fallan en la primera fase |
+| **Repos de dominio** | `promoavatar` y `promoavatar3` como hermanos (paso 2), más `musicavideo`, `r7ex`, `rtex`, `rtexjp` y `explicavideos` para sus comandos | los flujos fallan en la primera fase |
 
 Regla general: **`.env` guarda rutas e ids; los secretos de terceros van en el archivo de quien los administra.** Por eso la clave de HeyGen no se copió aquí.
 
@@ -486,9 +488,17 @@ campos propios de cada skill aparecen en `/ajuda <skill>`.
 
 ### Flujos (varias fases, con estado)
 
-**`/r7ex <tema>`** (o `/rtex`, 0.24.11): reel viral r7ex sin puerta de control humana. Ficha +
-puertas de control automáticas → producción del r7ex (avatar, montaje, revisor) → cola del canal.
-El canal y el "ahora" salen del texto; el comando vale como OK del avatar. `/r7ex help` lo explica.
+**`/r7ex <tema>`** (0.24.11): reel viral r7ex de 7 etapas sin aprobación humana. Ficha +
+pasos automáticos → producción de r7ex (avatar, montaje, revisor) → cola del canal.
+El canal y el «ahora» se toman del texto; el comando cuenta como aprobación del avatar. `/r7ex help` lo explica.
+
+**`/rtex <tema>`** (0.26.12; antes era un alias de `/r7ex`): reel rtex (N piezas + pregunta de
+opinión, avatar real de Nei) mediante el repo `rtex`. Guion + comprobación + crítico → producción de rtex
+(avatar en HeyGen, montaje, QA, revisor) → cola del canal. El comando cuenta como aprobación del avatar.
+
+**`/rtexjp <tema>`** (0.26.12): reel ilustrado azul marino mediante el repo `rtexjp`, todo local
+(voz de Nei en chatterbox, avatar dibujado, sin HeyGen). Guion + captura de la prueba + comprobación →
+producción de rtexjp (voz, renderizado, QA visual, revisor) → cola del canal.
 
 **`/explicavideo <asunto>`** (0.25.11): explicavideo con el avatar de Nei, 16:9, 9:16
 o ambos, sin puerta de control humana. Ficha → avatar en HeyGen → visual v2 → render y
@@ -758,7 +768,9 @@ es un problema de organización: abre un issue o trasládalo.
 - [`promoavatar`](https://github.com/inematds/promoavatar): **congelado** desde
   2026-08-06; sigue disponible, sin cambios de comportamiento.
 - [`musicavideo`](https://github.com/inematds/musicavideo) — `/musicavideo`: frase → música, portada y clip, con puerta de control en cada fase.
-- [`r7ex`](https://github.com/inematds/r7ex) — `/r7ex` y `/rtex`: reel viral 9:16 de 7 etapas, sin puerta de control humana.
+- [`r7ex`](https://github.com/inematds/r7ex) — `/r7ex`: reel viral 9:16 de 7 etapas, sin aprobación humana.
+- [`rtex`](https://github.com/inematds/rtex) — `/rtex`: reel 9:16 de N piezas con pregunta de opinión y avatar real, sin aprobación humana.
+- [`rtexjp`](https://github.com/inematds/rtexjp) — `/rtexjp`: reel ilustrado 9:16 azul marino, todo local, sin aprobación humana.
 - [`explicavideos`](https://github.com/inematds/explicavideos) — `/explicavideo`: explicavideo con avatar en 16:9, 9:16 o ambos, publicado en el canal, sin puerta de control humana.
 - Todos los flujos, con prefijo, fases y puerta de control: [`docs/fluxos.md`](docs/fluxos.md).
 

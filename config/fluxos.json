@@ -25,9 +25,15 @@
   },
   {
     "command": "rtex",
-    "repo": "r7ex",
-    "descricao": "o mesmo que /r7ex",
-    "exemplo": "/rtex hackers vão atacar todo mundo, no lives1"
+    "repo": "rtex",
+    "descricao": "Tema ou tese → reel rtex 9:16 (N peças + pergunta de opinião, avatar real do Nei): roteiro + checar + crítico, avatar no HeyGen, montagem, QA, revisor e fila do canal. Sem /aprovar: o comando já é o OK.",
+    "exemplo": "/rtex pare de esperar a fila do Claude Duet, cita o OpenDuet, no lives4"
+  },
+  {
+    "command": "rtexjp",
+    "repo": "rtexjp",
+    "descricao": "Tema ou tese → reel ilustrado rtexjp 9:16 (azul-marinho, avatar desenhado do Nei, voz local, pergunta de opinião): roteiro + print da prova + checar, voz, render, QA de beleza, revisor e fila do canal. Tudo local, sem HeyGen.",
+    "exemplo": "/rtexjp e se a China fechar a torneira da IA grátis, no lives1"
   },
   {
     "command": "explicavideo",

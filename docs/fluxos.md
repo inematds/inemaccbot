@@ -5,14 +5,16 @@ comando, o repo e a descrição (`config/fluxos.json`); fases, prompts e scripts
 domínio, no `flow.json` dele. `/<fluxo> help` (ou `/ajuda <fluxo>`) mostra a ajuda que o
 domínio escreveu no `HELP.md`.
 
-Estado em 23/10/2026 (inemaccbot 0.25.12).
+Estado em 05/11/2026 (inemaccbot 0.26.12).
 
 | comando | prefixo | repo | fases | portão humano |
 |---|---|---|---|---|
 | `/promoavatar3` | `C#` | [promoavatar3](https://github.com/inematds/promoavatar3) | texto → gerar / gerar-creditos / estudio → baixar → reel | sim (`/aprovar` depois do texto e do download) |
 | `/promoavatar` | `A#` | [promoavatar](https://github.com/inematds/promoavatar) | texto → gerar / … / navega-avatar → baixar → reel | sim; **congelado** desde 06/08/2026 |
 | `/musicavideo` | `MVD#` | [musicavideo](https://github.com/inematds/musicavideo) | plano → musica → capa → clipe → entrega | sim, em cada fase menos a última |
-| `/r7ex` e `/rtex` | `RX#` | [r7ex](https://github.com/inematds/r7ex) | ficha → producao | não; `\| portao` liga |
+| `/r7ex` | `RX#` | [r7ex](https://github.com/inematds/r7ex) | ficha → producao | não; `\| portao` liga |
+| `/rtex` | `RT#` | [rtex](https://github.com/inematds/rtex) | ficha → producao | não; `\| portao` liga |
+| `/rtexjp` | `RJ#` | [rtexjp](https://github.com/inematds/rtexjp) | ficha → producao | não; `\| portao` liga |
 | `/explicavideo` | `EV#` | [explicavideos](https://github.com/inematds/explicavideos) | ficha → avatar → visual → entrega | não; `\| portao` liga |
 
 Em todos: `| sombra` mostra o plano sem enfileirar nada, `/status <ref>` acompanha,
@@ -55,6 +57,34 @@ igual.
 
 ```
 /r7ex hackers vão atacar todo mundo, cita PHP2Shell, no lives1 agora
+```
+
+## rtex (`RT#`, 0.26.12)
+
+Tema ou tese vira o reel rtex 9:16: um tema, "N peças" (os passos do método), prova com fonte,
+ressalva honesta e fecho com pergunta de opinião (ninguém recebe nada por comentar). Até 0.25.12
+o `/rtex` era apelido do `/r7ex`; desde 05/11/2026 são formatos diferentes, cada um no seu repo.
+
+1. **ficha** (agente): pesquisa, `roteiro.json`, `checar` e crítico (teto de 5 rodadas, para no
+   primeiro aprovado). Grava o `APROVADO_HEYGEN`: o comando vale como OK do avatar daquele pedido.
+2. **producao** (função): timer `rtex-producao` no repo leva do estúdio HeyGen à fila do canal
+   (montagem, QA, revisor `claude -p`, v3); `esperar.py` só acompanha.
+
+```
+/rtex pare de esperar a fila do Claude Duet, cita o OpenDuet, no lives4
+```
+
+## rtexjp (`RJ#`, 0.26.12)
+
+Tema ou tese vira o reel ilustrado azul-marinho, tudo local: voz do Nei no chatterbox, avatar
+desenhado, desenhos no flux2-klein, sem HeyGen.
+
+1. **ficha** (agente): pesquisa, `roteiro.json`, desenhos que faltarem, print real da prova, `checar`.
+2. **producao** (função): timer `rtexjp-producao` no repo roda `rtexjp.py tudo` (voz, render, mix,
+   QA com portão de beleza), o revisor `claude -p`, manda ao v3 e põe na fila do canal.
+
+```
+/rtexjp e se a China fechar a torneira da IA grátis, no lives1
 ```
 
 ## explicavideo (`EV#`, 0.25.11)
