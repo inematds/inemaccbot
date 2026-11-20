@@ -1,3 +1,4 @@
+| 2026-11-20 | falha do EV#187 (QA reprovou, pedido nascido no v3) foi só ao chat do inemaccbot e ao painel; o v3, de onde veio o pedido, não soube | `avisar` do fluxo marca pedido com origem do v3 no texto e o dreno espelha pelo `avisa-v3.sh`/`envia-v3-arquivo.sh` (0.29.12) | infra |
 | 2026-11-20 | Submissão local EV187 usou relógio em milissegundos e job aguardou no futuro | Normalizar apenas timestamps do fluxo recém-criado para segundos e usar relógio do runtime | infra |
 # Falhas
 
