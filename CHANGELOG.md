@@ -8,6 +8,25 @@ cópia do número.
 Começou em 2026-08-13, com o repo já em produção: o histórico anterior está no
 `git log`, não aqui.
 
+## 0.29.12 — 2026-11-20
+
+- **Aviso de fluxo de pedido que nasceu no v3 vai para o v3** (Nei, 20/11/2026: "este tipo de erro
+  não tem que aparecer no painel, tem que ir para a fonte, que é o v3"). Falha, portão, pausa, fim e
+  link do fluxo cujo pedido traz a origem do v3 (`openpcbotv3`, `pedido #N`, `job #N`) saem também
+  pelo bot do v3 (`wifi/scripts/avisa-v3.sh` e `envia-v3-arquivo.sh`), com o anexo. Caso real: o
+  EV#187 reprovou no QA e o aviso ficou só no chat do inemaccbot e no painel.
+  `src/dominio/origem-v3.ts`, `src/gateway/espelho-v3.ts`.
+
+## 0.28.12 — 2026-11-18
+
+- Reel entregue ao x3 pede sempre YouTube e redes. O bot não lê mais o arquivo do canal: quem decide é o painel do x3.
+
+## 0.27.12 — 2026-11-18
+
+- **Reel do promoavatar e do promoavatar3 entra na fila do yt-pub-x3.** Canal que existe no x3
+  recebe `entrada/<canal>/<reel>/` com vídeo, `post.json` e `pronto`. A publicação de imports dos
+  `yt-pub-livesN` foi pausada, então a pasta antiga deixaria o reel parado sem erro.
+
 ## 0.26.12 — 2026-11-05
 
 - **`/rtex` vira fluxo próprio e entra o `/rtexjp`** (Nei, 05/11/2026: "no inemaccbot pode ter

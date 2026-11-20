@@ -1,3 +1,4 @@
+| 2026-11-20 | Submissão local EV187 usou relógio em milissegundos e job aguardou no futuro | Normalizar apenas timestamps do fluxo recém-criado para segundos e usar relógio do runtime | infra |
 # Falhas
 
 Uma linha por falha real. Mais recente no topo. O detalhe longo vira arquivo
@@ -5,6 +6,8 @@ separado e é linkado — aqui é só o suficiente para o padrão aparecer.
 
 | data | o que quebrou | menor correção | prompt \| infra |
 |---|---|---|---|
+| 2026-11-18 | reel do promoavatar ainda ia para `yt-pub-livesN/imports/videos`, com a publicação de imports pausada desde a virada para o x3: ficaria parado sem erro | `reel.montar` entrega em `yt-pub-x3/entrada/<canal>/` quando o canal existe no x3 | infra |
+| 2026-09-18 | 57 fases `estudio` do C#180/C#181 falharam com "sessão do HeyGen não está logada": dessa vez a sessão caiu DE VERDADE (modal de login com janela e sem flag de automação; cookies presentes mas recusados). O bot seguiu tentando alvo por alvo, 15s cada, por horas | relogin manual no perfil (`DISPLAY=:10`); proteção pendente: no 1º "não está logada", parar as demais fases `estudio` da fila e avisar no canal em vez de queimar todas | infra |
 | 2026-08-28 | 49 dos 72 reels do C#141/C#142 falharam com "não ficou pronto em 360 min" — chamados e mortos em MILISSEGUNDOS, sem nunca disparar render: o teto do `reel.montar` contava de `criado_em`, e numa fila serial (render = 1, é a GPU) a espera atrás dos clipes de música comia o prazo inteiro. Mesmo defeito que o `heygen.estudio` corrigiu ONTEM (v0.18.11); só o reel ficou para trás | o relógio passa a ser `iniciado_em` (1ª tentativa), como no `cli.rodar` e no `heygen.estudio` | infra |
 | 2026-08-27 | a mensagem de falha do `cli.rodar` cortava fora a causa: o `cauda()` ancora na primeira linha que "parece erro", e num traceback Python essa é `Traceback (most recent call last):` — o chat do MVD#132 mostrou 3 linhas de cabeçalho e nenhuma exceção | quando o texto tem traceback, usar a cauda pura (a causa é a última linha); `cauda` exportado e coberto por teste | prompt |
 | 2026-08-27 | 31 das 36 fases `estudio` do C#126 falharam em ~6s com "não foi enviado em 60 min", sem abrir o navegador | o teto passou a contar de `iniciado_em` (1ª tentativa) e não de `criado_em`: numa fila serial, a espera na fila comia o próprio prazo | infra |

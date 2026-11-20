@@ -38,6 +38,7 @@ import { tratarMensagem } from './gateway/mensagem.js';
 import { criarBaixadorTelegram } from './gateway/midia.js';
 import { nomeDeEntrega } from './gateway/entrega.js';
 import { criarNotificador } from './gateway/notificar.js';
+import { criarEspelhoV3, type EventoV3 } from './gateway/espelho-v3.js';
 import { type Transporte, criarBot } from './gateway/telegram.js';
 
 /**
@@ -65,6 +66,8 @@ export interface TransporteServico {
 
 export interface DepsServico {
   agora: Agora;
+  /** Envia ao v3 o aviso de fluxo de pedido que nasceu lá. Teste injeta um falso. */
+  espelharV3?: (e: EventoV3) => Promise<void>;
   /**
    * Recebe `aoComando` porque o handler de mensagem precisa da FILA, que só
    * existe dentro de `criarServico` — sem este segundo argumento não há como
@@ -205,7 +208,8 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
   let fluxosRegistrados: FluxoRegistrado[] = [];
   /** Avisos de fluxo produzidos DENTRO da transação do ack, drenados logo
    * depois dela — ver `aoEvento` abaixo. */
-  const eventosDeFluxo: { chatId: number; texto: string; anexo?: string }[] = [];
+  const eventosDeFluxo: { chatId: number; texto: string; anexo?: string; origemV3?: boolean }[] = [];
+  const espelharV3 = deps.espelharV3 ?? criarEspelhoV3();
   let lacos: Promise<void>[] = [];
   /** Dreno dos avisos de fluxo, apontado assim que ele existe (ver `aposResponder`). */
   let soltarFluxo: () => Promise<void> = async (): Promise<void> => {};
@@ -470,6 +474,16 @@ export function criarServico(cfg: Config, deps: DepsServico): Servico {
     const soltarEventosDeFluxo = async (): Promise<void> => {
       while (eventosDeFluxo.length) {
         const e = eventosDeFluxo.shift()!;
+        // Pedido do v3: o aviso vai ao v3 primeiro, num try próprio — falha
+        // do v3 não pode calar o chat do inemaccbot, nem o contrário.
+        if (e.origemV3) {
+          try {
+            await espelharV3({ texto: e.texto, ...(e.anexo ? { anexo: e.anexo } : {}) });
+          } catch (erroV3) {
+            deps.log(`fluxo: aviso ao v3 não entregue: ${(erroV3 as Error).message}`);
+          }
+        }
+        if (!e.chatId) continue;
         try {
           await transporte.responder(e.chatId, e.texto);
           // O ANEXO é tentado DEPOIS do texto e num try próprio: arquivo grande

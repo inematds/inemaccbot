@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { resolverDestino } from '../dominio/destinos.js';
+import { resolverDestino, resolverEntradaX3 } from '../dominio/destinos.js';
 import { sanearValorDeRecibo, ultimoCampo } from './runtime.js';
 import { primeiraFala } from '../dominio/roteiro.js';
 import { ctaDaDefinicao } from '../dominio/flow.js';
@@ -192,7 +192,12 @@ export function montarInput(ctx: ContextoEntrada): string {
       // A#30/A#31/A#32 quando a fase virou função: o `destino` só era montado
       // no branch de skill, porque quem copiava era o agente.
       ...(dadosAlvo.canal
-        ? { destino: resolverDestino(dadosAlvo.canal, ctx.projetosDir) ?? undefined }
+        ? {
+          destino: resolverDestino(dadosAlvo.canal, ctx.projetosDir) ?? undefined,
+          // Canal que existe no x3 recebe o reel na fila dele; `destino` fica
+          // só para canal fora do x3.
+          x3: resolverEntradaX3(dadosAlvo.canal, ctx.projetosDir) ?? undefined,
+        }
         : {}),
       // Legenda desligada na criação (`| legenda=nao`) vira `--sem-legenda`.
       // Sai da definição CONGELADA, como o CTA: quem criou o fluxo sem legenda

@@ -5,6 +5,7 @@
 // lê isso e escolhe a próxima fase é este arquivo — e faz isso DENTRO da
 // transação do ack, para que "fase feita" e "próxima fase enfileirada" nunca
 // existam separadas (foi assim que o v1 produziu dispatch duplicado).
+import { pedidoDoV3 } from '../dominio/origem-v3.js';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { basename } from 'node:path';
 import { flowRef, type FaseDef, type FlowDef } from '../dominio/flow.js';
@@ -83,6 +84,8 @@ export interface EventoFluxo {
    * notificação de job com chat — que fase de fluxo não tem, de propósito.
    */
   anexo?: string;
+  /** O pedido nasceu no v3: o aviso também vai para lá (ver `gateway/espelho-v3.ts`). */
+  origemV3?: boolean;
 }
 
 /** O que o gateway passa para criar um fluxo. */
@@ -184,8 +187,15 @@ export class Fluxos {
   }
 
   private avisar(fluxo: Fluxo, texto: string, anexo?: string): void {
-    if (fluxo.chat_id === null) return;
-    this.aoEvento({ chatId: fluxo.chat_id, texto, ...(anexo ? { anexo } : {}) });
+    // Pedido que nasceu no v3 tem que ser respondido no v3 (Nei, 20/11/2026):
+    // o evento sai mesmo sem chat do inemaccbot, marcado para o espelho.
+    const origemV3 = pedidoDoV3(fluxo.assunto);
+    if (fluxo.chat_id === null && !origemV3) return;
+    this.aoEvento({
+      chatId: fluxo.chat_id ?? 0, texto,
+      ...(anexo ? { anexo } : {}),
+      ...(origemV3 ? { origemV3: true } : {}),
+    });
   }
 
   /**

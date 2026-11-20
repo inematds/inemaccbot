@@ -49,10 +49,9 @@ beforeEach(() => {
   const skills = carregarSkills(join(REPO_BOT, 'config', 'skills.json'), REPO_BOT).map((s) => s.command);
   def = congelar(carregarFlow(REPO_DOMINIO, skills), REPO_DOMINIO);
   // Destino do público `mulheres`, como em produção — o canal vem do flow.json
-  // REAL, então este caminho segue o remapeamento de 2026-07-31 (lives24 →
-  // lives4). Se divergir, o `destino` do job de reel vem `undefined` e este
+  // REAL, então este caminho segue o mapa de 2026-11-18 (lives31). Se divergir, o `destino` do job de reel vem `undefined` e este
   // teste é o que avisa.
-  mkdirSync(join(dir, 'projetos', 'yt-pub-lives4', 'imports', 'videos'), { recursive: true });
+  mkdirSync(join(dir, 'projetos', 'yt-pub-lives31', 'imports', 'videos'), { recursive: true });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -92,9 +91,9 @@ describe('flow.json real do promoavatar', () => {
     expect(porId('reel').espera).toEqual({ intervalo: 120, timeout: 10800 });
   });
 
-  it('tem os 12 públicos, cada um com canal e gatilho', () => {
+  it('tem os 14 públicos, cada um com canal e gatilho', () => {
     const alvos = Object.entries(def.alvos);
-    expect(alvos).toHaveLength(12);
+    expect(alvos).toHaveLength(14);
     for (const [nome, dados] of alvos) {
       expect(dados.canal, nome).toMatch(/^lives\d+$/);
       expect(dados.gatilho, nome).toBeTruthy();
@@ -748,14 +747,14 @@ describe('do assunto ao reel, com o portão no meio', () => {
     expect(fluxos.aprovar(id).liberados).toBe(0);
   });
 
-  it('12 públicos: 1 job de texto, depois 12 de download — e UMA mensagem de portão', () => {
+  it('14 públicos: 1 job de texto, depois 14 de download — e UMA mensagem de portão', () => {
     const id = criar(Object.keys(def.alvos));
     expect(fila.listar()).toHaveLength(1);
     ackar('A#1//texto', 'ok');
     // Um aviso só, não doze.
     expect(eventos.filter((e) => e.texto.includes('/aprovar'))).toHaveLength(1);
     fluxos.aprovar(id);
-    expect(fila.listar().filter((j) => j.tarefa === 'heygen.baixar')).toHaveLength(12);
+    expect(fila.listar().filter((j) => j.tarefa === 'heygen.baixar')).toHaveLength(14);
   });
 });
 

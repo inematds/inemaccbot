@@ -79,7 +79,7 @@ describe('promoavatar3: motor compartilhado, domínio próprio', () => {
     // 36 alvos em série a ~165s são ~100 min: o default interno (3h) não daria
     // margem a um requeue.
     expect(porId('reel').espera!.timeout).toBeGreaterThanOrEqual(21_600);
-    expect(Object.keys(def.alvos)).toHaveLength(36);
+    expect(Object.keys(def.alvos)).toHaveLength(42);
   });
 
   it('o prompt da fase de texto pede a seção IMAGENS — é o portão do motor', () => {

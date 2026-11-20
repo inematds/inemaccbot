@@ -114,6 +114,31 @@ describe('reel.montar: dispara o pipeline sem agente', () => {
   // deixou de ser montado (só o branch de skill o fazia, porque quem copiava
   // era o agente) e 24 reels do A#30/A#31 ficaram no artefato do bot sem nunca
   // ir para o `yt-pub-livesN` — com link no chat, o que fazia parecer entregue.
+  it('com x3, entrega na fila dele e não repete numa retentativa', async () => {
+    const saida = join(dir, 'saida', 'C9-jovens-alc-v1.mp4');
+    const pasta = join(dir, 'yt-pub-x3', 'entrada', 'lives22');
+    const destino = join(dir, 'antigo');
+    const inp = entrada({ saida, destino, x3: { pasta } });
+    writeFileSync(JSON.parse(inp).textos, '### FALA\nA fala do reel.\n\n### IMAGENS\nnao entra\n');
+    const tarefa = criarReelMontar({
+      disparar: (d) => { mkdirSync(dirname(d.saida), { recursive: true }); writeFileSync(d.saida, 'reel-pronto'); },
+      vigia: VIGIA,
+    });
+    await expect(tarefa(ctx(inp))).resolves.toBe(saida);
+    const final = join(pasta, 'C9-jovens-alc-v1');
+    expect(readFileSync(join(final, 'C9-jovens-alc-v1.mp4'), 'utf8')).toBe('reel-pronto');
+    expect(existsSync(join(final, 'pronto'))).toBe(true);
+    expect(existsSync(destino)).toBe(false);
+    const post = JSON.parse(readFileSync(join(final, 'post.json'), 'utf8'));
+    expect(post).toMatchObject({ tipo: 'video', destinos: ['youtube', 'rs'], quando: 'fila' });
+    expect(post.contexto).toContain('A fala do reel.');
+    expect(post.contexto).not.toContain('nao entra');
+    // O x3 move a pasta ao aceitar; a retentativa não pode recriá-la.
+    rmSync(final, { recursive: true });
+    await expect(tarefa(ctx(inp))).resolves.toBe(saida);
+    expect(existsSync(final)).toBe(false);
+  });
+
   it('entrega o reel na pasta do canal', async () => {
     const saida = join(dir, 'saida', '700.mp4');
     const destino = join(dir, 'yt-pub-lives22', 'imports', 'videos');

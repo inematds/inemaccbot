@@ -20,7 +20,8 @@
 // segundo plano destacado gravando `.pid`/`.log`/`.err`, e quem vigia continua
 // sendo `render.ts`. O que sai é o modelo no meio.
 import {
-  closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, statSync,
+  closeSync, copyFileSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, renameSync,
+  rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
@@ -50,6 +51,8 @@ export interface EntradaReel {
   /** `<yt-pub-livesN>/imports/videos` — a pasta que o projeto do canal importa.
    *  Ausente quando o público não declara canal. */
   destino?: string;
+  /** Fila do yt-pub-x3. Quando existe, o reel vai para ela e não para `destino`. */
+  x3?: { pasta: string };
   /** Clipe de encerramento, quando o domínio declara um por variante. Ausente =
    *  o `montar-reel.py` usa o default dele (o `cta/cta-9x16.mp4` do domínio). */
   cta?: string;
@@ -229,6 +232,10 @@ export function criarReelMontar(opts: Disparo): Tarefa {
  * (entregar depois, à mão) por um grande (refazer o render).
  */
 function entregarAoCanal(e: EntradaReel, ctx: ContextoTarefa): void {
+  if (e.x3) {
+    entregarNoX3(e, e.x3, ctx);
+    return;
+  }
   if (!e.destino) return;
   try {
     const alvo = join(e.destino, basename(e.saida));
@@ -239,6 +246,56 @@ function entregarAoCanal(e: EntradaReel, ctx: ContextoTarefa): void {
     ctx.log(`reel.montar: ${e.alvo} entregue ao canal → ${alvo}`);
   } catch (erro) {
     ctx.log(`reel.montar: ${e.alvo} NÃO foi entregue ao canal: ${(erro as Error).message}`);
+  }
+}
+
+/** A fala do roteiro: é dela que o x3 tira título e descrição. */
+function falaDoRoteiro(textos: string): string {
+  const md = readFileSync(textos, 'utf8');
+  const fala = /^#{2,3}\s*FALA\s*$([\s\S]*?)(?=^#{2,3}\s|(?![\s\S]))/m.exec(md)?.[1] ?? md;
+  return fala.trim().slice(0, 4_000);
+}
+
+/**
+ * Deixa o reel em `entrada/<canal>/<reel>/`, o formato que o x3 varre: vídeo,
+ * `post.json` e `pronto`. Monta numa pasta oculta e renomeia no fim, para o x3
+ * nunca ler pela metade. Sem título aqui de propósito: o x3 escreve a partir do
+ * `contexto` e tenta de novo sozinho se o Codex falhar.
+ *
+ * O x3 MOVE a pasta ao aceitar, então a marca `.x3` ao lado do reel é o que
+ * impede uma retentativa de entregar de novo e cair em "arquivo repetido".
+ */
+function entregarNoX3(e: EntradaReel, x3: NonNullable<EntradaReel['x3']>, ctx: ContextoTarefa): void {
+  const marca = `${e.saida}.x3`;
+  if (existsSync(marca)) return;
+  const arquivo = basename(e.saida);
+  const nome = basename(e.saida, '.mp4');
+  const final = join(x3.pasta, nome);
+  const tmp = join(x3.pasta, `.${nome}.tmp`);
+  try {
+    if (!existsSync(final)) {
+      rmSync(tmp, { recursive: true, force: true });
+      mkdirSync(tmp, { recursive: true });
+      try {
+        linkSync(e.saida, join(tmp, arquivo));
+      } catch {
+        copyFileSync(e.saida, join(tmp, arquivo));
+      }
+      writeFileSync(join(tmp, 'post.json'), JSON.stringify({
+        tipo: 'video',
+        contexto: `Reel vertical do INEMA para o público "${e.alvo}". Escreva título e descrição só com o que a fala diz, sem inventar dados.\n\nFALA:\n${falaDoRoteiro(e.textos)}`,
+        destinos: ['youtube', 'rs'],
+        quando: 'fila',
+        origem: `inemaccbot/${nome}`,
+      }));
+      writeFileSync(join(tmp, 'pronto'), '');
+      renameSync(tmp, final);
+    }
+    writeFileSync(marca, `${final}\n`);
+    ctx.log(`reel.montar: ${e.alvo} entregue na fila do x3 → ${final}`);
+  } catch (erro) {
+    rmSync(tmp, { recursive: true, force: true });
+    ctx.log(`reel.montar: ${e.alvo} NÃO foi entregue ao x3: ${(erro as Error).message}`);
   }
 }
 
