@@ -4,8 +4,10 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
-<title>inemaccbot — gateway Telegram + cola duradera para ejecutar agentes</title>
-<meta content="Bot de Telegram con cola duradera en SQLite que ejecuta skills y flujos de varias fases con estado, portón humano y reanudación. Se incorpora un dominio nuevo sin una línea de código." name="description"/>
+<title>INEMACCBOT — Bot de Telegram para ejecutar agentes de IA</title>
+<meta content="Envía tareas a agentes de IA por Telegram. INEMACCBOT guarda la cola, reanuda las tareas después de reiniciarse y espera tu aprobación cuando el flujo lo requiere." name="description"/>
+<link href="https://inematds.github.io/inemaccbot/guia/es/" rel="canonical"/>
+<link href="https://inematds.github.io/inemaccbot/guia/" hreflang="x-default" rel="alternate"/>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet"/>
@@ -48,7 +50,9 @@
   .tgl:hover{border-color:var(--amb)}
   .btn{display:inline-block;background:var(--amb);color:#1a1206;font-weight:600;padding:.6em 1.05em;border-radius:10px;font-family:Sora}
   .btn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
+  @media(min-width:1181px) and (max-width:1320px){nav .wrap{gap:14px}nav .links{gap:10px}}
   @media(max-width:1180px){nav .links a.sec{display:none}}
+  @media(max-width:480px){nav .wrap{height:auto;min-height:60px;flex-wrap:wrap;gap:8px;padding-top:8px;padding-bottom:8px}}
   .hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
   .hero .glow{position:absolute;inset:-40% -20% auto auto;width:70%;height:600px;background:radial-gradient(closest-side,rgba(226,162,59,.22),transparent 70%);pointer-events:none}
   .hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:74px 22px}
@@ -62,6 +66,7 @@
   section h2{font-size:clamp(1.5rem,3.4vw,2.1rem);font-weight:800;letter-spacing:-.02em}
   section .sub{color:var(--mut);margin:.6em 0 2em;max-width:62ch}
   .grid{display:grid;gap:16px}
+  .grid>*{min-width:0}
   .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
   @media(max-width:820px){.g3,.g4{grid-template-columns:1fr 1fr}}
   @media(max-width:540px){.g2,.g3,.g4{grid-template-columns:1fr}}
@@ -74,7 +79,7 @@
   .flow .arr{color:var(--amb);border:none;background:none;padding:0 .1em}
   pre{background:#0a0a0e;border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow:auto;font-size:.86rem;line-height:1.6;color:#d6d6e0}
   pre .c{color:#6f6f7c} pre .k{color:var(--amb2)} pre .s{color:#9ece6a}
-  .step{display:grid;grid-template-columns:46px 1fr;gap:16px;margin-bottom:26px}
+  .step{display:grid;grid-template-columns:46px minmax(0,1fr);gap:16px;margin-bottom:26px}
   .step .b{width:46px;height:46px;border-radius:12px;background:var(--amb);color:#1a1206;font-family:Sora;font-weight:800;font-size:1.25rem;display:flex;align-items:center;justify-content:center}
   .step h3{font-size:1.12rem;margin-bottom:.3em}
   .step p{color:var(--mut);margin:.2em 0 .7em}
@@ -118,9 +123,9 @@
 <div class="glow"></div>
 <div class="wrap">
 <div>
-<span class="chip">Gateway de Telegram · cola duradera</span>
-<h1>Envías una línea por el chat. El <span class="amb">trabajo pesado</span> ocurre automáticamente.</h1>
-<p class="lead">Bot de Telegram con cola duradera en SQLite: ejecuta skills de una etapa y flujos de varias fases con estado, portón humano y reanudación después de una caída.</p>
+<span class="chip">Agentes de IA · Telegram</span>
+<h1>Ejecuta tus agentes de IA <span class="amb">por Telegram</span> con INEMACCBOT.</h1>
+<p class="lead">Envía una tarea desde el móvil y recibe el resultado en el mismo chat. INEMACCBOT guarda la cola, reanuda las tareas después de reiniciarse y espera tu visto bueno en los pasos que requieren aprobación.</p>
 <div class="cta">
 <a class="btn" href="#guia">Empezar la guía</a>
 <a class="btn ghost" href="https://github.com/inematds/inemaccbot" rel="noopener" target="_blank">Ver en GitHub</a>
@@ -129,6 +134,10 @@
 <figure><img alt="inemaccbot — gateway Telegram y cola duradera" src="../assets/hero.png"/></figure>
 </div>
 </header>
+<section id="resumo"><div class="wrap">
+<h2>¿Qué es INEMACCBOT?</h2>
+<p class="sub">INEMACCBOT es un bot de Telegram para quienes quieren usar agentes de IA desde el móvil. Puedes pedir una transcripción o iniciar un flujo de producción de vídeo, seguir la tarea y recibir el archivo en el chat. La cola queda guardada para que el bot pueda reanudar el trabajo después de una interrupción. Para empezar, configura tu bot en Telegram e instala el servicio en el ordenador o servidor donde se ejecutarán los agentes.</p>
+</div></section>
 <section id="oque"><div class="wrap">
 <span class="chip">Qué es</span>
 <h2>Un operador que no pierde trabajo por el camino</h2>

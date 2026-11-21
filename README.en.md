@@ -2,7 +2,11 @@
 
 **🇧🇷 [Português](README.md) · 🇺🇸 [English](README.en.md) · 🇪🇸 [Español](README.es.md)**
 
-Telegram gateway + durable queue. Successor to `inemaccvbot`.
+## What it is
+
+INEMACCBOT is a Telegram bot for anyone who wants to use AI agents from their phone. You can request a transcription or start a video production workflow, track the task, and receive the file in the chat. The queue is saved so the bot can resume work after an interruption. To get started, set up your bot in Telegram and install the service on the computer or server where the agents will run.
+
+INEMACCBOT is the successor to `inemaccvbot`.
 
 ## 📖 User guide
 

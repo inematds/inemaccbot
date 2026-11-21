@@ -2,7 +2,11 @@
 
 **🇧🇷 [Português](README.md) · 🇺🇸 [English](README.en.md) · 🇪🇸 [Español](README.es.md)**
 
-Gateway Telegram + fila durável. Sucessor do `inemaccvbot`.
+## O que é
+
+O INEMACCBOT é um bot de Telegram para quem quer usar agentes de IA pelo celular. Você pode pedir uma transcrição ou iniciar um fluxo de produção de vídeo, acompanhar o pedido e receber o arquivo no chat. A fila fica salva para o bot recuperar o trabalho após uma interrupção. Para começar, configure seu bot no Telegram e instale o serviço no computador ou servidor onde os agentes vão rodar.
+
+O INEMACCBOT é o sucessor do `inemaccvbot`.
 
 ## 📖 Guia de uso
 
