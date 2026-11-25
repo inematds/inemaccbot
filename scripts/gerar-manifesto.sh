@@ -47,7 +47,7 @@ motivo_do_modelo() {
   if [ ! -s "$err" ] && [ ! -s "$saida" ]; then
     printf '     (a CLI não disse nada — nem stdout, nem stderr)\n' >&2
   fi
-  printf '     Confira a CLI sozinha:  %s --model sonnet -p "responda apenas: ok" </dev/null\n' "${MOTOR:-claude}" >&2
+  printf '     Confira a CLI sozinha:  %s --model <INEMA_CLAUDE_MENOR do modelos.env> -p "responda apenas: ok" </dev/null\n' "${MOTOR:-claude}" >&2
   printf '     Login, crédito e rede são as causas de sempre. Esta metade do par\n' >&2
   printf '     precisa de modelo: na VPS rode só o plugar-*, que não chama nenhum.\n' >&2
 }
@@ -57,6 +57,8 @@ titulo(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
 # O motor vem por CAMINHO, como no bot: sob systemd o PATH é mínimo, e aqui a
 # regra é a mesma para não divergirem.
 MOTOR="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
+[ -f "$HOME/.config/inema/modelos.env" ] && . "$HOME/.config/inema/modelos.env"  # fonte única dos modelos
+MODELO_MANIFESTO="${INEMA_CLAUDE_MENOR:-claude-sonnet-5}"
 [ -x "$MOTOR" ] || MOTOR="$(command -v claude || true)"
 [ -n "$MOTOR" ] && [ -x "$MOTOR" ] || morre "não achei o binário do claude.
      Este script é o lado do par que PRECISA de um modelo. Rode-o numa máquina
@@ -142,7 +144,7 @@ FIM
 RESP="$TMP/manifesto.raw"
 # `</dev/null`: a CLI lê stdin, e sem isto ela engole a linha que a revisão vai
 # pedir logo abaixo — o sintoma é o script "cancelar sozinho" sem você digitar.
-"$MOTOR" --model sonnet -p "$PROMPT_MANIFESTO" </dev/null > "$RESP" 2>"$TMP/err" || {
+"$MOTOR" --model "$MODELO_MANIFESTO" -p "$PROMPT_MANIFESTO" </dev/null > "$RESP" 2>"$TMP/err" || {
   CODIGO=$?; motivo_do_modelo "$CODIGO" "$TMP/err" "$RESP"; morre "o modelo falhou ao ler o repo"; }
 
 # Cinto de segurança: o modelo às vezes embrulha em ```json ou emenda um
@@ -209,7 +211,7 @@ retentativa que reaproveita pasta antiga). É isso que separa este prompt de um
 genérico.
 FIM
 )"
-"$MOTOR" --model sonnet -p "$PROMPT_PROMPT" </dev/null > "$TMP/prompt.md" 2>"$TMP/err2" || {
+"$MOTOR" --model "$MODELO_MANIFESTO" -p "$PROMPT_PROMPT" </dev/null > "$TMP/prompt.md" 2>"$TMP/err2" || {
   CODIGO=$?; motivo_do_modelo "$CODIGO" "$TMP/err2" "$TMP/prompt.md"; morre "o modelo falhou ao escrever o prompt"; }
 # Cerca de código em volta do markdown inteiro é ruído do modelo, não conteúdo.
 python3 - "$TMP/prompt.md" <<'PY'
